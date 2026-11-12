@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.details.storyScreen
 import com.vinicius741.webnovelarchiver.feature.narration.NarrationScreenPlanning.needsAudio
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
@@ -26,21 +27,26 @@ import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.BOTTOM_BAR_VIEW_TAG
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.CardListDecoration
 import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.SCROLL_BODY_VIEW_TAG
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.button
+import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.fullButton
+import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.makeChip
+import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.setAppBarTitle
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.spacer
+import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
 import com.vinicius741.webnovelarchiver.ui.verticalFill
@@ -98,29 +104,22 @@ internal fun ScreenHost.showNarrationStory(
         ChapterAudioSelection(state) { selectedCount ->
             setAppBarTitle(selectionTitle(selectedCount))
         }
+    // The header scrolls with the list: title row, then the rebuilt status cards, then the filter chips.
     val header = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+    val dynamicHeader = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+    val chips = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
     val adapter =
         ChapterAudioAdapter(
             header = header,
             bookmarkId = story.lastReadChapterId,
             selection = selection,
             onTap = { chapter, status -> host.showChapterMenu(storyId, chapter, status) },
-            onLongPress = { chapter ->
-                if (state.selecting) {
-                    selection.selectRange(chapter.id)
-                } else {
-                    state.selecting = true
-                    state.selected.clear()
-                    state.selected += chapter.id
-                    state.anchor = chapter.id
-                    rebuild()
-                }
-            },
+            onLongPress = { chapter -> selection.longPress(chapter.id, ::rebuild) },
         )
     list.adapter = adapter
+    list.addItemDecoration(CardListDecoration(app) { position -> position >= 1 })
     selection.onChanged = { adapter.refreshSelection() }
     val liveStatus = NarrationLiveStatus(this, hideWhenIdle = true) { showNarration() }
-    val chips = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
 
     fun exitSelection() {
         state.selecting = false
@@ -129,39 +128,19 @@ internal fun ScreenHost.showNarrationStory(
         rebuild()
     }
 
-    val actions =
-        if (state.selecting) {
-            listOf(AppBarAction(R.drawable.wna_check, "Select all shown") { selection.toggleAll() })
-        } else {
-            listOf(
-                AppBarAction(R.drawable.wna_check, "Select chapters") {
-                    state.selecting = true
-                    rebuild()
-                },
-                AppBarAction(R.drawable.wna_list, "Generation queue") { showNarration() },
-                AppBarAction(R.drawable.wna_more_vert, "More") { host.showStoryAudioMenu(story, playable, state.statuses) },
-            )
-        }
-    screen(
-        route = route,
-        title = if (state.selecting) selectionTitle(state.selected.size) else "Chapter audio",
-        subtitle = story.title,
-        actions = actions,
-        closeAction = if (state.selecting) ({ exitSelection() }) else null,
-    ) {
-        addView(liveStatus.view)
-        addView(
-            HorizontalScrollView(context).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(chips)
-            },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(Space.SM)
-            },
-        )
-        addView(list, verticalFill())
-        if (state.selecting) addView(host.selectionBar(story, state, ::exitSelection))
-    }
+    header.addView(host.audioHeaderRow(story, playable, state, ::rebuild))
+    header.addView(dynamicHeader)
+    header.addView(
+        HorizontalScrollView(app).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(chips)
+        },
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(Space.MD)
+            bottomMargin = dp(Space.MD)
+        },
+    )
+    renderChapterAudioScreen(route, story, state, selection, liveStatus, list, ::exitSelection)
 
     fun applyFilter(filter: ChapterAudioFilter) {
         if (state.filter == filter) return
@@ -193,12 +172,46 @@ internal fun ScreenHost.showNarrationStory(
                     state.statuses = statuses
                     state.visible = NarrationScreenPlanning.filter(latest, chapters, statuses, filter)
                     host.renderFilterChips(chips, latest, chapters, statuses, filter, ::applyFilter)
-                    header.removeAllViews()
-                    host.buildStoryHeader(header, latest, chapterId, statuses, state)
+                    dynamicHeader.removeAllViews()
+                    host.buildStoryHeader(dynamicHeader, latest, chapterId, statuses, state)
                     adapter.submit(state.visible, statuses)
                     restorePosition(state, layoutManager, chapterId)
                 }
         }
+}
+
+/** The story page's Audio tab around [list]; while selecting, the selection bar takes the navigation bar's place. */
+@Suppress("LongParameterList") // The tab's pieces, built by showNarrationStory and laid out here.
+private fun ScreenHost.renderChapterAudioScreen(
+    route: AppRoute.NarrationStory,
+    story: Story,
+    state: ChapterAudioViewState,
+    selection: ChapterAudioSelection,
+    liveStatus: NarrationLiveStatus,
+    list: RecyclerView,
+    exitSelection: () -> Unit,
+) {
+    val host = this
+    storyScreen(
+        route = route,
+        story = story,
+        scrollable = false,
+        title = if (state.selecting) selectionTitle(state.selected.size) else null,
+        actions =
+            if (state.selecting) {
+                listOf(
+                    AppBarAction(R.drawable.wna_checklist, "Select all shown") { selection.toggleAll() },
+                )
+            } else {
+                null
+            },
+        closeAction = if (state.selecting) exitSelection else null,
+    ) { frame ->
+        addView(liveStatus.view)
+        addView(list, verticalFill())
+        if (state.selecting) frame.footer.addView(host.selectionBar(story, state, exitSelection))
+    }
+    if (state.selecting) shell.setNavigationSuppressed(true)
 }
 
 /** The remembered filter, unless it would hide the chapter the screen was opened for or no bookmark is left. */
@@ -251,6 +264,22 @@ private class ChapterAudioSelection(
         if (!state.selected.remove(chapterId)) state.selected += chapterId
         state.anchor = chapterId
         changed()
+    }
+
+    /** Long-press: the first one starts selecting from that chapter, a later one selects the range up to it. */
+    fun longPress(
+        chapterId: String,
+        rebuild: () -> Unit,
+    ) {
+        if (state.selecting) {
+            selectRange(chapterId)
+            return
+        }
+        state.selecting = true
+        state.selected.clear()
+        state.selected += chapterId
+        state.anchor = chapterId
+        rebuild()
     }
 
     fun selectRange(chapterId: String) {
@@ -311,28 +340,54 @@ private fun ScreenHost.buildStoryHeader(
     val voice = narration.currentVoice()
     val packs = statuses.values.mapNotNull { it.pack() }
     with(header) {
-        if (focus != null) focusCard(this@buildStoryHeader, story, focus, statuses[focus.id] ?: NarrationChapterStatus.None)
-        queuePositionCard(this@buildStoryHeader, story)
         text(
             "New audio uses ${voice.label}" +
                 if (packs.isEmpty()) "" else " · ${packs.size} ready · ${NarrationPlanning.formatBytes(packs.sumOf { it.index.bytes })}",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
         )
-        text(
-            if (state.selecting) {
-                "Tap chapters to select them. Long-press another chapter to select everything in between."
-            } else {
-                "Long-press a chapter to select several. Tap one for its options."
-            },
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
+        if (focus != null) focusCard(this@buildStoryHeader, story, focus, statuses[focus.id] ?: NarrationChapterStatus.None)
+        queuePositionCard(this@buildStoryHeader, story)
+        if (state.selecting) {
+            text(
+                "Tap chapters to select them. Long-press another chapter to select everything in between.",
+                Type.BODY_SMALL,
+                ThemeManager.colors.onSurfaceVariant,
+            ).apply { setPadding(0, dp(Space.SM), 0, 0) }
+        }
         if (state.visible.isEmpty()) {
             spacer(Space.MD)
             text("No chapters match this filter.", Type.BODY_MEDIUM, ThemeManager.colors.onSurfaceVariant)
         }
-        spacer(Space.SM)
+    }
+}
+
+/** "Chapter audio" with Select, the generation queue, and the story's audio menu. */
+private fun ScreenHost.audioHeaderRow(
+    story: Story,
+    playable: List<Chapter>,
+    state: ChapterAudioViewState,
+    rebuild: () -> Unit,
+): View {
+    val colors = ThemeManager.colors
+    return LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        setPadding(0, dp(Space.MD), 0, dp(Space.XS))
+        addView(
+            makeText(app, "Chapter audio", Type.TITLE_MEDIUM, colors.onSurface),
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        if (!state.selecting) {
+            addView(
+                app.iconButton(R.drawable.wna_checklist, "Select chapters") {
+                    state.selecting = true
+                    rebuild()
+                },
+            )
+            addView(app.iconButton(R.drawable.wna_list, "Generation queue") { showNarration() })
+            addView(app.iconButton(R.drawable.wna_more_vert, "More") { showStoryAudioMenu(story, playable, state.statuses) })
+        }
     }
 }
 
@@ -371,31 +426,51 @@ private fun LinearLayout.focusCard(
     chapter: Chapter,
     status: NarrationChapterStatus,
 ) {
-    addCard {
-        text(chapter.title, Type.TITLE_MEDIUM)
-        spacer(Space.XS)
-        text(statusLabel(status), Type.BODY_MEDIUM, statusColor(status))
-        when (status) {
-            is NarrationChapterStatus.Ready ->
-                fullButton("Play", Btn.FILLED, R.drawable.wna_play, bottomMarginDp = 0) {
-                    TtsForegroundService.start(host.app, story.id, chapter.id)
-                    host.toast("Playing ${chapter.title}")
-                }
-            is NarrationChapterStatus.Queued ->
-                fullButton("Generate it next", Btn.TONAL, R.drawable.wna_up, bottomMarginDp = 0) {
-                    host.narrationAction("Could not move the chapter") {
-                        queueState.value.jobs
-                            .firstOrNull { it.storyId == story.id && it.chapterId == chapter.id }
-                            ?.let { moveToTop(it.id) }
+    val colors = ThemeManager.colors
+    val isBookmark = story.lastReadChapterId == chapter.id
+    val card =
+        card {
+            background =
+                strokeBg(
+                    colors.primaryContainer and FOCUS_TINT_MASK,
+                    context.dp(ThemeManager.shapes.cardRadius).toFloat(),
+                    colors.primary and FOCUS_STROKE_MASK,
+                    context.dp(1),
+                )
+            text(
+                if (isBookmark) "YOUR BOOKMARK" else "CHAPTER",
+                Type.LABEL_MEDIUM,
+                colors.primary,
+            ).apply { letterSpacing = EYEBROW_SPACING }
+            text(chapter.title, Type.TITLE_MEDIUM).apply { setPadding(0, context.dp(Space.XS), 0, 0) }
+            text(statusLabel(status), Type.BODY_SMALL, statusColor(status))
+            row {
+                when (status) {
+                    is NarrationChapterStatus.Ready ->
+                        button("Play", Btn.FILLED, R.drawable.wna_play) {
+                            TtsForegroundService.start(host.app, story.id, chapter.id)
+                            host.toast("Playing ${chapter.title}")
+                        }
+                    is NarrationChapterStatus.Queued -> {
+                        button("Generate it next", Btn.TONAL, R.drawable.wna_up) {
+                            host.narrationAction("Could not move the chapter") {
+                                queueState.value.jobs
+                                    .firstOrNull { it.storyId == story.id && it.chapterId == chapter.id }
+                                    ?.let { moveToTop(it.id) }
+                            }
+                        }
+                    }
+                    is NarrationChapterStatus.Generating -> Unit
+                    else -> {
+                        button("Generate now", Btn.FILLED, R.drawable.wna_headphones) {
+                            host.queueNarration(story.id, listOf(chapter.id), front = true)
+                        }
+                        button("Add to queue", Btn.SURFACE) { host.queueNarration(story.id, listOf(chapter.id)) }
                     }
                 }
-            is NarrationChapterStatus.Generating -> Unit
-            else ->
-                fullButton("Generate now", Btn.FILLED, R.drawable.wna_headphones, bottomMarginDp = 0) {
-                    host.queueNarration(story.id, listOf(chapter.id), front = true)
-                }
+            }
         }
-    }
+    addView(card, (card.layoutParams as LinearLayout.LayoutParams).apply { topMargin = context.dp(Space.MD) })
 }
 
 /** Bottom bar of selection mode: act on every selected chapter at once. */
@@ -408,8 +483,8 @@ private fun ScreenHost.selectionBar(
     return LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
         tag = BOTTOM_BAR_VIEW_TAG
-        setBackgroundColor(ThemeManager.colors.background)
-        setPadding(0, dp(Space.SM), 0, 0)
+        setBackgroundColor(ThemeManager.colors.elevation2)
+        setPadding(dp(Space.LG), dp(Space.SM), dp(Space.LG), dp(Space.SM))
         row {
             button("Generate", Btn.FILLED, R.drawable.wna_headphones) {
                 val ids = state.selected.filter { state.statuses[it].needsAudio() }
@@ -603,3 +678,7 @@ private data class ChapterEstimate(
 }
 
 private const val DISABLED_ALPHA = 0.4f
+
+private const val FOCUS_TINT_MASK = 0x40FFFFFF
+private const val FOCUS_STROKE_MASK = 0x40FFFFFF
+private const val EYEBROW_SPACING = 0.08f

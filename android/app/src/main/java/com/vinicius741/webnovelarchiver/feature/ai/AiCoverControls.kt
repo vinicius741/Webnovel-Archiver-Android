@@ -16,12 +16,16 @@ import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.data.repository.saveAiCoverPromptDraft
 import com.vinicius741.webnovelarchiver.data.repository.setAiCover
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.story.CoverViewerAction
+import com.vinicius741.webnovelarchiver.feature.story.CoverViewerItem
+import com.vinicius741.webnovelarchiver.feature.story.showCoverViewer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.activeCoverSource
 import com.vinicius741.webnovelarchiver.ui.applyInputStyle
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
@@ -33,6 +37,7 @@ import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.scrollTextInsideParent
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.spacer
+import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
@@ -51,13 +56,15 @@ internal fun ScreenHost.addAiCoverTab(
     generating: StoryOperationState?,
 ) {
     aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiNewCoverCard(container, story, draft) }
-    container.section("Covers")
     addAiCoverStrip(container, story)
     container.section("Make a new cover")
     addAiCoverMakerCard(container, story, generating)
 }
 
-/** The waiting result, side by side with the cover in use, so the choice is one tap. */
+/**
+ * The waiting result beside the cover in use, each at half the card's width, with View full size
+ * (the compare viewer) and the decision buttons.
+ */
 private fun ScreenHost.addAiNewCoverCard(
     container: LinearLayout,
     story: Story,
@@ -65,19 +72,23 @@ private fun ScreenHost.addAiNewCoverCard(
 ) {
     val editable = story.isArchived != true && aiCoverOperationFor(story.id) == null
     val colors = ThemeManager.colors
+    val radius = dp(ThemeManager.shapes.cardRadius).toFloat()
     val cardView =
         container.card {
-            addView(
-                makeBadge(context, "New cover ready", colors.tertiaryContainer, colors.onTertiaryContainer),
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = dp(Space.SM)
-                },
-            )
+            background = strokeBg(colors.primaryContainer and NEW_COVER_TINT_MASK, radius, colors.primary and NEW_COVER_STROKE_MASK, dp(1))
+            row {
+                addView(
+                    makeText(context, "New cover ready", Type.TITLE_MEDIUM, colors.onSurface),
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                )
+                addView(makeBadge(context, "New", colors.primaryContainer, colors.onPrimaryContainer))
+            }
             // R24: the preview bitmap is decoded off main, sampled to preview size, with a
             // dimension sanity check before any large allocation.
             val previewSlot = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
             addView(previewSlot)
             var useButton: Button? = null
+            var viewButton: Button? = null
             scope.launch(kotlinx.coroutines.Dispatchers.Default) {
                 // Older app versions could apply a draft without closing it; one identical to the
                 // cover in use is not news, so settle it instead of offering a no-op choice.
@@ -94,10 +105,15 @@ private fun ScreenHost.addAiNewCoverCard(
                     if (app.isFinishing || app.isDestroyed) return@runOnUiThread
                     previewSlot.removeAllViews()
                     if (bitmap != null) {
-                        addAiCoverCompareRow(previewSlot, story, bitmap)
+                        val open = { index: Int -> showNewCoverViewer(story, draft, bitmap, index, editable) }
+                        addAiCoverCompareRow(previewSlot, story, bitmap, onOpen = open)
+                        viewButton?.apply {
+                            visibility = View.VISIBLE
+                            setOnClickListener { open(1) }
+                        }
                         useButton?.apply {
                             isEnabled = editable
-                            alpha = if (editable) 1f else 0.4f
+                            alpha = if (editable) 1f else DISABLED_ALPHA
                         }
                     } else {
                         previewSlot.addView(
@@ -113,9 +129,11 @@ private fun ScreenHost.addAiNewCoverCard(
                     }
                 }
             }
-            spacer(Space.SM)
+            viewButton =
+                fullButton("View full size", Btn.TONAL, R.drawable.wna_open_in_full, topMarginDp = Space.XS, bottomMarginDp = Space.SM) {}
+                    .apply { visibility = View.GONE }
             latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_IMAGE)?.let { cost ->
-                text(cost, Type.LABEL_MEDIUM, colors.tertiary).apply {
+                text(cost, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
                     setPadding(0, 0, 0, dp(Space.SM))
                 }
             }
@@ -124,10 +142,46 @@ private fun ScreenHost.addAiNewCoverCard(
                     button("Use new cover", Btn.FILLED, R.drawable.wna_check, enabled = false) {
                         resolveAiCoverDraft(story, draft, use = true)
                     }
-                button("Keep current", Btn.TEXT, enabled = editable) { resolveAiCoverDraft(story, draft, use = false) }
+                button("Keep current", Btn.SURFACE, enabled = editable) { resolveAiCoverDraft(story, draft, use = false) }
+                for (index in 0 until childCount) {
+                    (getChildAt(index).layoutParams as LinearLayout.LayoutParams).apply {
+                        width = 0
+                        weight = 1f
+                    }
+                }
             }
         }
     container.addView(cardView)
+}
+
+/** The compare viewer: Current and New full screen, swipe between them, then keep or use. */
+private fun ScreenHost.showNewCoverViewer(
+    story: Story,
+    draft: AiCoverDraft,
+    bitmap: android.graphics.Bitmap,
+    index: Int,
+    editable: Boolean,
+) {
+    val current = activeCoverSource(story)
+    val items =
+        listOfNotNull(
+            current?.let { CoverViewerItem(it, "Current cover", story.title) },
+            CoverViewerItem(bitmap, "New cover", story.title, prompt = draft.prompt),
+        )
+    val start = if (current == null) 0 else index
+    showCoverViewer(
+        items,
+        start,
+        actions = {
+            listOf(
+                CoverViewerAction(KEEP_ACTION, "Keep current", enabled = editable),
+                CoverViewerAction(USE_ACTION, "Use new cover", R.drawable.wna_check, primary = true, enabled = editable),
+            )
+        },
+    ) { action, viewer ->
+        viewer.close()
+        resolveAiCoverDraft(story, draft, use = action == USE_ACTION)
+    }
 }
 
 /**
@@ -281,3 +335,9 @@ internal fun decodeSampledDraftPreview(
 }
 
 private const val MAX_PREVIEW_DIMENSION_PX = 8192
+
+private const val USE_ACTION = "use"
+private const val KEEP_ACTION = "keep"
+private const val DISABLED_ALPHA = 0.4f
+private const val NEW_COVER_TINT_MASK = 0x59FFFFFF
+private const val NEW_COVER_STROKE_MASK = 0x40FFFFFF

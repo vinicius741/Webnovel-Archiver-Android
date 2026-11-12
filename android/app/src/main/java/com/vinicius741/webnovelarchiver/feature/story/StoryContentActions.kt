@@ -6,8 +6,9 @@ import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubConfigPlanning
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
+import com.vinicius741.webnovelarchiver.feature.details.refreshStoryHero
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
-import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.details.showStoryScreen
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
@@ -103,7 +104,7 @@ private fun ScreenHost.runCleanup(
             )
             withContext(Dispatchers.Main) {
                 clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
-                showDetails(story.id)
+                showStoryScreen(story.id)
                 val summary =
                     CleanupSummaryPlanning.summarize(
                         CleanupRunStats(
@@ -124,7 +125,7 @@ private fun ScreenHost.runCleanup(
             withContext(Dispatchers.Main) {
                 clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
                 toast(error.message ?: "Cleanup failed")
-                showDetails(story.id)
+                showStoryScreen(story.id)
             }
         }
     }
@@ -198,14 +199,14 @@ internal fun ScreenHost.generateEpub(
                 }
             clearStoryOperation(story.id, StoryOperationKind.EPUB, rerender = false)
             toast("Generated ${results.size} EPUB file(s)")
-            showDetails(story.id)
+            showStoryScreen(story.id)
         } catch (error: Throwable) {
             // E1: structured-concurrency safety — never swallow cancellation.
             if (error is CancellationException) throw error
             Timber.w(error, "EPUB generation failed for %s", story.id)
             clearStoryOperation(story.id, StoryOperationKind.EPUB, rerender = false)
             toast(error.message ?: "EPUB failed")
-            showDetails(story.id)
+            showStoryScreen(story.id)
         }
     }
 }
@@ -251,7 +252,7 @@ internal fun ScreenHost.setStoryOperation(
     if (canPatchInPlace) {
         renderStoryOperationProgress(detailsOperationSlot!!, next)
     } else {
-        showDetails(storyId)
+        refreshStoryHero(storyId)
     }
 }
 
@@ -263,7 +264,7 @@ internal fun ScreenHost.clearStoryOperation(
     if (storyOperation?.storyId == storyId && storyOperation?.kind == kind) {
         storyOperation = null
         detailsOperationSlot = null
-        if (rerender && activeStory?.id == storyId) showDetails(storyId)
+        if (rerender && activeStory?.id == storyId) refreshStoryHero(storyId)
     }
 }
 

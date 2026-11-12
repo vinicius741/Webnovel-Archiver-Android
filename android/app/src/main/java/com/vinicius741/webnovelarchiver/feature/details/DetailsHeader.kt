@@ -2,11 +2,11 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.content.Intent
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.net.Uri
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewTreeObserver
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -16,184 +16,161 @@ import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning.Tr
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.AuthorPlanning
-import com.vinicius741.webnovelarchiver.domain.story.ReleaseCadencePlanning
 import com.vinicius741.webnovelarchiver.domain.story.SourceMetadataPlanning
-import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.feature.library.showAuthorNovels
+import com.vinicius741.webnovelarchiver.feature.story.CoverViewerAction
+import com.vinicius741.webnovelarchiver.feature.story.StoryTab
+import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.WrapLayout
 import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.elevate
+import com.vinicius741.webnovelarchiver.ui.formatScore
+import com.vinicius741.webnovelarchiver.ui.formatSourceCount
 import com.vinicius741.webnovelarchiver.ui.makeBadge
-import com.vinicius741.webnovelarchiver.ui.makeChapterCoverageSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
-import com.vinicius741.webnovelarchiver.ui.scoreRow
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.sourceAvailabilityBadge
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
-@Suppress("CyclomaticComplexMethod") // Header badges and optional metrics are independent presentation branches.
-internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
-    val col =
+/*
+ * The top of the story hero: the whole cover (tap for the full-screen viewer), the title, the
+ * author link, the source / status / type pills, and the score, which opens Trends.
+ */
+
+internal fun ScreenHost.buildHeroTop(story: Story): View {
+    val row =
         LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, dp(Space.XS), 0, dp(Space.SM))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
         }
-    val cover = coverImage(story, widthDp = 150, heightDp = 225, tapToOpen = true)
-    (cover.layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, 0, dp(Space.LG))
-    col.addView(cover)
-    col.addView(
-        makeText(app, story.title, Type.HEADLINE, ThemeManager.colors.onSurface).apply {
-            gravity = Gravity.CENTER
+    val cover = coverImage(story, widthDp = HERO_COVER_WIDTH_DP, heightDp = HERO_COVER_HEIGHT_DP, tapToOpen = false)
+    cover.elevate(HERO_COVER_ELEVATION_DP)
+    cover.contentDescription = "Cover of ${story.title}. Tap to view it full screen."
+    cover.isClickable = true
+    cover.setOnClickListener { openStoryCover(story) }
+    row.addView(cover)
+    val info = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+    info.addView(
+        makeText(app, story.title, Type.TITLE_LARGE, ThemeManager.colors.onSurface).apply {
+            maxLines = 4
+            ellipsize = android.text.TextUtils.TruncateAt.END
             includeFontPadding = false
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setLineSpacing(0f, TITLE_LINE_SPACING)
         },
     )
-    col.addView(buildAuthorLine(story))
-    val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
-    val publicationStatusBadge = publicationStatusBadge(story)
-    val sourceAvailabilityBadge = sourceAvailabilityBadge(story)
-    if (provider != null || publicationStatusBadge != null || sourceAvailabilityBadge != null) {
-        val badgeRow =
-            LinearLayout(app).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-            }
-
-        fun addBadgeWithGap(view: View) {
-            if (badgeRow.childCount > 0) {
-                badgeRow.addView(
-                    View(app).apply {
-                        layoutParams = LinearLayout.LayoutParams(dp(Space.SM), 0)
-                    },
-                )
-            }
-            badgeRow.addView(view)
-        }
-        provider?.let { addBadgeWithGap(buildSourceSiteBadge(story, it.name)) }
-        publicationStatusBadge?.let {
-            addBadgeWithGap(it)
-        }
-        sourceAvailabilityBadge?.let {
-            addBadgeWithGap(it)
-        }
-        story.sourceMetadata.contentRating?.takeIf { it.isNotBlank() }?.let {
-            addBadgeWithGap(makeBadge(app, "Rated $it", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
-        }
-        story.sourceMetadata.sourceType?.takeIf { it.isNotBlank() }?.let {
-            addBadgeWithGap(makeBadge(app, it, ThemeManager.colors.surfaceVariant, ThemeManager.colors.onSurfaceVariant))
-        }
-        story.sourceMetadata.sourceListingState?.takeIf { it.isNotBlank() }?.let {
-            addBadgeWithGap(makeBadge(app, it, ThemeManager.colors.surfaceVariant, ThemeManager.colors.onSurfaceVariant))
-        }
-        col.addView(badgeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-    }
-    releaseForecastLine(story)?.let(col::addView)
-    // Tap opens Trends on the score series. The trend arrow loads async (metric history is not in
-    // the repository's in-memory cache) and stays hidden without a meaningful direction.
-    story.score?.takeIf { it.isNotBlank() }?.let { score ->
-        val ratingCount = SourceMetadataPlanning.metric(story.sourceMetadata, SourceMetricKind.RATINGS)?.value
-        val trendArrow =
-            ImageView(app).apply {
-                visibility = View.GONE
-                layoutParams =
-                    LinearLayout.LayoutParams(dp(TREND_ARROW_SIZE_DP), dp(TREND_ARROW_SIZE_DP)).apply {
-                        marginStart = dp(Space.XS)
-                    }
-            }
-        val row =
-            scoreRow(score, iconSizeDp = 24, ratingCount = ratingCount, trailing = trendArrow).apply {
-                contentDescription =
-                    buildString {
-                        append("Score $score")
-                        ratingCount?.let { append(" from $it ratings") }
-                        append(". Tap to view trends.")
-                    }
-                isClickable = true
-                isFocusable = true
-                background = selectableRipple(ThemeManager.colors.onSurface)
-                setOnClickListener { showTrends(story.id, FOCUS_SCORE) }
-                layoutParams =
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        topMargin = dp(Space.SM)
-                    }
-            }
-        col.addView(row)
-        observeScoreTrend(story.id, score, row, trendArrow)
-    }
-    val progressSummary =
-        if (story.totalChapters > 0) {
-            makeChapterCoverageSummary(
-                app,
-                StoryBookmarkPlanning.downloadedFlags(story),
-                StoryBookmarkPlanning.bookmarkFraction(story),
-                story.downloadedChapters,
-                story.totalChapters,
-            )
-        } else {
-            null
-        }
-    if (progressSummary != null) {
-        col.addView(
-            progressSummary.apply {
-                layoutParams =
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        topMargin = dp(Space.XS)
-                        bottomMargin = dp(Space.XS)
-                    }
-            },
-        )
-    }
-    return DetailsHeader(col, progressSummary)
+    info.addView(buildAuthorLine(story))
+    buildHeroPills(story)?.let { info.addView(it) }
+    buildScoreButton(story)?.let { info.addView(it) }
+    row.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    return row
 }
 
-/**
- * Small next-chapter prediction from recent release dates; null when the story has too few dated
- * releases. The copy depends on the clock, so it re-renders whenever the window regains focus
- * (resume, dialog dismissal) or the header reattaches, rather than freezing at build time.
- */
-private fun ScreenHost.releaseForecastLine(story: Story): TextView? {
-    if (ReleaseCadencePlanning.forecast(story) == null) return null
-    return makeText(app, "", Type.BODY_SMALL).apply {
-        gravity = Gravity.CENTER
+/** The cover full screen, with a shortcut to the AI tab's cover versions. */
+internal fun ScreenHost.openStoryCover(story: Story) {
+    showCoverDialog(
+        story,
+        actions = listOf(CoverViewerAction(COVER_VERSIONS_ACTION, "Cover versions", R.drawable.wna_auto_awesome)),
+    ) { _, viewer ->
+        viewer.close()
+        switchStoryTab(story.id, StoryTab.AI)
+    }
+}
+
+private fun ScreenHost.buildHeroPills(story: Story): View? {
+    val colors = ThemeManager.colors
+    val pills = mutableListOf<View>()
+    SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let { pills += buildSourceSiteBadge(story, it.name) }
+    publicationStatusBadge(story)?.let { pills += it }
+    sourceAvailabilityBadge(story)?.let { pills += it }
+    story.sourceMetadata.contentRating?.takeIf { it.isNotBlank() }?.let {
+        pills += makeBadge(app, "Rated $it", colors.surfaceVariant, colors.onSurfaceVariant)
+    }
+    story.sourceMetadata.sourceType?.takeIf { it.isNotBlank() }?.let {
+        pills += makeBadge(app, it, colors.surfaceVariant, colors.onSurfaceVariant)
+    }
+    story.sourceMetadata.sourceListingState?.takeIf { it.isNotBlank() }?.let {
+        pills += makeBadge(app, it, colors.surfaceVariant, colors.onSurfaceVariant)
+    }
+    if (pills.isEmpty()) return null
+    return WrapLayout(app).apply {
+        horizontalSpacingDp = 6
+        verticalSpacingDp = 6
+        pills.forEach(::addView)
         layoutParams =
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(Space.SM)
+                topMargin = dp(6)
             }
-
-        fun render() {
-            val now = System.currentTimeMillis()
-            // Availability depends only on the story, so a forecast present at build stays present.
-            val forecast = ReleaseCadencePlanning.forecast(story, now) ?: return
-            text = ReleaseCadencePlanning.describe(forecast, now)
-            val late = forecast is ReleaseCadencePlanning.Forecast.Late
-            setTextColor(if (late) ThemeManager.colors.tertiary else ThemeManager.colors.onSurfaceVariant)
-        }
-        render()
-        val onFocus = ViewTreeObserver.OnWindowFocusChangeListener { hasFocus -> if (hasFocus) render() }
-        addOnAttachStateChangeListener(
-            object : View.OnAttachStateChangeListener {
-                override fun onViewAttachedToWindow(v: View) {
-                    v.viewTreeObserver.addOnWindowFocusChangeListener(onFocus)
-                    render()
-                }
-
-                override fun onViewDetachedFromWindow(v: View) {
-                    v.viewTreeObserver.removeOnWindowFocusChangeListener(onFocus)
-                }
-            },
-        )
     }
+}
+
+/** Score pill: star, score, a trend arrow once the history loads, and "Trends". */
+private fun ScreenHost.buildScoreButton(story: Story): View? {
+    val score = story.score?.takeIf { it.isNotBlank() } ?: return null
+    val colors = ThemeManager.colors
+    val ratingCount = SourceMetadataPlanning.metric(story.sourceMetadata, SourceMetricKind.RATINGS)?.value
+    val trendArrow =
+        ImageView(app).apply {
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(dp(TREND_ARROW_SIZE_DP), dp(TREND_ARROW_SIZE_DP)).apply { marginStart = dp(2) }
+        }
+    val radius = dp(SCORE_HEIGHT_DP / 2).toFloat()
+    val pill =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(SCORE_HEIGHT_DP)
+            setPadding(dp(Spacing.SM), 0, dp(Spacing.SM), 0)
+            background = ripple(roundedBg(colors.elevation2, radius), radius, colors.onSurface)
+            isClickable = true
+            isFocusable = true
+            contentDescription =
+                buildString {
+                    append("Score ${formatScore(score)}")
+                    ratingCount?.let { append(" from ${formatSourceCount(it)} ratings") }
+                    append(". Tap to view trends.")
+                }
+            addView(
+                ImageView(app).apply { setImageDrawable(app.tintedIcon(R.drawable.wna_star, colors.primary)) },
+                LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(Spacing.XS) },
+            )
+            addView(
+                makeText(app, formatScore(score), Type.TITLE_MEDIUM, colors.onSurface).apply {
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                },
+            )
+            addView(trendArrow)
+            addView(
+                makeText(
+                    app,
+                    ratingCount?.let { "${formatSourceCount(it)} ratings" } ?: "Trends",
+                    Type.LABEL_MEDIUM,
+                    colors.onSurfaceVariant,
+                ).apply { setPadding(dp(6), 0, 0, 0) },
+            )
+            addView(
+                ImageView(app).apply { setImageDrawable(app.tintedIcon(R.drawable.wna_chevron_right, colors.onSurfaceVariant)) },
+                LinearLayout.LayoutParams(dp(18), dp(18)),
+            )
+            setOnClickListener { switchStoryTab(story.id, StoryTab.TRENDS, AppRoute.Trends(story.id, FOCUS_SCORE)) }
+            layoutParams =
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(Spacing.SM + 2)
+                }
+        }
+    observeScoreTrend(story.id, score, pill, trendArrow)
+    return pill
 }
 
 /** Patches the trend arrow in place from metric history (not held in the repository's in-memory cache). */
@@ -204,70 +181,50 @@ private fun ScreenHost.observeScoreTrend(
     trendArrow: ImageView,
 ) {
     scope.launch {
-        val direction =
-            MetricSnapshotPlanning.direction(
-                MetricSnapshotPlanning.scoreSeries(repository.getMetricHistory(storyId)),
-            )
-        // Skip if the user navigated to a different story. A header merely scrolled off-screen is
-        // fine to patch; it reattaches with correct state.
+        val direction = MetricSnapshotPlanning.direction(MetricSnapshotPlanning.scoreSeries(repository.getMetricHistory(storyId)))
+        // Skip if the user moved to a different story; a detached pill is fine to patch.
         if (activeStory?.id != storyId) return@launch
-        when (direction) {
-            TrendDirection.UP -> {
-                trendArrow.setImageDrawable(app.tintedIcon(R.drawable.wna_up, ThemeManager.colors.tertiary))
-                trendArrow.visibility = View.VISIBLE
-                row.contentDescription = "Score $score, trending up. Tap to view trends."
+        val (icon, color, word) =
+            when (direction) {
+                TrendDirection.UP -> Triple(R.drawable.wna_up, ThemeManager.colors.tertiary, "up")
+                TrendDirection.DOWN -> Triple(R.drawable.wna_down, ThemeManager.colors.error, "down")
+                else -> return@launch
             }
-            TrendDirection.DOWN -> {
-                trendArrow.setImageDrawable(app.tintedIcon(R.drawable.wna_down, ThemeManager.colors.error))
-                trendArrow.visibility = View.VISIBLE
-                row.contentDescription = "Score $score, trending down. Tap to view trends."
-            }
-            else -> Unit
-        }
+        trendArrow.setImageDrawable(app.tintedIcon(icon, color))
+        trendArrow.visibility = View.VISIBLE
+        row.contentDescription = "Score ${formatScore(score)}, trending $word. Tap to view trends."
     }
 }
 
-/** Author name; a known author is tappable and opens the other library novels by them. */
+/** Author name, underlined in gold; a known author opens the other library novels by them. */
 private fun ScreenHost.buildAuthorLine(story: Story): TextView {
-    val authorText =
-        makeText(app, story.author, Type.TITLE_MEDIUM, ThemeManager.colors.secondary).apply {
-            gravity = Gravity.CENTER
-            includeFontPadding = false
+    val known = AuthorPlanning.hasKnownAuthor(story)
+    return makeText(
+        app,
+        story.author,
+        Type.BODY_LARGE,
+        if (known) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant,
+    ).apply {
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        setPadding(0, dp(Spacing.XS + 2), dp(Spacing.SM), dp(Spacing.XS))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        if (known) {
+            paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
+            background = selectableRipple(ThemeManager.colors.onSurface)
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Author ${story.author}. Tap to see other novels by this author."
+            setOnClickListener { showAuthorNovels(story.id) }
         }
-    if (!AuthorPlanning.hasKnownAuthor(story)) {
-        return authorText.apply {
-            setPadding(0, dp(2), 0, dp(Space.MD))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-    // Wrap-content so the ripple hugs the name instead of spanning the header width.
-    return authorText.apply {
-        paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
-        setPadding(dp(Space.SM), dp(Space.XS), dp(Space.SM), dp(Space.XS))
-        background = selectableRipple(ThemeManager.colors.onSurface)
-        isClickable = true
-        isFocusable = true
-        contentDescription = "Author ${story.author}. Tap to see other novels by this author."
-        setOnClickListener { showAuthorNovels(story.id) }
-        layoutParams =
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(Space.MD) - dp(Space.XS)
-            }
     }
 }
-
-/** Header view plus the stable progress-summary child patched by live download events. */
-internal data class DetailsHeader(
-    val view: LinearLayout,
-    val progressSummary: View?,
-)
 
 private fun ScreenHost.buildSourceSiteBadge(
     story: Story,
     sourceName: String,
 ): TextView {
     val colors = ThemeManager.colors
-    val radius = app.dp(Space.SM + 2).toFloat()
+    val radius = app.dp(Spacing.SM + 2).toFloat()
     return makeBadge(
         app,
         sourceName,
@@ -286,4 +243,10 @@ private fun ScreenHost.buildSourceSiteBadge(
     }
 }
 
-private const val TREND_ARROW_SIZE_DP = 20
+private const val COVER_VERSIONS_ACTION = "cover_versions"
+private const val HERO_COVER_WIDTH_DP = 116
+private const val HERO_COVER_HEIGHT_DP = 174
+private const val HERO_COVER_ELEVATION_DP = 10f
+private const val TITLE_LINE_SPACING = 1.05f
+private const val SCORE_HEIGHT_DP = 36
+private const val TREND_ARROW_SIZE_DP = 18

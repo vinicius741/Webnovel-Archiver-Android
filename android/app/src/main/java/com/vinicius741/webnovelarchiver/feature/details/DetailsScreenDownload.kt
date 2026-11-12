@@ -45,9 +45,9 @@ internal fun shouldShowDetailsBanner(summary: DownloadDetailsPlanning.StoryDownl
 internal fun ScreenHost.refreshDetailsDownload(
     storyId: String,
     bindings: DetailsBindings,
-    isBusy: Boolean,
     snapshot: DownloadUiSnapshot? = null,
 ) {
+    val isBusy = storyOperation?.storyId == storyId
     val story = snapshot?.library?.firstOrNull { it.id == storyId } ?: repository.story(storyId) ?: return
     val queue = snapshot?.queue ?: repository.queue()
     val jobsForStory = queue.filter { it.storyId == storyId }
@@ -266,13 +266,6 @@ internal fun ScreenHost.refreshDetailsPacingBanner(
     val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     if (!shouldShowDetailsBanner(summary)) return
     val pacingStatus = detailsPacingStatus(storyId, story.sourceUrl, jobsForStory, snapshots, nowMillis, queue)
-    bindings.patchDownloadStatus(
-        this,
-        story,
-        summary,
-        DownloadDetailsPlanning.chapterJobStatuses(jobsForStory),
-        waitingChapterIds(jobsForStory, snapshots, nowMillis),
-        pacingStatus,
-        storyOperation?.storyId == storyId,
-    )
+    // Only the banner's pacing line ticks; actions and rows follow download events.
+    bindings.hero?.let { renderHeroDownloadBanner(it.bannerSlot, story, summary, pacingStatus) }
 }

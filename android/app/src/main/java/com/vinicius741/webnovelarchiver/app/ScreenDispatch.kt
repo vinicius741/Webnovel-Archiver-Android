@@ -58,7 +58,7 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
 /** Per-novel routes, split out so [renderRouteDispatch] stays under detekt's complexity budget. */
 private fun ScreenHost.renderStoryRouteDispatch(route: AppRoute) {
     when (route) {
-        is AppRoute.Details -> showDetails(route.storyId)
+        is AppRoute.Details -> showDetails(route.storyId, route.chapters)
         is AppRoute.ChapterSelection -> showChapterSelection(route.storyId, route.selectedChapterIds)
         is AppRoute.LegacyEpubs -> showLegacyEpubs(route.storyId)
         is AppRoute.Trends -> showTrends(route.storyId, route.focus)

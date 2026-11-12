@@ -19,7 +19,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubConfigPlanning
 import com.vinicius741.webnovelarchiver.epub.EpubRangeCoverage
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
-import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.details.showStoryScreen
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -156,7 +156,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
                 scope.launch {
                     repository.setEpubConfig(story.id, config)
                     toast("EPUB settings saved")
-                    showDetails(story.id)
+                    showStoryScreen(story.id)
                 }
             }.setNegativeButton("Cancel", null)
             .create()
@@ -230,72 +230,39 @@ internal fun ScreenHost.showDescriptionDialog(
     dialog.applyAppTheme()
 }
 
-internal fun ScreenHost.showCoverDialog(story: Story) {
-    // Whichever cover the app is currently showing (AI when active, else the source URL). Stories
-    // that had no source cover at all become zoomable once an AI cover is applied.
-    val source: Any? = activeCoverSource(story) ?: return
-    showCoverZoomDialog(source, story.title)
+/**
+ * Opens [story]'s displayed cover (AI when active, else the source) in the full-screen viewer. Any
+ * screen can call it, e.g. a cover tapped in Downloads. [actions] add buttons under the image.
+ */
+internal fun ScreenHost.showCoverDialog(
+    story: Story,
+    actions: List<CoverViewerAction> = emptyList(),
+    onAction: (String, CoverViewerHandle) -> Unit = { _, viewer -> viewer.close() },
+) {
+    val source: Any = activeCoverSource(story) ?: return toast("This novel has no cover image")
+    showCoverViewer(listOf(CoverViewerItem(source, story.title, story.author)), actions = { actions }, onAction = onAction)
 }
 
-/** Full-screen pinch-zoom viewer for a cover; [source] is a URL string, File, or Bitmap. */
+/** Full-screen viewer for one cover; [source] is a URL string, File, or Bitmap. */
 internal fun ScreenHost.showCoverZoomDialog(
     source: Any?,
     title: String,
 ) {
-    val dialog =
-        Dialog(app).apply {
-            requestWindowFeature(Window.FEATURE_NO_TITLE)
-        }
-    val image =
-        ZoomableImageView(app).apply {
-            contentDescription = "$title cover"
-            setBackgroundColor(Color.BLACK)
-        }
-    loadImage(source, image)
+    if (source == null) return
+    showCoverViewer(listOf(CoverViewerItem(source, title)))
+}
 
-    // Just a small floating close button, so the cover keeps the whole screen. The translucent
-    // circle keeps the icon legible over bright artwork.
-    val closeButton =
-        ImageView(app).apply {
-            contentDescription = "Close"
-            setImageDrawable(app.tintedIcon(R.drawable.wna_close, Color.WHITE))
-            scaleType = ImageView.ScaleType.CENTER
-            isClickable = true
-            isFocusable = true
-            background =
-                ripple(
-                    roundedBg(Color.argb(128, 0, 0, 0), dp(24).toFloat()),
-                    dp(24).toFloat(),
-                    0x33FFFFFF,
-                )
-            setOnClickListener { dialog.dismiss() }
-        }
-    val root =
-        FrameLayout(app).apply {
-            setBackgroundColor(Color.BLACK)
-            addView(
-                image,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                ),
-            )
-            addView(
-                closeButton,
-                FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.END).apply {
-                    setMargins(dp(8), dp(8), dp(8), dp(8))
-                },
-            )
-        }
-
-    dialog.setContentView(root)
-    dialog.show()
-    dialog.window?.apply {
-        setBackgroundDrawable(ColorDrawable(Color.BLACK))
-        setDimAmount(0.82f)
-        addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        statusBarColor = Color.BLACK
-        navigationBarColor = Color.BLACK
-    }
+/**
+ * Full-screen viewer over several covers: swipe or use the arrows to move between [items], starting
+ * at [startIndex]. [actions] lists the buttons for the item on screen; [onAction] receives the
+ * tapped action's id and the viewer, which can close or refresh itself.
+ */
+internal fun ScreenHost.showCoverViewer(
+    items: List<CoverViewerItem>,
+    startIndex: Int = 0,
+    actions: (Int) -> List<CoverViewerAction> = { emptyList() },
+    onAction: (String, CoverViewerHandle) -> Unit = { _, viewer -> viewer.close() },
+): CoverViewerHandle? {
+    if (items.isEmpty()) return null
+    return CoverViewer(this, items, startIndex, actions, onAction).also { it.show() }
 }

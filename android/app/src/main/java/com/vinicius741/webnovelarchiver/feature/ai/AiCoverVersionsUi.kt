@@ -17,16 +17,21 @@ import com.vinicius741.webnovelarchiver.data.repository.setShowAiCover
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverVersion
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.sha256Hex
+import com.vinicius741.webnovelarchiver.feature.story.CoverViewerAction
+import com.vinicius741.webnovelarchiver.feature.story.CoverViewerItem
+import com.vinicius741.webnovelarchiver.feature.story.showCoverViewer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.activeCoverSource
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.loadImage
 import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.makeCover
+import com.vinicius741.webnovelarchiver.ui.makeSectionHeader
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.strokeBg
@@ -38,8 +43,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // The Cover tab's strip of every cover the novel can show: the source cover first, then saved AI
-// versions newest first. Tapping one makes it the displayed cover (free and reversible); a
-// long-press opens its prompt. File-backed thumbnails keep the strip from decoding full images.
+// versions newest first. Tapping one opens every version full screen (swipe between them, read the
+// prompt, Use this cover); a long-press opens its prompt and reuse actions. File-backed thumbnails
+// keep the strip from decoding full images.
 
 private const val STRIP_THUMB_WIDTH_DP = 96
 private const val STRIP_THUMB_HEIGHT_DP = 144
@@ -57,6 +63,16 @@ internal fun ScreenHost.addAiCoverStrip(
     container: LinearLayout,
     story: Story,
 ) {
+    val colors = ThemeManager.colors
+    val countLabel = makeText(app, "", Type.LABEL_MEDIUM, colors.onSurfaceVariant)
+    container.addView(
+        LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(makeSectionHeader(app, "Covers"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(countLabel)
+        },
+    )
     val slot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     container.addView(slot)
     val pendingBytes = aiControlsScreenState.coverDrafts[story.id]?.bytes
@@ -76,21 +92,87 @@ internal fun ScreenHost.addAiCoverStrip(
                 }
             }
         if (choices.isEmpty()) {
-            slot.text("No cover yet — make one below.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
+            slot.text("No cover yet — make one below.", Type.BODY_SMALL, colors.onSurfaceVariant)
             return@launch
         }
+        countLabel.text = if (choices.size == 1) "1 version" else "${choices.size} versions"
         val strip = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
-        choices.forEach { choice -> strip.addView(coverChoiceView(story, choice)) }
-        slot.addView(HorizontalScrollView(app).apply { addView(strip) })
-        slot.text("Tap a cover to use it. Long-press to see its prompt.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-            setPadding(0, dp(Space.XS), 0, dp(Space.SM))
+        choices.forEachIndexed {
+            index,
+            choice,
+            ->
+            strip.addView(coverChoiceView(story, choice) { browseCoverChoices(story, choices, index) })
         }
+        slot.addView(
+            HorizontalScrollView(app).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(strip)
+            },
+        )
+        slot.text("Tap a cover to see it full size, compare versions and choose one.", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+            setPadding(0, dp(Space.SM), 0, dp(Space.SM))
+        }
+    }
+}
+
+/** Every version full screen: swipe between them, read each prompt, and use one. */
+private fun ScreenHost.browseCoverChoices(
+    story: Story,
+    choices: List<CoverChoice>,
+    start: Int,
+) {
+    var inUse = choices.indexOfFirst { it.inUse }
+
+    fun subtitle(index: Int): String? =
+        when {
+            index == inUse -> "In use"
+            choices[index].isNew -> "New"
+            else -> null
+        }
+    val items =
+        choices
+            .mapIndexed { index, choice ->
+                CoverViewerItem(
+                    choice.image,
+                    if (choice.version ==
+                        null
+                    ) {
+                        "Source cover"
+                    } else {
+                        choice.label
+                    },
+                    subtitle(index),
+                    choice.version?.prompt,
+                )
+            }.toMutableList()
+    showCoverViewer(
+        items,
+        start,
+        actions = { index ->
+            listOf(
+                if (index == inUse) {
+                    CoverViewerAction(IN_USE_ACTION, "In use", R.drawable.wna_check, enabled = false)
+                } else {
+                    CoverViewerAction(USE_THIS_ACTION, "Use this cover", R.drawable.wna_check, primary = true)
+                },
+            )
+        },
+    ) { action, viewer ->
+        if (action != USE_THIS_ACTION) return@showCoverViewer
+        val index = viewer.index
+        if (!useCoverChoice(story, choices[index])) return@showCoverViewer
+        val previous = inUse
+        inUse = index
+        listOf(previous, index).filter { it in items.indices }.forEach { items[it] = items[it].copy(subtitle = subtitle(it)) }
+        toast("Using ${items[index].title}")
+        viewer.refresh()
     }
 }
 
 private fun ScreenHost.coverChoiceView(
     story: Story,
     choice: CoverChoice,
+    onOpen: () -> Unit,
 ): LinearLayout {
     val colors = ThemeManager.colors
     val radius = dp(ThemeManager.shapes.cardRadius).toFloat() * 0.7f
@@ -136,36 +218,38 @@ private fun ScreenHost.coverChoiceView(
             append(choice.label)
             if (choice.inUse) append(", in use")
             if (choice.isNew) append(", new")
-            if (!choice.inUse) append(". Tap to use this cover")
+            append(". Tap to view it full size")
         }
-    frame.setOnClickListener { useCoverChoice(story, choice) }
+    frame.setOnClickListener { onOpen() }
     frame.setOnLongClickListener {
         showCoverChoiceDetails(story, choice)
         true
     }
     item.addView(frame)
     item.addView(
-        makeText(app, if (choice.inUse) "${choice.label} · In use" else choice.label, Type.LABEL_SMALL, colors.onSurfaceVariant).apply {
+        makeText(app, choice.label, Type.LABEL_LARGE, if (choice.inUse) colors.primary else colors.onSurfaceVariant).apply {
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, dp(Space.XS), 0, 0)
+            setPadding(0, dp(Space.XS + 2), 0, 0)
         },
     )
     return item
 }
 
-/** Makes [choice] the displayed cover; choosing anything also settles a waiting "New cover ready". */
+/**
+ * Makes [choice] the displayed cover; choosing anything also settles a waiting "New cover ready".
+ * Returns false when it cannot be used right now.
+ */
 private fun ScreenHost.useCoverChoice(
     story: Story,
     choice: CoverChoice,
-) {
-    if (choice.inUse) return
+): Boolean {
     if (story.isArchived == true) {
         toast("Archived snapshots are read-only")
-        return
+        return false
     }
     if (aiCoverOperationFor(story.id) != null) {
         toast("Wait for cover generation to finish")
-        return
+        return false
     }
     scope.launch {
         coverUiAttempt {
@@ -184,6 +268,7 @@ private fun ScreenHost.useCoverChoice(
             if (frameIsAiControls(story.id)) showAiControls(story.id)
         }
     }
+    return true
 }
 
 /** Larger view of one cover beside the one in use, with its prompt and the free reuse actions. */
@@ -197,11 +282,24 @@ private fun ScreenHost.showCoverChoiceDetails(
     val editable = story.isArchived != true && aiCoverOperationFor(story.id) == null
     if (choice.inUse) {
         content.addView(
-            makeCover(app, 160, 240).apply { loadImage(choice.image, this) },
+            makeCover(app, 160, 240).apply {
+                loadImage(choice.image, this)
+                setOnClickListener { showCoverViewer(listOf(CoverViewerItem(choice.image, choice.label))) }
+            },
             LinearLayout.LayoutParams(dp(160), dp(240)).apply { gravity = Gravity.CENTER_HORIZONTAL },
         )
     } else {
-        addAiCoverCompareRow(content, story, choice.image, "This cover")
+        addAiCoverCompareRow(content, story, choice.image, "This cover") { index ->
+            showCoverViewer(
+                listOfNotNull(
+                    activeCoverSource(story)?.let {
+                        CoverViewerItem(it, "Current cover")
+                    },
+                    CoverViewerItem(choice.image, choice.label),
+                ),
+                index,
+            )
+        }
     }
     val version = choice.version
     if (version != null) {
@@ -247,3 +345,6 @@ private fun ScreenHost.reuseCoverPrompt(
         }
     }
 }
+
+private const val USE_THIS_ACTION = "use"
+private const val IN_USE_ACTION = "in_use"

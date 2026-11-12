@@ -14,8 +14,15 @@ sealed class AppRoute(
 
     data object AddStory : AppRoute("add_story")
 
+    /**
+     * The story page. Its tabs are routes of their own so Back and deep links address them: this
+     * route is the Overview tab, or the Chapters tab when [chapters] is set; [NarrationStory] is the
+     * Audio tab, [Trends] the Trends tab and [AiControls] the AI tab. Tab switches replace the
+     * current history entry, so Back leaves the story instead of walking its tabs.
+     */
     data class Details(
         val storyId: String,
+        val chapters: Boolean = false,
     ) : AppRoute("details")
 
     data class ChapterSelection(
@@ -112,7 +119,7 @@ sealed class AppRoute(
     val stableKey: String
         get() =
             when (this) {
-                is Details -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
+                is Details -> "$name:${AppRouteCodec.encodeArgument(storyId)}${if (chapters) ":$DETAILS_CHAPTERS_TAB" else ""}"
                 is Reader -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${AppRouteCodec.encodeArgument(chapterId)}"
                 is LegacyEpubs -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is AiControls -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
@@ -139,11 +146,14 @@ sealed class AppRoute(
                 is AuthorNovels -> Details(storyId)
                 is Trends -> Details(storyId)
                 is PatreonAccount -> storyId?.let(::Details) ?: DataBackup
-                is NarrationStory -> Narration
+                is NarrationStory -> Details(storyId)
                 Notifications, DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
                 else -> Library
             }
 }
+
+/** The [AppRoute.Details] argument that selects the Chapters tab. */
+private const val DETAILS_CHAPTERS_TAB = "chapters"
 
 /** Pure, version-tolerant route encoding used by Android saved state and unit tests. */
 object AppRouteCodec {
@@ -152,7 +162,7 @@ object AppRouteCodec {
     fun encode(route: AppRoute): String {
         val arguments =
             when (route) {
-                is AppRoute.Details -> listOf(route.storyId)
+                is AppRoute.Details -> listOfNotNull(route.storyId, DETAILS_CHAPTERS_TAB.takeIf { route.chapters })
                 is AppRoute.Reader -> listOf(route.storyId, route.chapterId)
                 is AppRoute.LegacyEpubs -> listOf(route.storyId)
                 is AppRoute.AiControls -> listOf(route.storyId)
@@ -197,7 +207,12 @@ object AppRouteCodec {
         arguments: List<String>,
     ): AppRoute? =
         when (name) {
-            "details" -> arguments.singleOrNull()?.let(AppRoute::Details)
+            "details" ->
+                when {
+                    arguments.size == 1 -> AppRoute.Details(arguments[0])
+                    arguments.size == 2 && arguments[1] == DETAILS_CHAPTERS_TAB -> AppRoute.Details(arguments[0], chapters = true)
+                    else -> null
+                }
             "chapter_selection" -> arguments.firstOrNull()?.let { AppRoute.ChapterSelection(it, arguments.drop(1).toSet()) }
             "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)
             "ai_controls" -> arguments.singleOrNull()?.let(AppRoute::AiControls)

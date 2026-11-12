@@ -7,7 +7,7 @@ import androidx.core.content.FileProvider
 import com.vinicius741.webnovelarchiver.data.backup.FileMimeTypes
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
-import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.details.showStoryScreen
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
@@ -58,7 +58,7 @@ internal fun ScreenHost.openEpubForStory(story: Story) {
         scope.launch {
             repository.retainEpubPaths(story.id, emptyList())
             toast("EPUB file not found. Please regenerate.")
-            showDetails(story.id)
+            showStoryScreen(story.id)
         }
         return
     }
