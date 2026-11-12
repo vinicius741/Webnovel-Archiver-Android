@@ -31,6 +31,10 @@ class DevLaunchPlanningTest {
             DevLaunchPlanning.resolve("library", null, null, provider),
         )
         assertEquals(
+            AppRoute.Updates,
+            DevLaunchPlanning.resolve("updates", null, null, provider),
+        )
+        assertEquals(
             AppRoute.Queue,
             DevLaunchPlanning.resolve("queue", null, null, provider),
         )
