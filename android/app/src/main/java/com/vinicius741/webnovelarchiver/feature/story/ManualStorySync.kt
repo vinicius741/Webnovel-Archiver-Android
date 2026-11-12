@@ -19,7 +19,7 @@ internal class ManualStorySync(
     private val lookup: (String?, String) -> Story?,
     private val fetch: suspend (String, String?, StorySyncMode, (String) -> Unit) -> Story,
 ) {
-    constructor(repository: AppRepository, engine: StorySyncEngine) : this(
+    constructor(repository: AppRepository, engine: StorySyncEngine, refreshPatreonStats: Boolean = true) : this(
         lookup = { sourceId, url ->
             SourceRegistry.getProvider(sourceId, url)?.let { provider ->
                 runCatching { repository.story(provider.getStoryId(url)) }
@@ -27,7 +27,7 @@ internal class ManualStorySync(
                     .getOrNull()
             }
         },
-        fetch = { url, tabId, mode, progress -> engine.fetchOrSync(url, tabId, mode, status = progress) },
+        fetch = { url, tabId, mode, progress -> engine.fetchOrSync(url, tabId, mode, refreshPatreonStats, progress) },
     )
 
     suspend fun run(

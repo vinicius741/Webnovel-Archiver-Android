@@ -172,6 +172,24 @@ class UpdatesPlanningTest {
     }
 
     @Test
+    fun aDeferredReviewKeepsOnlyChaptersStillMissing() {
+        val partial = story("partial", lastRelease = now - DAY_MS, checkedAt = now - HOUR_MS, downloaded = 3)
+        // c1 was downloaded meanwhile, c9 left the story; c3 and c5 still wait.
+        assertEquals(
+            listOf(3, 5),
+            UpdatesPlanning.pendingReviewIndexes(partial, listOf("partial-c1", "partial-c3", "partial-c5", "partial-c9")),
+        )
+        assertEquals(emptyList<Int>(), UpdatesPlanning.pendingReviewIndexes(partial, listOf("partial-c0")))
+    }
+
+    @Test
+    fun pendingReviewsReadPlainly() {
+        assertEquals("1 large update to review", UpdatesCopy.pendingReviews(1, blockedSource = false))
+        assertEquals("2 large updates to review · A source needs a check", UpdatesCopy.pendingReviews(2, blockedSource = true))
+        assertEquals("A source needs a check", UpdatesCopy.pendingReviews(0, blockedSource = true))
+    }
+
+    @Test
     fun agesReadPlainly() {
         assertEquals("just now", UpdatesCopy.ago(20_000L))
         assertEquals("5 min ago", UpdatesCopy.ago(5 * 60_000L))

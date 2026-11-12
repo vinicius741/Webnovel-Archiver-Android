@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.feature.details.returnToStory
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.details.showStoryScreen
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.updates.isSyncingFromUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
@@ -128,6 +129,11 @@ internal fun ScreenHost.syncStory(
     // One run per story: a second Sync (Trends' "Sync now", a retry) would race the first.
     if (storyOperation?.storyId == story.id) {
         toast("Please wait for the current operation to finish")
+        return
+    }
+    // Updates syncs one novel at a time outside this slot; the engine has no per-story lock.
+    if (isSyncingFromUpdates(story.id)) {
+        toast("This novel is syncing from Updates. Try again when it finishes.")
         return
     }
     // Ensure Details is showing so the inline spinner is visible (Sync can be triggered from the

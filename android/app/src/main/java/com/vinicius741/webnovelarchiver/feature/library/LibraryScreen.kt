@@ -23,6 +23,7 @@ import com.vinicius741.webnovelarchiver.ui.screenMetrics
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.lang.ref.WeakReference
 
 /**
  * The Library: a large app bar (search opens in the bar), the tab bar with counts, the active
@@ -35,6 +36,9 @@ internal fun ScreenHost.showLibrary() {
     val host = this
     // Re-render on window/setting changes so the column count reflows live.
     rerender = { showLibrary() }
+    // A re-render (fold, search, selection) replaces the screen the open sheet was built against.
+    libraryExtras.sortFilterSheet?.get()?.dismiss()
+    libraryExtras.sortFilterSheet = null
     val grid = currentLibraryGrid()
     var stories: List<Story> = repository.library()
     val selectedCount = pruneLibrarySelection(stories)
@@ -57,14 +61,16 @@ internal fun ScreenHost.showLibrary() {
     var applyFilters: () -> Unit = {}
     var onFiltersChanged: () -> Unit = {}
     val openSheet = {
-        showLibrarySortFilterSheet(stories, tabs, { filterState }) { next ->
-            val sortChanged = next.sortOption != filterState.sortOption || next.sortAscending != filterState.sortAscending
-            filterState = next
-            libraryScreenState.selectedTags = next.selectedTags
-            if (sortChanged) persistLibrarySort(next.sortOption, next.sortAscending)
-            applyFilters()
-            onFiltersChanged()
-        }
+        val handle =
+            showLibrarySortFilterSheet(stories, tabs, { filterState }) { next ->
+                val sortChanged = next.sortOption != filterState.sortOption || next.sortAscending != filterState.sortAscending
+                filterState = next
+                libraryScreenState.selectedTags = next.selectedTags
+                if (sortChanged) persistLibrarySort(next.sortOption, next.sortAscending)
+                applyFilters()
+                onFiltersChanged()
+            }
+        libraryExtras.sortFilterSheet = WeakReference(handle)
     }
     // R22: debounce the per-page grid rebuild to the pause between keystrokes.
     var searchGeneration = 0

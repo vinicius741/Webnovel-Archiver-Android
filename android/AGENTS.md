@@ -51,7 +51,7 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
   USD-converted at capture, tier ladder delta-encoded on metric snapshots); every displayed dollar
   figure is derived at render by `PatreonEarningsPlanning`, so formula changes apply retroactively.
   Callers can pass `refreshPatreonStats = false` to skip the Patreon refresh while preserving
-  existing saved stats (the offline simulator does). Patreon data belongs to the creator: live stories whose
+  existing saved stats (Updates' "Sync all that may be out" and the offline simulator do). Patreon data belongs to the creator: live stories whose
   `patreonUrl` resolves to the same `PatreonCreatorPlanning.creatorKey` share stats (a fresh
   refresh is copied to siblings in `commitSyncedStory`, startup reconciles to the freshest), and
   Trends charts their merged Patreon history. Per-story metric files are not rewritten.

@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -50,7 +51,7 @@ internal fun ScreenHost.showLibrarySortFilterSheet(
     tabs: List<Tab>,
     current: () -> LibraryFilterState,
     onChange: (LibraryFilterState) -> Unit,
-) {
+): BottomSheetHandle {
     val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     var showAllTags = false
     val showButton = makeButton(app, "Show", Btn.FILLED) {}
@@ -99,6 +100,7 @@ internal fun ScreenHost.showLibrarySortFilterSheet(
             footer = footer,
         )
     showButton.setOnClickListener { handle.dismiss() }
+    return handle
 }
 
 private fun tabName(
