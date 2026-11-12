@@ -5,6 +5,8 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.feature.player.PlayerProgressLine
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
@@ -30,6 +32,7 @@ import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.verticalFill
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -60,6 +63,7 @@ internal fun ScreenHost.showNarration() {
     val liveStatus = NarrationLiveStatus(this, hideWhenIdle = false) { banner -> banner.storyId?.let { showNarrationStory(it) } }
     val runningRow = RunningJobRow()
     val nowCard = ListenNowCard(this)
+    var serverRows: ServerRows? = null
     val scroller =
         ScrollView(app).apply {
             isFillViewport = true
@@ -87,7 +91,7 @@ internal fun ScreenHost.showNarration() {
         }
         val queueBox = section { queueSection(host, document, runningRow, liveStatus.takeIf { sideBySide }) }
         val generatedBox = section { generatedSection(host, audio) }
-        val setupBox = section { setupSection(host, document) }
+        val setupBox = section { serverRows = setupSection(host, document) }
         if (sideBySide) {
             content.addView(sideBySide(queueBox, generatedBox, setupBox))
         } else {
@@ -125,6 +129,19 @@ internal fun ScreenHost.showNarration() {
             liveStatus.observe(host, this)
             launch { ttsEngine.playbackState.collect { nowCard.bind(it.snapshot) } }
             launch { coordinator.progress.collect(runningRow::bind) }
+            launch { coordinator.serverStatus.collect { statuses -> serverRows?.bind(statuses) } }
+            // Online checks while the screen is visible. Each rebuild restarts this loop, so it ticks
+            // often and asks only computers not checked within the interval.
+            if (document.servers.isNotEmpty()) {
+                launch {
+                    app.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        while (true) {
+                            coordinator.refreshServerStatus(SERVER_CHECK_INTERVAL_MS)
+                            delay(SERVER_CHECK_TICK_MS)
+                        }
+                    }
+                }
+            }
             val runningJob = coordinator.progress.map { it?.job?.id }.distinctUntilChanged()
             // Keep-ahead and speed measurements change without anything to rebuild (the stepper and
             // the live banner show them), so they are left out; a rebuild would also cut a held stepper.
@@ -296,3 +313,7 @@ internal class RunningJobRow {
         }
     }
 }
+
+// Online checks for the user's computers while Listen is visible (see NarrationServerMonitor).
+private const val SERVER_CHECK_INTERVAL_MS = 30_000L
+private const val SERVER_CHECK_TICK_MS = 5_000L

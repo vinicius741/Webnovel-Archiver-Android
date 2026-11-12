@@ -20,7 +20,7 @@ SERIAL="emulator-${PORT}"
 # The SDK: the environment's, else the one Gradle builds with on this machine (android/local.properties,
 # e.g. Homebrew's on the Mac), else the Linux dev host's ~/Android.
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-GRADLE_SDK="$(sed -n 's/^sdk\.dir=//p' "$REPO/android/local.properties" 2>/dev/null | head -n 1)"
+GRADLE_SDK="$(sed -n 's/^sdk\.dir=//p' "$REPO/android/local.properties" 2>/dev/null | head -n 1 || true)"
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-${GRADLE_SDK:-$HOME/Android}}}"
 EMULATOR="${EMULATOR:-$SDK/emulator/emulator}"
 ADB="${ADB:-$(command -v adb || echo "$SDK/platform-tools/adb")}"

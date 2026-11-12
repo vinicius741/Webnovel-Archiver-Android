@@ -67,6 +67,6 @@ class NarrationQueue(
             servers =
                 (document.servers ?: emptyList())
                     .filter { it != null && it.id != null && it.address != null }
-                    .map { it.copy(name = it.name ?: it.address, token = it.token ?: "") },
+                    .map { it.copy(name = it.name ?: it.address, token = it.token ?: "", tailscaleAddress = it.tailscaleAddress ?: "") },
         )
 }

@@ -171,6 +171,84 @@ class NarrationServerClientTest {
         }
 
     @Test
+    fun theStatusCheckReadsTheMemoryLevelAndSpotsAWrongToken() =
+        runBlocking {
+            serveKeepAlive { line ->
+                if (line.startsWith("GET /v1/status")) {
+                    Triple(200, "application/json", """{"memory":{"level":"critical","slots":0}}""".toByteArray())
+                } else {
+                    Triple(404, "application/json", """{"error":"Not found"}""".toByteArray())
+                }
+            }
+            assertEquals("critical", client().memoryLevel())
+            assertTrue(requests.single().startsWith("GET /v1/status HTTP/1.1"))
+        }
+
+    @Test
+    fun aWrongTokenIsRejected() =
+        runBlocking {
+            serve { Triple(401, "application/json", """{"error":"Wrong or missing token"}""".toByteArray()) }
+            try {
+                client().memoryLevel()
+                fail("Expected a rejected token")
+            } catch (rejected: NarrationServerRejected) {
+                assertTrue(!rejected.transient)
+            }
+        }
+
+    @Test
+    fun anUnreachableLocalAddressFallsBackToTailscale() =
+        runBlocking {
+            serveKeepAlive { Triple(200, "application/json", """{"memory":{"level":"normal"}}""".toByteArray()) }
+            val closedPort = ServerSocket(0).use { it.localPort }
+            val computer =
+                NarrationServer(
+                    id = "m",
+                    name = "Mac",
+                    address = "127.0.0.1:$closedPort",
+                    token = "abcd-efgh-jkmn",
+                    tailscaleAddress = "127.0.0.1:${server.localPort}",
+                )
+            val reached = reachServer(computer, readTimeoutMs = 2_000) { it.memoryLevel() }
+            reached.client.close()
+            assertEquals(NarrationRoute.TAILSCALE, reached.route.route)
+            assertEquals("normal", reached.value)
+        }
+
+    @Test
+    fun theLocalAddressIsUsedWhenItAnswers() =
+        runBlocking {
+            serveKeepAlive { Triple(200, "application/json", """{"memory":{"level":"normal"}}""".toByteArray()) }
+            val closedPort = ServerSocket(0).use { it.localPort }
+            val computer =
+                NarrationServer(
+                    name = "Mac",
+                    address = "127.0.0.1:${server.localPort}",
+                    token = "abcd-efgh-jkmn",
+                    tailscaleAddress = "127.0.0.1:$closedPort",
+                )
+            val status = NarrationServerMonitor.checkServer(computer, checkedAtMs = 5)
+            assertEquals(NarrationServerStatus(computer.locationKey, 5, online = true, route = NarrationRoute.LOCAL), status)
+        }
+
+    @Test
+    fun noAnsweringAddressIsOfflineWithOneMessage() =
+        runBlocking {
+            val closedA = ServerSocket(0).use { it.localPort }
+            val closedB = ServerSocket(0).use { it.localPort }
+            val computer =
+                NarrationServer(
+                    name = "Mac",
+                    address = "127.0.0.1:$closedA",
+                    token = "abcd-efgh-jkmn",
+                    tailscaleAddress = "127.0.0.1:$closedB",
+                )
+            val status = NarrationServerMonitor.checkServer(computer, checkedAtMs = 5)
+            assertTrue(!status.online)
+            assertTrue(status.problem!!.contains("local network or over Tailscale"))
+        }
+
+    @Test
     fun keptAliveConnectionsCarrySeveralSentences() =
         runBlocking {
             val wav = TtsWavWriter.mono16(FloatArray(480) { 0.25f }, 24_000)

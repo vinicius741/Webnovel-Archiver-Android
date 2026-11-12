@@ -77,6 +77,11 @@ internal open class NarrationServerProblem(
     cause: Throwable? = null,
 ) : Exception(message, cause)
 
+/** The server answered but refused the token. */
+internal class NarrationServerRejected(
+    message: String,
+) : NarrationServerProblem(message)
+
 /**
  * The server is up but holding back to protect its machine's memory: it generates fewer
  * sentences or none for now. Generation waits [retryAfterMs] and asks again, without failing
@@ -141,6 +146,21 @@ internal class NarrationServerClient(
     }
 
     /**
+     * The server's memory level (`normal`, `low`, `critical`) from `GET /v1/status`, which checks the
+     * token without loading the model or keeping the computer awake, so it suits a periodic online check.
+     */
+    suspend fun memoryLevel(): String {
+        val response = request("GET", "/v1/status", null)
+        if (response.status != HTTP_OK) throw problem(response)
+        return runCatching {
+            response.json
+                ?.getAsJsonObject("memory")
+                ?.get("level")
+                ?.asString
+        }.getOrNull().orEmpty()
+    }
+
+    /**
      * Speaks [text] as [speakerId] at 1x. Null when the server could not generate this one sentence
      * (the caller retries, then fails the chapter); throws [NarrationServerBusy] while the server
      * holds back for memory, and [NarrationServerProblem] when the server itself is unusable.
@@ -185,7 +205,7 @@ internal class NarrationServerClient(
 
     private fun problem(response: Response): NarrationServerProblem =
         when (response.status) {
-            HTTP_UNAUTHORIZED -> NarrationServerProblem("$name rejected the token. Check it in Audio generation.")
+            HTTP_UNAUTHORIZED -> NarrationServerRejected("$name rejected the token. Check it in Audio generation.")
             HTTP_NOT_FOUND -> NarrationServerProblem("$name is not a narration server, or runs an older version")
             else ->
                 NarrationServerProblem(
@@ -423,4 +443,43 @@ internal class NarrationServerClient(
         private const val HTTP_SERVER_ERROR = 500
         private const val HTTP_UNAVAILABLE = 503
     }
+}
+
+/** A client connected to a computer on [route], and what [reachServer]'s call returned there. */
+internal class NarrationServerReached<T>(
+    val client: NarrationServerClient,
+    val route: NarrationServerRoute,
+    val value: T,
+)
+
+/**
+ * Connects to [server] on the first of its addresses where [call] succeeds: the local network first,
+ * then Tailscale (`NarrationServerPlanning.routes`). An address that fails is closed and the next one
+ * tried; the local one gets a short connect timeout when Tailscale is left, since away from home it
+ * usually does not answer at all. The caller owns the returned client and closes it. Throws the most
+ * telling [NarrationServerProblem] (`NarrationServerPlanning.failure`) when no address works.
+ */
+internal suspend fun <T> reachServer(
+    server: NarrationServer,
+    readTimeoutMs: Int = NarrationServerClient.READ_TIMEOUT_MS,
+    newClient: (NarrationServerRoute, connectTimeoutMs: Int) -> NarrationServerClient = { route, connectTimeoutMs ->
+        NarrationServerClient(route.endpoint, server.token, server.name, connectTimeoutMs, readTimeoutMs)
+    },
+    call: suspend (NarrationServerClient) -> T,
+): NarrationServerReached<T> {
+    val routes = NarrationServerPlanning.routes(server)
+    val failures = mutableListOf<NarrationServerProblem>()
+    routes.forEachIndexed { index, route ->
+        val timeout = NarrationServerPlanning.connectTimeoutMs(index, routes.size) ?: NarrationServerClient.CONNECT_TIMEOUT_MS
+        val client = newClient(route, timeout)
+        var reached = false
+        try {
+            return NarrationServerReached(client, route, call(client)).also { reached = true }
+        } catch (problem: NarrationServerProblem) {
+            failures += problem
+        } finally {
+            if (!reached) client.close()
+        }
+    }
+    throw NarrationServerPlanning.failure(server.name, failures)
 }

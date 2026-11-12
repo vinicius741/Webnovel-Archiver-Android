@@ -23,6 +23,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -86,8 +88,8 @@ internal fun interface NarrationSynthesizerFactory {
     fun location(voice: NarrationVoice): String? = null
 }
 
-/** Identifies a server's current settings, so editing its address or token reconnects. */
-internal val NarrationServer.locationKey: String get() = "$id|$address|$token"
+/** Identifies a server's current settings, so editing its addresses or token reconnects. */
+internal val NarrationServer.locationKey: String get() = "$id|$address|$tailscaleAddress|$token"
 
 internal class AndroidNarrationSynthesizers(
     private val context: Context,
@@ -108,21 +110,25 @@ internal class AndroidNarrationSynthesizers(
         server: NarrationServer,
     ): NarrationSynthesizer {
         val speaker = kokoroSpeaker(voice)
-        val endpoint =
-            NarrationServerEndpoint.parse(server.address)
-                ?: throw NarrationServerProblem("${server.name}'s address \"${server.address}\" is not valid")
-        val client = NarrationServerClient(endpoint, server.token, server.name)
-        var opened = false
-        try {
-            val info = client.info()
-            NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
-            return RemoteKokoroNarrationSynthesizer(client, voice, speaker.speakerId, server, NarrationServerPlanning.inFlight(info))
-                .also { opened = true }
-        } finally {
-            // The synthesizer owns the client's connections from here; on failure, release them now.
-            if (!opened) client.close()
-        }
+        val reached = reachServer(server) { client -> compatibleInfo(client, server) }
+        // From here the synthesizer owns the client; it finds the computer again when a connection drops.
+        return RemoteKokoroNarrationSynthesizer(
+            reached.client,
+            voice,
+            speaker.speakerId,
+            server,
+            NarrationServerPlanning.inFlight(reached.value),
+            reconnect = { reachServer(server) { client -> compatibleInfo(client, server) }.client },
+        )
     }
+
+    private suspend fun compatibleInfo(
+        client: NarrationServerClient,
+        server: NarrationServer,
+    ): NarrationServerInfo =
+        client.info().also { info ->
+            NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
+        }
 
     private fun kokoroSpeaker(voice: NarrationVoice) =
         (if (voice.voiceId == null) KokoroVoices.default else KokoroVoices.forIdentifier(voice.voiceId))
@@ -205,13 +211,19 @@ private class KokoroNarrationSynthesizer(
  * for the phone, so the server only speaks it.
  */
 private class RemoteKokoroNarrationSynthesizer(
-    private val client: NarrationServerClient,
+    initialClient: NarrationServerClient,
     override val voice: NarrationVoice,
     private val speakerId: Int,
     server: NarrationServer,
     private val maxInFlight: Int,
+    /** Connects to the computer again, local network first, then Tailscale. */
+    private val reconnect: suspend () -> NarrationServerClient,
     private val now: () -> Long = System::currentTimeMillis,
 ) : NarrationSynthesizer {
+    @Volatile
+    private var client: NarrationServerClient = initialClient
+    private val rerouting = Mutex()
+
     override val voiceKey: String = KokoroVoices.voiceKey(speakerId)
     override val location: String = server.locationKey
     override val locationName: String = server.name
@@ -255,17 +267,33 @@ private class RemoteKokoroNarrationSynthesizer(
     ): TtsPcmClip? {
         var retriedTransient = false
         while (true) {
+            val current = client
             try {
-                return client.synthesize(spoken, speakerId).also { stoppedSince.set(0L) }
+                return current.synthesize(spoken, speakerId).also { stoppedSince.set(0L) }
             } catch (busy: NarrationServerBusy) {
                 waitOut(busy, stop)
             } catch (problem: NarrationServerProblem) {
-                // A dropped connection or a Wi-Fi hiccup gets one more try before generation pauses.
+                // A dropped connection or a Wi-Fi hiccup gets one more try before generation pauses,
+                // on whichever address answers now: the phone may have left the home network.
                 if (!problem.transient || retriedTransient) throw problem
                 retriedTransient = true
                 delay(TRANSIENT_RETRY_MS)
+                reroute(current)
             }
         }
+    }
+
+    /**
+     * Replaces [failed] with a fresh connection on the first address that answers. Sentences in flight
+     * fail together, so only the first reconnects; the rest retry on its client. Throws the
+     * [NarrationServerProblem] that pauses generation when no address answers.
+     */
+    private suspend fun reroute(failed: NarrationServerClient) {
+        rerouting.withLock {
+            if (client !== failed) return
+            client = reconnect()
+        }
+        failed.close()
     }
 
     /**
