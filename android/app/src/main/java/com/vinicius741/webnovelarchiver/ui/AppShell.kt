@@ -15,13 +15,19 @@ import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ShellDestination
 import com.vinicius741.webnovelarchiver.navigation.ShellNavigationPlanning
 
-/** Screens at least this wide (the Fold's inner display) use the right-hand rail instead of the bar. */
+/**
+ * Displays whose shorter side is at least this wide (the Fold's inner display) use the right-hand
+ * rail instead of the bar. The shorter side, not the width, so a folded phone turned sideways
+ * (wide but only ~411dp tall, too short for the rail) keeps the bottom bar.
+ */
 internal const val RAIL_MIN_WIDTH_DP = 600
+
+internal fun Context.usesRail(): Boolean = resources.configuration.smallestScreenWidthDp >= RAIL_MIN_WIDTH_DP
 
 /** Width (dp) left for screens beside the rail: the window width minus the rail when it shows. */
 internal fun Context.shellContentWidthDp(): Int {
     val width = resources.configuration.screenWidthDp
-    return if (width >= RAIL_MIN_WIDTH_DP) width - RAIL_WIDTH_DP else width
+    return if (usesRail()) width - RAIL_WIDTH_DP else width
 }
 
 private const val BAR_HEIGHT_DP = 72
@@ -179,7 +185,7 @@ class AppShell internal constructor(
         val route = history.lastOrNull() ?: return
         navVisible = ShellNavigationPlanning.showsNavigation(route)
         miniWanted = ShellNavigationPlanning.showsMiniPlayer(route)
-        railMode = context.resources.configuration.screenWidthDp >= RAIL_MIN_WIDTH_DP
+        railMode = context.usesRail()
         navSuppressed = false
         val selected = ShellNavigationPlanning.destinationOf(history)
         barItems.forEach { (dest, item) -> item.setSelected(dest == selected) }
@@ -239,7 +245,7 @@ class AppShell internal constructor(
 
     /** Re-evaluates rail vs bar after a fold / rotation without a route change. */
     fun onConfigurationChanged() {
-        railMode = context.resources.configuration.screenWidthDp >= RAIL_MIN_WIDTH_DP
+        railMode = context.usesRail()
         applyChrome()
     }
 

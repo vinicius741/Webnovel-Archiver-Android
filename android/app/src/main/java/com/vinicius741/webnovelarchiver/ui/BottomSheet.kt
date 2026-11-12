@@ -28,8 +28,21 @@ internal class BottomSheetHandle(
     val dialog: Dialog,
     private val panel: View,
 ) {
+    private var dismissing = false
+
+    /**
+     * Closes the sheet, then runs [action] once. Further taps during the slide-out are ignored, so
+     * two rows tapped in quick succession cannot both run.
+     */
+    fun dismissThen(action: () -> Unit) {
+        if (dismissing) return
+        dismiss()
+        action()
+    }
+
     fun dismiss() {
-        if (!dialog.isShowing) return
+        if (!dialog.isShowing || dismissing) return
+        dismissing = true
         panel
             .animate()
             .translationY(panel.height.toFloat())

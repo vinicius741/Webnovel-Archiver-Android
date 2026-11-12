@@ -87,8 +87,7 @@ internal fun ScreenHost.showStyledOptionsDialog(
             is OptionsDialogItem.Option ->
                 body.addView(
                     makeSheetRow(app, item.label, destructive = item.destructive) {
-                        sheet?.dismiss()
-                        item.action()
+                        sheet?.dismissThen(item.action)
                     },
                 )
         }

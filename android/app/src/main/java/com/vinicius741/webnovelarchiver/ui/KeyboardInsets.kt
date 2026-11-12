@@ -10,9 +10,12 @@ import kotlin.math.max
 internal fun View.installKeyboardAwareBottomPadding(scrollable: Boolean) {
     val root = this
     ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
-        val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-        val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-        val bottomInset = max(systemBars.bottom, ime.bottom)
+        // The app shell's shelf below the screen owns the gesture-bar inset, so only the part of the
+        // keyboard that overlaps this screen needs padding: its height minus the gap between the
+        // screen's bottom and the window's (the shelf and the bar under it).
+        val ime = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+        val bottomInset = if (ime > 0 && view.height > 0) max(0, ime - view.gapToWindowBottom()) else 0
+        if (ime > 0 && view.height == 0) view.post { ViewCompat.requestApplyInsets(view) }
         view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, bottomInset)
         if (scrollable && insets.isVisible(WindowInsetsCompat.Type.ime())) {
             view.findFocus()?.post { view.findFocus()?.requestKeyboardVisibleRect() }
@@ -43,6 +46,13 @@ internal fun View.installKeyboardAwareBottomPadding(scrollable: Boolean) {
         )
     }
     ViewCompat.requestApplyInsets(this)
+}
+
+/** Distance from this view's bottom edge (ignoring its own bottom padding) to the window's bottom. */
+private fun View.gapToWindowBottom(): Int {
+    val location = IntArray(2)
+    getLocationInWindow(location)
+    return (rootView.height - (location[1] + height)).coerceAtLeast(0)
 }
 
 private fun View.requestKeyboardVisibleRect() {

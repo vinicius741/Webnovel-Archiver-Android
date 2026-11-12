@@ -52,22 +52,13 @@ internal class CoverImageView(
     }
 
     private fun tinyCopy(drawable: Drawable): Bitmap? {
-        val iw = drawable.intrinsicWidth
-        val ih = drawable.intrinsicHeight
+        val art = (drawable as? coil3.transition.CrossfadeDrawable)?.end ?: drawable
+        val iw = art.intrinsicWidth
+        val ih = art.intrinsicHeight
         if (iw <= 0 || ih <= 0) return null
         // Exactly 2:3 art fills the view on its own; skip the extra draw.
         if (kotlin.math.abs(ih.toFloat() / iw - COVER_RATIO) < RATIO_TOLERANCE) return null
-        val w = BACKDROP_PX
-        val h = (BACKDROP_PX * ih / iw).coerceAtLeast(1)
-        return runCatching {
-            createBitmap(w, h).also { bmp ->
-                val c = Canvas(bmp)
-                val old = drawable.copyBounds()
-                drawable.setBounds(0, 0, w, h)
-                drawable.draw(c)
-                drawable.bounds = old
-            }
-        }.getOrNull()
+        return tinySoftwareCopy(drawable, BACKDROP_PX)
     }
 
     private companion object {

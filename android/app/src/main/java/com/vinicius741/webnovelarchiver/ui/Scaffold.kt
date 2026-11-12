@@ -48,7 +48,6 @@ internal fun ScreenHost.screen(
     title: String,
     subtitle: String? = null,
     actions: List<AppBarAction> = emptyList(),
-    fab: (() -> Unit)? = null,
     scrollable: Boolean = false,
     chrome: ScreenChrome = ScreenChrome.STANDARD,
     closeAction: (() -> Unit)? = null,
@@ -143,8 +142,6 @@ internal fun ScreenHost.screen(
             ScrollView(app).apply {
                 isFillViewport = true
                 tag = SCROLL_BODY_VIEW_TAG
-                // The TTS mini-player pads this scroller while it floats over the screen; drawing
-                // into the padding keeps content visible behind the bar until scrolled clear.
                 clipToPadding = false
                 addView(content)
                 // Restore the scroll position captured before the re-render. `post` runs after this
@@ -158,18 +155,6 @@ internal fun ScreenHost.screen(
     frame.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     column.installKeyboardAwareBottomPadding(scrollable)
     frame.tag = screenKey
-    fab?.let { onClick ->
-        val fabView = makeFab(app) { onClick() }
-        val lp =
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM or Gravity.END,
-            )
-        lp.setMargins(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG))
-        fabView.tag = FAB_VIEW_TAG
-        frame.addView(fabView, lp)
-    }
     onScreenBuilt?.invoke()
     if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) {
         com.vinicius741.webnovelarchiver.perf.PerfInstrumentation.recordScreenBuilt(
@@ -196,9 +181,6 @@ internal const val BOTTOM_BAR_VIEW_TAG = "wna_screen_bottom_bar"
 
 /** Tags a scrollable screen body so the TTS mini-player can pad its end clear of the bar. */
 internal const val SCROLL_BODY_VIEW_TAG = "wna_screen_scroll_body"
-
-/** Tags the screen FAB so the TTS mini-player can lift it out of the bar's way. */
-internal const val FAB_VIEW_TAG = "wna_screen_fab"
 
 /** Locates the first [ScrollView] anywhere under [root], so a re-render can capture the outgoing
  *  scroll position before the view tree is torn down. */
@@ -274,28 +256,6 @@ private fun ScreenHost.appBar(
             )
         }
     }
-
-private fun makeFab(
-    context: Context,
-    onClick: () -> Unit,
-): View {
-    val size = context.dp(56)
-    return ImageView(context).apply {
-        contentDescription = "Add"
-        setImageDrawable(context.tintedIcon(R.drawable.wna_add, ThemeManager.colors.onPrimary))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8))
-        background =
-            ripple(
-                roundedBg(ThemeManager.colors.primary, context.dp(Spacing.LG).toFloat()),
-                context.dp(Spacing.LG).toFloat(),
-                ThemeManager.colors.onPrimary,
-            )
-        elevate(6f)
-        setOnClickListener { onClick() }
-        layoutParams = FrameLayout.LayoutParams(size, size)
-    }
-}
 
 internal fun LinearLayout.centerLoading(message: String) {
     val col =

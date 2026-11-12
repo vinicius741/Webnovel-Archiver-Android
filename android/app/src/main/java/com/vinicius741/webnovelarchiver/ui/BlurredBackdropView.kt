@@ -67,21 +67,7 @@ internal class BlurredBackdropView(
         if (fadeTo != null) canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fadePaint)
     }
 
-    private fun tinyCopy(drawable: Drawable): Bitmap? {
-        val iw = drawable.intrinsicWidth
-        val ih = drawable.intrinsicHeight
-        if (iw <= 0 || ih <= 0) return null
-        val w = BLUR_PX
-        val h = (BLUR_PX * ih / iw).coerceAtLeast(1)
-        return runCatching {
-            createBitmap(w, h).also { bmp ->
-                val old = drawable.copyBounds()
-                drawable.setBounds(0, 0, w, h)
-                drawable.draw(Canvas(bmp))
-                drawable.bounds = old
-            }
-        }.getOrNull()
-    }
+    private fun tinyCopy(drawable: Drawable): Bitmap? = tinySoftwareCopy(drawable, BLUR_PX)
 
     /** Loads [source] (URL, File or Bitmap) without a crossfade, so the blur is taken from the finished image. */
     fun loadSource(source: Any?) {
