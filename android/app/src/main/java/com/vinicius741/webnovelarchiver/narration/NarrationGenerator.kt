@@ -20,9 +20,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
+
+/** What a sentence wait returns when the job was interrupted meanwhile. */
+private object Interrupt
 
 /** A chapter's spoken text as generation needs it. */
 internal data class NarrationChapterText(
@@ -265,6 +269,25 @@ internal class NarrationGenerator(
                 this@coroutineScope.coroutineContext.cancelChildren()
                 return outcome
             }
+            // A computer holding back for memory: show why the chapter is not moving.
+            val waitingWatcher =
+                launch {
+                    voice.waitingFor.collect { reason ->
+                        _progress.value?.takeIf { it.job?.id == job.id && it.waitingFor != reason }?.let {
+                            _progress.value = it.copy(waitingFor = reason)
+                        }
+                    }
+                }
+            // A sentence can wait minutes on a computer short of memory; a pause, another job moved
+            // first or another place still interrupts it then, not only between sentences.
+            val interrupted =
+                async {
+                    combine(queue.state, generationAllowed) { document, _ -> document }.first { document ->
+                        !stillWanted(job, document) ||
+                            NarrationPlanning.next(document.jobs)?.id != job.id ||
+                            synthesizers.location(job.voice) != voice.location
+                    }
+                }
             var consecutiveEmpty = 0
             for ((done, item) in items.withIndex()) {
                 publishProgress(job, text, done, items.size, recipe, stats, voice)
@@ -281,13 +304,23 @@ internal class NarrationGenerator(
                 // Started ahead unless a reusable clip was expected; one that turns out unreadable is generated now.
                 val pending =
                     ahead.remove(done) ?: if (reused == null) async { synthesize(voice, sentence, versionDir, done, stats) } else null
+                val generated =
+                    pending?.let {
+                        select<Any?> {
+                            it.onAwait { clip -> clip }
+                            interrupted.onAwait { Interrupt }
+                        }
+                    }
+                if (generated === Interrupt) return@coroutineScope stop(JobOutcome.Interrupted)
                 val clip =
-                    reused ?: pending?.await()
+                    reused ?: generated as TtsPcmClip?
                         ?: return@coroutineScope stop(JobOutcome.Failed("Could not generate: \"${sentence.take(FAILED_TEXT_CHARS)}\""))
                 consecutiveEmpty = if (clip.pcm.isEmpty() && reused == null) consecutiveEmpty + 1 else 0
                 if (consecutiveEmpty >= MAX_CONSECUTIVE_EMPTY) return@coroutineScope stop(JobOutcome.Failed("The voice produced no audio"))
                 store.writeClip(target, clip)
             }
+            waitingWatcher.cancel()
+            interrupted.cancel()
             null
         }
 
@@ -478,6 +511,7 @@ internal class NarrationGenerator(
                 speed = measuredSpeed,
                 queuedAfter = others,
                 generatingOn = voice.locationName,
+                waitingFor = voice.waitingFor.value,
             )
     }
 

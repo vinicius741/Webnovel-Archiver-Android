@@ -44,6 +44,52 @@ class NarrationServerClientTest {
         }
     }
 
+    private val connections =
+        java.util.concurrent.atomic
+            .AtomicInteger()
+
+    /**
+     * Like the Rust server: HTTP/1.1, several requests per connection. [closeAfter] requests on a
+     * connection, it closes it without saying so (as a server does to an idle connection).
+     */
+    private fun serveKeepAlive(
+        closeAfter: Int = Int.MAX_VALUE,
+        respond: (String) -> Triple<Int, String, ByteArray>,
+    ) {
+        thread(isDaemon = true) {
+            while (!server.isClosed) {
+                val socket = runCatching { server.accept() }.getOrNull() ?: break
+                connections.incrementAndGet()
+                thread(isDaemon = true) {
+                    socket.use { connection ->
+                        val reader = BufferedReader(InputStreamReader(connection.getInputStream(), Charsets.ISO_8859_1))
+                        repeat(closeAfter) {
+                            val head = generateSequence { reader.readLine() }.takeWhile { line -> line.isNotEmpty() }.toList()
+                            if (head.isEmpty()) return@thread
+                            val length =
+                                head
+                                    .firstOrNull { line -> line.startsWith("Content-Length:", true) }
+                                    ?.substringAfter(':')
+                                    ?.trim()
+                                    ?.toInt() ?: 0
+                            val body = CharArray(length).also { chars -> reader.read(chars) }.concatToString()
+                            synchronized(requests) { requests += head.joinToString("\n") + "\n\n" + body }
+                            val (status, type, payload) = respond(head.first())
+                            val out = connection.getOutputStream()
+                            val extra = if (status == 503) "Retry-After: 7\r\n" else "X-Slots: 2\r\n"
+                            out.write(
+                                "HTTP/1.1 $status X\r\nContent-Type: $type\r\nContent-Length: ${payload.size}\r\n${extra}Connection: keep-alive\r\n\r\n"
+                                    .toByteArray(),
+                            )
+                            out.write(payload)
+                            out.flush()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun client(token: String = "abcd-efgh-jkmn") =
         NarrationServerClient(
             NarrationServerEndpoint("127.0.0.1", server.localPort),
@@ -123,4 +169,92 @@ class NarrationServerClientTest {
                 assertTrue(problem.message!!.contains("Mac"))
             }
         }
+
+    @Test
+    fun keptAliveConnectionsCarrySeveralSentences() =
+        runBlocking {
+            val wav = TtsWavWriter.mono16(FloatArray(480) { 0.25f }, 24_000)
+            serveKeepAlive { line ->
+                if (line.startsWith("GET")) Triple(200, "application/json", INFO.toByteArray()) else Triple(200, "audio/wav", wav)
+            }
+            val client = client()
+            client.info()
+            repeat(3) { assertNotNull(client.synthesize("Hello.", 1)) }
+            client.close()
+            assertEquals(1, connections.get())
+            assertEquals(2, client.serverSlots)
+            assertTrue(requests.all { it.contains("Connection: keep-alive") })
+        }
+
+    @Test
+    fun aConnectionTheServerClosedIsReplacedWithoutFailing() =
+        runBlocking {
+            val wav = TtsWavWriter.mono16(FloatArray(480) { 0.25f }, 24_000)
+            serveKeepAlive(closeAfter = 1) { Triple(200, "audio/wav", wav) }
+            val client = client()
+            assertNotNull(client.synthesize("One.", 1))
+            Thread.sleep(100) // Let the server close the first connection.
+            assertNotNull(client.synthesize("Two.", 1))
+            client.close()
+            assertEquals(2, connections.get())
+        }
+
+    @Test
+    fun aServerLowOnMemoryIsBusyNotBroken() =
+        runBlocking {
+            serveKeepAlive {
+                Triple(
+                    503,
+                    "application/json",
+                    """{"error":"Mac is low on memory and has stopped generating (800 MB free)","retryAfterMs":30000,"stopped":true}"""
+                        .toByteArray(),
+                )
+            }
+            try {
+                client().synthesize("Hello.", 1)
+                fail("Expected the server to be busy")
+            } catch (busy: NarrationServerBusy) {
+                assertEquals(30_000L, busy.retryAfterMs)
+                assertTrue(busy.stopped)
+                assertTrue(busy.message!!.contains("low on memory"))
+            }
+        }
+
+    @Test
+    fun aBusyServerWithoutABodyFallsBackToRetryAfter() =
+        runBlocking {
+            serveKeepAlive { Triple(503, "text/plain", "busy".toByteArray()) }
+            try {
+                client().synthesize("Hello.", 1)
+                fail("Expected the server to be busy")
+            } catch (busy: NarrationServerBusy) {
+                assertEquals(7_000L, busy.retryAfterMs)
+                assertTrue(!busy.stopped)
+            }
+        }
+
+    @Test
+    fun aResponseCutOffInItsHeadersIsALostConnection() =
+        runBlocking {
+            thread(isDaemon = true) {
+                server.accept().use { socket ->
+                    BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.ISO_8859_1)).readLine()
+                    socket.getOutputStream().apply {
+                        write("HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\n".toByteArray())
+                        flush()
+                    }
+                }
+            }
+            try {
+                client().synthesize("Hello.", 1)
+                fail("Expected a lost connection")
+            } catch (problem: NarrationServerProblem) {
+                assertTrue(problem.transient)
+                assertTrue(problem.message!!.contains("Lost the connection"))
+            }
+        }
+
+    private companion object {
+        const val INFO = """{"protocol":1,"model":"kokoro-en-v0_19","sampleRate":24000,"workers":4,"threadsPerWorker":8,"name":"mac"}"""
+    }
 }

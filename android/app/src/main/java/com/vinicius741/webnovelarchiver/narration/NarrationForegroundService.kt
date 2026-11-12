@@ -142,6 +142,8 @@ class NarrationForegroundService : Service() {
                     } else {
                         append(" · ${(progress.fraction * PERCENT).toInt()}%")
                         progress.speed?.let { append(String.format(java.util.Locale.US, " · %.1f×", it)) }
+                        // The computer is holding back for its memory; generation resumes by itself.
+                        if (progress.waitingFor != null) append(" · waiting for ${progress.generatingOn ?: "the computer"}")
                     }
                     if (progress.queuedAfter > 0) append(" · ${progress.queuedAfter} more queued")
                     progress.etaMs?.let { append(" · ~${NarrationPlanning.formatDuration(it)} left") }

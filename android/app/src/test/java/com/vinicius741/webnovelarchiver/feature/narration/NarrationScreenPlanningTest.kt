@@ -105,6 +105,26 @@ class NarrationScreenPlanningTest {
     }
 
     @Test
+    fun `the banner says when a computer holds back for memory`() {
+        val running = job("a1", "A")
+        val progress =
+            NarrationProgress(
+                job = running,
+                chapterTitle = "Chapter 1",
+                done = 60,
+                total = 120,
+                generatingOn = "Bazzite",
+                waitingFor = "Bazzite is low on memory and has stopped generating (800 MB free)",
+            )
+        val banner = NarrationScreenPlanning.banner(progress, NarrationQueueDocument(jobs = listOf(running)), running = true)
+        assertEquals(GenerationBanner.State.GENERATING, banner.state)
+        assertEquals("Waiting for Bazzite · 50%", banner.headline)
+        assertTrue(banner.detail!!.startsWith("Bazzite is low on memory"))
+        assertTrue(banner.detail!!.contains("resumes by itself"))
+        assertEquals("Generating on Bazzite · 50%", NarrationScreenPlanning.generatingTitle(progress.copy(waitingFor = null)))
+    }
+
+    @Test
     fun `the banner distinguishes paused, loading, waiting on Android and idle`() {
         val queued = NarrationQueueDocument(jobs = listOf(job("a1", "A")))
         assertEquals(GenerationBanner.State.PAUSED, NarrationScreenPlanning.banner(null, queued.copy(paused = true), true).state)

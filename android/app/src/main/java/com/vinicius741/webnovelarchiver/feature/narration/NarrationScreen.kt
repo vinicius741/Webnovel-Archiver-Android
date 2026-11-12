@@ -119,8 +119,7 @@ private class RunningRow {
             if (progress.preparing) {
                 "Starting · loading the voice"
             } else {
-                "Generating" + (progress.generatingOn?.let { " on $it" } ?: "") +
-                    " · ${NarrationScreenPlanning.percent(progress.fraction)} · ${progress.done} of ${progress.total} sentences"
+                NarrationScreenPlanning.generatingTitle(progress) + " · ${progress.done} of ${progress.total} sentences"
             }
         bar?.apply {
             visibility = View.VISIBLE
