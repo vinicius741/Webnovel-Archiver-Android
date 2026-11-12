@@ -22,7 +22,7 @@ class NarrationQueue(
     fun load() {
         val document =
             if (file.isFile) {
-                runCatching { gson.fromJson(file.readText(), NarrationQueueDocument::class.java) }
+                runCatching { gson.fromJson(NarrationLegacyJson.queue(file.readText()), NarrationQueueDocument::class.java) }
                     .onFailure { Timber.e(it, "Narration queue unreadable; starting empty") }
                     .getOrNull()
             } else {

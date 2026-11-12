@@ -40,6 +40,21 @@
     <fields>;
 }
 
+# Generated narration (queue.json, recipe.json, index.json) and the narration server's /v1/info are
+# Gson models too. Unkept in 1.0.18/1.0.19, R8 renamed their fields to a, b, c… and dropped the
+# generic signatures: the queue failed to load on every start (LinkedHashMap cast to NarrationJob) and
+# playing a generated chapter crashed (Double cast to Long in PackTtsOutput.applyDurations).
+# NarrationLegacyJson reads files those releases wrote.
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationJob { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationVoice { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationRecipe { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationPackIndex { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationServer { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationServerInfo { <init>(...); <fields>; }
+-keep enum com.vinicius741.webnovelarchiver.narration.NarrationOrigin { *; }
+-keep enum com.vinicius741.webnovelarchiver.narration.NarrationJobState { *; }
+
 # Components are named from AndroidManifest.xml and must remain constructible after shrinking.
 -keep public class com.vinicius741.webnovelarchiver.app.WebnovelArchiverApp { public <init>(); }
 -keep public class com.vinicius741.webnovelarchiver.app.MainActivity { public <init>(); }

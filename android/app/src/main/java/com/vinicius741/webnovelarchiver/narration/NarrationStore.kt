@@ -241,8 +241,16 @@ class NarrationStore(
         if (!file.isFile) {
             null
         } else {
-            runCatching { gson.fromJson(file.readText(), type) }
-                .onFailure { Timber.w(it, "Narration file unreadable: %s", file.name) }
+            runCatching {
+                val text = file.readText()
+                val current =
+                    when (type) {
+                        NarrationRecipe::class.java -> NarrationLegacyJson.recipe(text)
+                        NarrationPackIndex::class.java -> NarrationLegacyJson.index(text)
+                        else -> text
+                    }
+                gson.fromJson(current, type)
+            }.onFailure { Timber.w(it, "Narration file unreadable: %s", file.name) }
                 .getOrNull()
         }
 
