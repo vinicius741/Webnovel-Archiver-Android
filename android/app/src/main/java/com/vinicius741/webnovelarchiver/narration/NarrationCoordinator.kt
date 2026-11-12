@@ -79,6 +79,14 @@ class NarrationCoordinator internal constructor(
     /** Bumps when a pack is published or deleted. */
     val packsRevision: StateFlow<Long> get() = store.revision
 
+    private val serverMonitor = NarrationServerMonitor()
+
+    /** Whether each computer is online, by server id, as last checked ([refreshServerStatus]). */
+    internal val serverStatus: StateFlow<Map<String, NarrationServerStatus>> get() = serverMonitor.state
+
+    /** Checks the computers whose status is older than [maxAgeMs]; Audio generation calls it while open. */
+    suspend fun refreshServerStatus(maxAgeMs: Long) = serverMonitor.refresh(queue.state.value.servers, maxAgeMs)
+
     /** Loads packs and the queue (no library access), then, once the library is ready, cleans up and starts. */
     fun init(awaitRepositoryReady: suspend () -> Unit) {
         ioScope.launch {
@@ -370,6 +378,7 @@ class NarrationCoordinator internal constructor(
         id: String?,
         name: String,
         address: String,
+        tailscaleAddress: String,
         token: String,
     ): NarrationServer {
         val server =
@@ -378,6 +387,7 @@ class NarrationCoordinator internal constructor(
                 name = name.trim(),
                 address = address.trim(),
                 token = NarrationServerPlanning.normalizeToken(token),
+                tailscaleAddress = tailscaleAddress.trim(),
             )
         queue.update { document ->
             val exists = document.servers.any { it.id == server.id }
@@ -429,31 +439,60 @@ class NarrationCoordinator internal constructor(
         if (hasRunnableWork()) startService()
     }
 
-    /** Connects to [server] and speaks one sentence: a summary of the connection, or why it failed. */
-    suspend fun testServer(server: NarrationServer): Result<String> =
-        runCatching {
-            val endpoint =
-                NarrationServerEndpoint.parse(server.address)
-                    ?: throw NarrationServerProblem("The address is not valid")
-            val client = NarrationServerClient(endpoint, server.token, server.name)
-            try {
-                val info = client.info()
-                NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
-                // One sentence per model copy at once, as generation runs, so the speed is the server's total.
-                val started = System.currentTimeMillis()
-                val clips =
-                    coroutineScope {
-                        (0 until info.workers.coerceIn(1, NarrationServerPlanning.MAX_IN_FLIGHT))
-                            .map { index ->
-                                async { client.synthesize(TEST_SENTENCES[index % TEST_SENTENCES.size], KokoroVoices.default.speakerId) }
-                            }.awaitAll()
+    /**
+     * Connects to [server] (local network first, then Tailscale) and speaks one sentence per model
+     * copy: a summary of the connection, or why it failed. Also records whether it is online.
+     */
+    suspend fun testServer(server: NarrationServer): Result<String> {
+        var route: NarrationServerRoute? = null
+        val result =
+            runCatching {
+                val reached =
+                    reachServer(server) { client ->
+                        client.info().also { info ->
+                            NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
+                        }
                     }
-                if (clips.any { it == null }) throw NarrationServerProblem("${server.name} connected but could not generate audio")
-                NarrationServerPlanning.testSummary(info, endpoint, clips.sumOf { it!!.durationMs }, System.currentTimeMillis() - started)
-            } finally {
-                client.close()
+                route = reached.route
+                val client = reached.client
+                val info = reached.value
+                try {
+                    // One sentence per model copy at once, as generation runs, so the speed is the server's total.
+                    val started = System.currentTimeMillis()
+                    val clips =
+                        coroutineScope {
+                            (0 until info.workers.coerceIn(1, NarrationServerPlanning.MAX_IN_FLIGHT))
+                                .map { index ->
+                                    async { client.synthesize(TEST_SENTENCES[index % TEST_SENTENCES.size], KokoroVoices.default.speakerId) }
+                                }.awaitAll()
+                        }
+                    if (clips.any { it == null }) throw NarrationServerProblem("${server.name} connected but could not generate audio")
+                    NarrationServerPlanning.testSummary(
+                        info,
+                        reached.route,
+                        clips.sumOf { it!!.durationMs },
+                        System.currentTimeMillis() - started,
+                    )
+                } finally {
+                    client.close()
+                }
             }
+        val failure = result.exceptionOrNull()
+        if (failure == null || failure is NarrationServerProblem) {
+            val reachedRoute = route
+            serverMonitor.record(
+                server,
+                NarrationServerStatus(
+                    server.locationKey,
+                    System.currentTimeMillis(),
+                    online = reachedRoute != null || failure is NarrationServerRejected,
+                    route = reachedRoute?.route,
+                    problem = if (failure is NarrationServerRejected) "wrong token" else null,
+                ),
+            )
         }
+        return result
+    }
 
     fun remove(jobIds: Set<String>) {
         queue.update { it.copy(jobs = it.jobs.filter { job -> job.id !in jobIds }) }

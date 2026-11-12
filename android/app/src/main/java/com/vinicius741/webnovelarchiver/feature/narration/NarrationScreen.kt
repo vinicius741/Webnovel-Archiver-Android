@@ -8,6 +8,8 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.narration.NarrationJob
 import com.vinicius741.webnovelarchiver.narration.NarrationJobState
@@ -40,6 +42,7 @@ import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.verticalFill
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -61,6 +64,7 @@ internal fun ScreenHost.showNarration() {
     val host = this
     val liveStatus = NarrationLiveStatus(this, hideWhenIdle = false) { banner -> banner.storyId?.let { showNarrationStory(it) } }
     val runningRow = RunningRow()
+    var serverRows: ServerRows? = null
     val scroller =
         ScrollView(app).apply {
             isFillViewport = true
@@ -82,7 +86,7 @@ internal fun ScreenHost.showNarration() {
         with(content) {
             queueSection(host, document.jobs, runningRow)
             if (!app.isIgnoringBatteryOptimizations()) batteryCard(host)
-            generateOnSection(host, document)
+            serverRows = generateOnSection(host, document)
             spacer(Space.MD)
             keepAheadSection(host, document.keepAhead)
             storageLine(host)
@@ -98,6 +102,19 @@ internal fun ScreenHost.showNarration() {
         scope.launch {
             liveStatus.observe(host, this)
             launch { coordinator.progress.collect(runningRow::bind) }
+            launch { coordinator.serverStatus.collect { statuses -> serverRows?.bind(statuses) } }
+            // Online checks while the screen is visible. Each rebuild restarts this loop, so it ticks
+            // often and asks only computers not checked within the interval.
+            if (document.servers.isNotEmpty()) {
+                launch {
+                    app.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        while (true) {
+                            coordinator.refreshServerStatus(SERVER_CHECK_INTERVAL_MS)
+                            delay(SERVER_CHECK_TICK_MS)
+                        }
+                    }
+                }
+            }
             val runningJob = coordinator.progress.map { it?.job?.id }.distinctUntilChanged()
             combine(coordinator.queueState, coordinator.packsRevision, runningJob) { queue, packs, job -> Triple(queue, packs, job) }
                 .distinctUntilChanged()
@@ -400,5 +417,7 @@ private fun packSummary(packs: List<NarrationPack>): String {
 }
 
 private const val MAX_ROWS_PER_STORY = 5
+private const val SERVER_CHECK_INTERVAL_MS = 30_000L
+private const val SERVER_CHECK_TICK_MS = 5_000L
 private const val PERCENT = 100
 private const val RIPPLE_ALPHA_MASK = 0x22FFFFFF

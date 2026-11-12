@@ -156,24 +156,28 @@ grouped `xxxx-xxxx-xxxx`, and compared case-insensitively.
 
 | Piece | Responsibility |
 |---|---|
-| `NarrationQueueDocument.servers` / `generateOn` | The computers (name, address, token) and the chosen one. Stored in `filesDir/narration/queue.json`, which backups leave out, so the token never leaves the phone. |
+| `NarrationQueueDocument.servers` / `generateOn` | The computers (name, local-network `address`, `tailscaleAddress`, token) and the chosen one. Either address may be blank. Stored in `filesDir/narration/queue.json`, which backups leave out, so the token never leaves the phone. |
+| `reachServer` (in `NarrationServerClient.kt`) | Connects on the first address that answers: the local network first, then Tailscale (`NarrationServerPlanning.routes`). The local address gets a 2.5 s connect timeout while Tailscale is left to try, since away from home it usually does not answer at all. When neither answers, one message covers both; a server that answered (wrong token, another model) is reported over one that could not be reached. Used to open generation, by the connection test, and by the online check. |
+| `NarrationServerMonitor` | The online check. While Audio generation is visible, the screen asks every 5 s for the computers not checked in the last 30 s; each check calls `GET /v1/status` on each address in turn (10 s read timeout), which checks the token but neither loads the model nor keeps a Mac awake. Rows read "Online · local network", "Online · Tailscale", "Offline", "Online · … · wrong token" or "stopped, short of memory", with a coloured dot and both addresses. A connection test records its result too. |
 | `NarrationServerClient` | HTTP/1.1 over a plain socket, with kept-alive connections reused across sentences (one per sentence in flight, dropped after 45 s idle), so a chapter costs a handful of TCP and Tailscale handshakes instead of one per sentence. A reused connection the server closed is retried once on a fresh one. Cancelling closes the socket. A `503` becomes `NarrationServerBusy` (`retryAfterMs`, `stopped`). It deliberately bypasses Android's cleartext policy, which would otherwise have to allow plain HTTP for the whole app. Tailscale encrypts the traffic. On a home LAN it is plain HTTP with a token. |
 | `NarrationServerPlanning` | Compatibility (protocol 1, model `kokoro-en-v0_19`), sentences in flight (one per model copy plus one, at most 9), form checks, and the test summary. |
-| `AndroidNarrationSynthesizers` | A Kokoro job goes to the chosen computer when there is one. `location(voice)` changes when the choice or the server's address or token changes. Android-engine voices always generate on the phone. |
-| `RemoteKokoroNarrationSynthesizer` | Prepares the text with `KokoroTextPlanning.spokenText`, as the phone does, and sends it. It uses the phone's voice key (`KokoroVoices.voiceKey`), so clips from the phone and a computer are interchangeable and mix within a chapter. One retry on a dropped connection. While the server answers `503` (short of memory), it waits `retryAfterMs` and asks again, and reports a stop through `waitingFor`. The chapter does not fail. A pause, a reorder or a place change interrupts the wait at once (the generator races each sentence against them). |
+| `AndroidNarrationSynthesizers` | A Kokoro job goes to the chosen computer when there is one. `location(voice)` changes when the choice or the server's addresses or token change. Android-engine voices always generate on the phone. |
+| `RemoteKokoroNarrationSynthesizer` | Prepares the text with `KokoroTextPlanning.spokenText`, as the phone does, and sends it. It uses the phone's voice key (`KokoroVoices.voiceKey`), so clips from the phone and a computer are interchangeable and mix within a chapter. One retry on a dropped connection, after finding the computer again through `reachServer` (so leaving home mid-chapter moves to Tailscale instead of pausing); sentences that failed together reconnect once. While the server answers `503` (short of memory), it waits `retryAfterMs` and asks again, and reports a stop through `waitingFor`. The chapter does not fail. A pause, a reorder or a place change interrupts the wait at once (the generator races each sentence against them). |
 | `NarrationGenerator` | Keeps `parallelism` sentences in flight and writes clips in order. At each sentence it checks the job and the place: choosing another place switches at the next sentence and keeps the clips. A `NarrationServerProblem` (unreachable, wrong token, wrong model) **pauses the queue** with the reason and `pausedForServer`, instead of failing every job. Choosing a place resumes it, and so does Resume. A 400 or 500 for one sentence is retried once, then fails only that chapter. Generation speed is recorded per place (`engine@serverId`). |
 | `NarrationProgress.waitingFor` | While a computer has stopped for memory, the banner reads "Waiting for <name> · 40%" with the server's reason, and so do the queue row and the notification. Fewer slots are not shown: sentences just take turns. After 15 minutes of a stop, generation pauses with the reason (`pausedForServer`), so the phone does not stay awake polling for hours. The in-flight count follows the server's `X-Slots` (slots + 1). |
-| `feature/narration/NarrationServersUi.kt` | The **Generate on** section of Audio generation: chips for "This phone" and each computer, Add / Edit / Test / Remove. The test sends one sentence per model copy at once and reports the total speed. The banner and queue rows read "Generating on <name>". |
+| `feature/narration/NarrationServersUi.kt` | The **Generate on** section of Audio generation: chips for "This phone" and each computer, a row per computer with its online status (`ServerRows`, redrawn in place as checks return), Add / Edit / Test / Remove. The test sends one sentence per model copy at once and reports the total speed. The banner and queue rows read "Generating on <name>". |
 
 ## Setting it up
 
 1. On the computer: `scripts/narration-server/setup.sh --service`. It prints the token and the LAN and
    Tailscale addresses.
-2. In the app: Audio generation → Generate on → **Add a computer**. Enter a name, the address (`ip` or
-   `ip:port`) and the token. Saving runs a connection test.
+2. In the app: Audio generation → Generate on → **Add a computer**. Enter a name, the local network
+   address and the Tailscale address (`ip` or `ip:port`; either may be left blank) and the token.
+   Saving runs a connection test. One entry per computer covers home and away: the app tries the local
+   network first and falls back to Tailscale.
 3. Pick the computer's chip. Kokoro chapters queued from then on, and the one in progress, generate there.
 
-Over Tailscale, use the computer's `100.x` address, which works from anywhere. A Linux firewall may need
+The Tailscale address is the computer's `100.x` address (or its MagicDNS name), which works from anywhere. A Linux firewall may need
 port 8790 open for LAN access.
 
 ## Verified

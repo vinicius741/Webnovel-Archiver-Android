@@ -71,14 +71,17 @@ data class NarrationQueueDocument(
 
 /**
  * A computer running `scripts/narration-server` that generates Kokoro audio for this phone. [address]
- * is what the user typed: a host or IP, optionally with a port. Stored only in the narration folder,
- * which backups leave out, so the token stays on this phone.
+ * is its local-network address and [tailscaleAddress] its Tailscale one, each as the user typed it (a
+ * host or IP, optionally with a port) and either may be blank. The app tries the local network first
+ * and falls back to Tailscale. Stored only in the narration folder, which backups leave out, so the
+ * token stays on this phone.
  */
 data class NarrationServer(
     val id: String = "",
     val name: String = "",
     val address: String = "",
     val token: String = "",
+    val tailscaleAddress: String = "",
 )
 
 /**
