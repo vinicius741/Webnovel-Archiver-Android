@@ -166,6 +166,7 @@ class AppShell internal constructor(
         navVisible = ShellNavigationPlanning.showsNavigation(route)
         miniWanted = ShellNavigationPlanning.showsMiniPlayer(route)
         railMode = context.resources.configuration.screenWidthDp >= RAIL_MIN_WIDTH_DP
+        navSuppressed = false
         val selected = ShellNavigationPlanning.destinationOf(history)
         barItems.forEach { (dest, item) -> item.setSelected(dest == selected) }
         railItems.forEach { (dest, item) -> item.setSelected(dest == selected) }
@@ -182,16 +183,29 @@ class AppShell internal constructor(
         railItems[destination]?.setBadge(count, dot)
     }
 
+    private var navSuppressed = false
+
+    /**
+     * Hides the navigation bar / rail (and the mini player) while a screen shows its own bottom
+     * action bar, e.g. a selection mode. Cleared automatically on the next route render.
+     */
+    fun setNavigationSuppressed(suppressed: Boolean) {
+        if (navSuppressed == suppressed) return
+        navSuppressed = suppressed
+        applyChrome()
+    }
+
     /** Whether the route currently rendered wants the mini player (it decides its own visibility). */
     val miniPlayerAllowed: Boolean get() = miniWanted
 
     private fun applyChrome() {
-        val miniShown = miniWanted && (0 until miniSlot.childCount).any { miniSlot.getChildAt(it).visibility == View.VISIBLE }
+        val miniShown =
+            miniWanted && !navSuppressed && (0 until miniSlot.childCount).any { miniSlot.getChildAt(it).visibility == View.VISIBLE }
         miniSlot.visibility = if (miniShown) View.VISIBLE else View.GONE
-        val barShown = navVisible && !railMode
+        val barShown = navVisible && !railMode && !navSuppressed
         bottomBar.visibility = if (barShown) View.VISIBLE else View.GONE
         (shelf.getChildAt(1)).visibility = if (barShown) View.VISIBLE else View.GONE
-        rail.visibility = if (navVisible && railMode) View.VISIBLE else View.GONE
+        rail.visibility = if (navVisible && railMode && !navSuppressed) View.VISIBLE else View.GONE
         rail.setPadding(0, systemBarTop(), 0, systemBarBottom() + context.dp(Spacing.SM))
         // The shelf always owns the gesture-bar inset, so screens never pad for it themselves.
         val inset = systemBarBottom()
