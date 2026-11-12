@@ -11,8 +11,8 @@ import android.graphics.Rect
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import androidx.appcompat.widget.AppCompatImageView
-import androidx.core.graphics.createBitmap
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
+import com.vinicius741.webnovelarchiver.ui.tinySoftwareCopy
 
 /**
  * Now Playing's background: the cover drawn as a tiny copy scaled back up (a cheap blur on every
@@ -40,7 +40,7 @@ internal class PlayerBackdrop(
 
     override fun setImageDrawable(drawable: Drawable?) {
         super.setImageDrawable(drawable)
-        tiny = drawable?.let(::tinyCopy)
+        tiny = drawable?.let { tinySoftwareCopy(it, TINY_PX) }
         invalidate()
     }
 
@@ -78,21 +78,6 @@ internal class PlayerBackdrop(
             canvas.drawBitmap(bmp, null, dst, imagePaint)
         }
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fadePaint)
-    }
-
-    private fun tinyCopy(drawable: Drawable): Bitmap? {
-        val iw = drawable.intrinsicWidth
-        val ih = drawable.intrinsicHeight
-        if (iw <= 0 || ih <= 0) return null
-        val h = (TINY_PX * ih / iw).coerceAtLeast(1)
-        return runCatching {
-            createBitmap(TINY_PX, h).also { bmp ->
-                val old = drawable.copyBounds()
-                drawable.setBounds(0, 0, TINY_PX, h)
-                drawable.draw(Canvas(bmp))
-                drawable.bounds = old
-            }
-        }.getOrNull()
     }
 
     private companion object {

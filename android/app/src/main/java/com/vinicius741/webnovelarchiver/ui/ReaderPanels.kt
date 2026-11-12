@@ -8,7 +8,9 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import kotlin.math.roundToInt
 
 /**
@@ -20,9 +22,9 @@ import kotlin.math.roundToInt
 internal fun ScreenHost.showReaderSettingsPanel(
     display: DisplayPreferences,
     voiceSummary: String?,
-    // Applies a new text size to the open page without reloading it.
+    // Applies a new text size to the reader page shown now, without reloading it.
     onFontScale: (Float) -> Unit,
-    // Re-renders the reader after a change the page cannot apply live (its colors).
+    // Re-renders the reader shown now after a change the page cannot apply live (its colors).
     onRerender: () -> Unit,
     onCopy: () -> Unit,
     onOpenVoiceSettings: () -> Unit,
@@ -31,7 +33,35 @@ internal fun ScreenHost.showReaderSettingsPanel(
     val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     lateinit var sheet: BottomSheetHandle
 
-    fun save() = scope.launch { repository.saveDisplayPreferences(display.copy()) }
+    // A held stepper ticks many times a second: writes run one after another, only the latest
+    // value is stored, and each stores just this sheet's fields over the latest saved preferences.
+    var latest = 0
+    var writes: Job? = null
+
+    fun save(): Job {
+        val ticket = ++latest
+        val previous = writes
+        return scope
+            .launch {
+                previous?.join()
+                if (ticket != latest) return@launch
+                val fontScale = display.readerFontScale
+                val dark = display.readerDark
+                runCatching { repository.updateDisplayPreferences { it.copy(readerFontScale = fontScale, readerDark = dark) } }
+                    .onFailure {
+                        Timber.e(it, "Reader settings save failed")
+                        toast("Could not save reader settings")
+                    }
+            }.also { writes = it }
+    }
+
+    suspend fun saved() {
+        while (true) {
+            val write = writes ?: return
+            write.join()
+            if (write === writes) return
+        }
+    }
 
     val sizeHolder = LinearLayout(app).apply { setPadding(dp(Spacing.SM), 0, 0, 0) }
     sizeHolder.stepperRow(
@@ -73,8 +103,12 @@ internal fun ScreenHost.showReaderSettingsPanel(
         makeSheetRow(app, "Pure black", supporting = "Saves battery on OLED screens", iconRes = R.drawable.wna_dark_mode) {
             display.readerDark = !display.readerDark
             blackSwitch.isChecked = display.readerDark
+            // The re-rendered page reads the stored preference, so it waits for the write.
             save()
-            onRerender()
+            scope.launch {
+                saved()
+                onRerender()
+            }
         }
     (blackRow as LinearLayout).addView(blackSwitch)
     blackRow.contentDescription = "Pure black"

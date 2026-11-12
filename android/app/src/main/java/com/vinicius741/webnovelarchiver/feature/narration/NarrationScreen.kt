@@ -75,8 +75,18 @@ internal fun ScreenHost.showNarration() {
     screen(route = AppRoute.Narration, title = "Listen", subtitle = "Player and audio generation", actions = actions) {
         val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         content.addView(nowCard.view)
-        val queueBox = section { queueSection(host, document, runningRow, liveStatus) }
-        val generatedBox = section { generatedSection(host) }
+        val audio = host.generatedAudio()
+        // On a phone the banner sits above the sections, so a paused or failed queue shows on all of them.
+        if (!sideBySide) {
+            content.addView(
+                liveStatus.view,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(Space.MD)
+                },
+            )
+        }
+        val queueBox = section { queueSection(host, document, runningRow, liveStatus.takeIf { sideBySide }) }
+        val generatedBox = section { generatedSection(host, audio) }
         val setupBox = section { setupSection(host, document) }
         if (sideBySide) {
             content.addView(sideBySide(queueBox, generatedBox, setupBox))
@@ -88,7 +98,7 @@ internal fun ScreenHost.showNarration() {
                     box.visibility =
                         if (key == segment) View.VISIBLE else View.GONE
                 }
-            val counts = mapOf(ListenSegment.QUEUE to document.jobs.size, ListenSegment.GENERATED to generatedStoryCount())
+            val counts = mapOf(ListenSegment.QUEUE to document.jobs.size, ListenSegment.GENERATED to audio.attached.size)
             val segments =
                 ListenSegmentedControl(context, listenSegment, counts) { segment ->
                     listenSegment = segment
@@ -128,16 +138,6 @@ internal fun ScreenHost.showNarration() {
 
 private fun NarrationQueueDocument.withoutLiveFields() = copy(keepAhead = 0, msPerChar = emptyMap(), speed = emptyMap())
 
-private fun ScreenHost.generatedStoryCount(): Int {
-    val detached = narration.detachedPacks()
-    return narration.store
-        .allPacks()
-        .filter { pack -> detached[pack.storyId]?.contains(pack) != true }
-        .map { it.storyId }
-        .distinct()
-        .size
-}
-
 private fun LinearLayout.section(block: LinearLayout.() -> Unit): LinearLayout =
     LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
@@ -173,11 +173,9 @@ private fun LinearLayout.queueSection(
     host: ScreenHost,
     document: NarrationQueueDocument,
     runningRow: RunningJobRow,
-    liveStatus: NarrationLiveStatus,
+    liveStatus: NarrationLiveStatus?,
 ) {
-    addView(
-        liveStatus.view.apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = context.dp(Space.MD) },
-    )
+    liveStatus?.let { addView(it.view.apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = context.dp(Space.MD) }) }
     if (!host.app.isIgnoringBatteryOptimizations()) batteryCard(host)
     val jobs = document.jobs
     val failed = jobs.count { it.state == NarrationJobState.FAILED }

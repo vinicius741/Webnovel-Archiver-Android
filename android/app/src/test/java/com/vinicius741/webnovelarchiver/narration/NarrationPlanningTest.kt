@@ -108,6 +108,14 @@ class NarrationPlanningTest {
     }
 
     @Test
+    fun keepAheadNeverReachesPastTheMaximum() {
+        val chapters = (1..50).map { Chapter(id = "c$it", downloaded = true) }
+        val chosen = NarrationPlanning.keepAheadChapters(chapters, "c1", 100, { true }, { false }, { false })
+        assertEquals(NarrationPlanning.KEEP_AHEAD_MAX, chosen.size)
+        assertEquals("c${NarrationPlanning.KEEP_AHEAD_MAX + 1}", chosen.last())
+    }
+
+    @Test
     fun estimatesAndFormatting() {
         assertEquals(62_000L, NarrationPlanning.estimatedAudioMs(1_000, 62.0))
         assertEquals(48_000L, NarrationPlanning.estimatedBytes(1_000))

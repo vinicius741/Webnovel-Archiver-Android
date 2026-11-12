@@ -16,14 +16,34 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 
+/** Generated packs by story: those of chapters in the library, and the detached rest. */
+internal class GeneratedAudio(
+    val attached: Map<String, List<NarrationPack>>,
+    val detached: Map<String, List<NarrationPack>>,
+)
+
+/** Splits the packs once per hub build: the split reads every pack's story, and two sections use it. */
+internal fun ScreenHost.generatedAudio(): GeneratedAudio {
+    val detached = narration.detachedPacks()
+    val detachedKeys = detached.values.flatten().mapTo(HashSet()) { it.storyId to it.chapterId }
+    val attached =
+        narration.store
+            .allPacks()
+            .filter { (it.storyId to it.chapterId) !in detachedKeys }
+            .groupBy { it.storyId }
+    return GeneratedAudio(attached, detached)
+}
+
 /**
  * The Listen hub's Generated section: every story with generated audio (chapters, length, size,
  * voices), how much storage the audio uses, and audio whose story has left the library.
  */
-internal fun LinearLayout.generatedSection(host: ScreenHost) {
-    val packs = host.narration.store.allPacks()
-    val detached = host.narration.detachedPacks()
-    val attached = packs.filter { pack -> detached[pack.storyId]?.contains(pack) != true }.groupBy { it.storyId }
+internal fun LinearLayout.generatedSection(
+    host: ScreenHost,
+    audio: GeneratedAudio,
+) {
+    val attached = audio.attached
+    val detached = audio.detached
     val used = host.narration.store.totalBytes()
     val free = host.narration.freeBytes()
     listenSectionLabel("Generated audio", "${NarrationPlanning.formatBytes(used)} · ${NarrationPlanning.formatBytes(free)} free")

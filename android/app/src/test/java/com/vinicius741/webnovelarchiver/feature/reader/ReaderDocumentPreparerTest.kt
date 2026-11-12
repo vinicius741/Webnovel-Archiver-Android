@@ -137,6 +137,36 @@ class ReaderDocumentPreparerTest {
             assertEquals("disk unreadable", failed.cause.message)
         }
 
+    @Test
+    fun readerFrameNamesTheNextDownloadedChapterOrWhyThereIsNone() {
+        val story =
+            Story(
+                id = "story-1",
+                title = "Story",
+                chapters =
+                    mutableListOf(
+                        Chapter(id = "c1", title = "One", downloaded = true),
+                        Chapter(id = "c2", title = "Two", downloaded = false),
+                        Chapter(id = "c3", title = "Three", downloaded = true),
+                        Chapter(id = "c4", title = "Four", downloaded = false),
+                    ),
+            )
+
+        val first = readerFrame(story, 0)
+        assertEquals("Story · Chapter 1", first.kicker)
+        assertEquals("Three", first.nextChapterTitle)
+        assertEquals(null, first.endNote)
+
+        val third = readerFrame(story, 2)
+        assertEquals(null, third.nextChapterTitle)
+        assertEquals("The next chapter isn't downloaded yet.", third.endNote)
+
+        val last = readerFrame(story, 3)
+        assertEquals("Story · Chapter 4", last.kicker)
+        assertEquals(null, last.nextChapterTitle)
+        assertEquals("You're at the latest chapter.", last.endNote)
+    }
+
     private class FakeReaderDocumentSource(
         private val story: Story,
     ) : ReaderDocumentSource {
