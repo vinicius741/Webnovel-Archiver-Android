@@ -82,6 +82,8 @@ internal fun ScreenHost.showNarration() {
         with(content) {
             queueSection(host, document.jobs, runningRow)
             if (!app.isIgnoringBatteryOptimizations()) batteryCard(host)
+            generateOnSection(host, document)
+            spacer(Space.MD)
             keepAheadSection(host, document.keepAhead)
             storageLine(host)
             generatedSection(host)
@@ -117,7 +119,8 @@ private class RunningRow {
             if (progress.preparing) {
                 "Starting · loading the voice"
             } else {
-                "Generating · ${NarrationScreenPlanning.percent(progress.fraction)} · ${progress.done} of ${progress.total} sentences"
+                "Generating" + (progress.generatingOn?.let { " on $it" } ?: "") +
+                    " · ${NarrationScreenPlanning.percent(progress.fraction)} · ${progress.done} of ${progress.total} sentences"
             }
         bar?.apply {
             visibility = View.VISIBLE

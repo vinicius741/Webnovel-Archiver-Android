@@ -66,6 +66,7 @@ How the Text-to-Speech subsystem works, plus audits and evaluations.
 |------|-------------|
 | `narration-pregeneration-plan.md` | Pre-generated narration: why chapters are generated before they play, the pack format and atomic publication, the background queue and service (Doze, `specialUse`), keep-ahead, the playback gate, the screens, and the two-model review that shaped it. |
 | `tts-audiobook-playback.md` | Audiobook-style playback: rendered audio pipeline, pacing, anchored positions and history, pause rules, context replay, controls, live-speech fallback, and what is still unverified. |
+| `remote-narration-servers.md` | Generating Kokoro chapters on the owner's computers: measured speeds, the `scripts/narration-server` HTTP server (protocol, setup, launchd/systemd service), the app's client, in-flight generation and pause-on-unreachable, the Generate on settings, and verification. |
 | `kokoro-built-in-voices.md` | Built-in Kokoro neural voices: sherpa-onnx dependency, model download/verify/unpack, shared runtime, playback integration, the on-device speed test (generation speed, CPU/memory/thermal headroom, shareable report), native-code/R8 rules, licences, and emulator verification. |
 | `tts-podcast-player.md` | The podcast-style TTS player: per-story resume memory (`tts_positions.json`), stop-vs-finish semantics, mini-player + Now Playing screens, chapter-skip transport, and lifecycle rules. |
 | `tts-audit.html` | Read-only audit of the current TTS implementation against modern Android best practices, with a prioritized recommendation list. |

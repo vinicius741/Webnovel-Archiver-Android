@@ -8,7 +8,11 @@ import com.vinicius741.webnovelarchiver.tts.TtsPcmClip
 import com.vinicius741.webnovelarchiver.tts.TtsPcmPlanning
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -119,6 +123,11 @@ internal class NarrationGenerator(
             throw cancelled
         } catch (unavailable: NarrationVoiceUnavailable) {
             fail(job, unavailable.message ?: "The voice is unavailable")
+        } catch (server: NarrationServerProblem) {
+            // Every queued chapter would fail the same way: pause, keep the clips, resume later.
+            Timber.w(server, "Narration server unusable")
+            closeSynthesizer()
+            pause(server.message ?: "The computer generating audio is unavailable", forServer = true)
         } catch (io: IOException) {
             if (source.freeBytes() < NarrationPlanning.FREE_SPACE_MARGIN_BYTES) {
                 pause("Not enough storage")
@@ -198,7 +207,7 @@ internal class NarrationGenerator(
             }
         }
         val published = pack ?: return interrupted(job, versionDir)
-        recordStats(job.voice.engine, stats)
+        recordStats(job.voice.engine, speedKey(job.voice.engine, voice), stats)
         ActivityLog.recordAll(
             ActivityCategory.TTS,
             "narration_published",
@@ -209,14 +218,20 @@ internal class NarrationGenerator(
                 "generationMs" to (now() - stats.startedAt),
                 "renderMs" to stats.realMs,
                 "inferenceThreads" to voice.inferenceThreads,
+                "inFlight" to voice.parallelism,
+                "remote" to (voice.location != null),
             ) + source.environment(),
         )
         onPublished(published)
         return JobOutcome.Done
     }
 
-    /** Writes every missing clip; null when all are there, else why it stopped. */
-    @Suppress("LongParameterList") // One chapter's generation state, passed through rather than stored.
+    /**
+     * Writes every missing clip in order; null when all are there, else why it stopped. Up to the
+     * synthesizer's [NarrationSynthesizer.parallelism] sentences generate at once (a server with
+     * several model copies); clips are still written, and progress counted, in sentence order.
+     */
+    @Suppress("LongParameterList", "CyclomaticComplexMethod") // One chapter's generation state, passed through rather than stored.
     private suspend fun writeClips(
         job: NarrationJob,
         text: NarrationChapterText,
@@ -225,31 +240,56 @@ internal class NarrationGenerator(
         opened: NarrationSynthesizer,
         current: NarrationPack?,
         stats: GenerationStats,
-    ): JobOutcome? {
-        // Saving a clip takes milliseconds against seconds of inference, so writes stay inline.
-        val voice = opened
-        val reuse = if (current != null && current.recipe.voiceKey == recipe.voiceKey) reusableClips(current) else emptyMap()
-        val items =
-            listOfNotNull(recipe.title?.let { store.titleFile(versionDir) to it }) +
-                recipe.sentences.mapIndexed { index, sentence -> store.clipFile(versionDir, index) to sentence }
-        var consecutiveEmpty = 0
-        for ((done, item) in items.withIndex()) {
-            publishProgress(job, text, done, items.size, recipe, stats)
-            // Moving another job first switches at the next sentence; this one keeps its clips and resumes later.
-            if (!stillWanted(job) || !isNext(job)) return JobOutcome.Interrupted
-            val (target, sentence) = item
-            if (target.isFile) continue
-            if (done > 0 && done % REFIT_CHECK_CLIPS == 0) voice.fitToDevice()
-            val reused = reuse[sentence]?.let(store::readClip)
-            val clip =
-                reused ?: synthesize(voice, sentence, versionDir, stats)
-                    ?: return JobOutcome.Failed("Could not generate: \"${sentence.take(FAILED_TEXT_CHARS)}\"")
-            consecutiveEmpty = if (clip.pcm.isEmpty() && reused == null) consecutiveEmpty + 1 else 0
-            if (consecutiveEmpty >= MAX_CONSECUTIVE_EMPTY) return JobOutcome.Failed("The voice produced no audio")
-            store.writeClip(target, clip)
+    ): JobOutcome? =
+        coroutineScope {
+            // Saving a clip takes milliseconds against seconds of inference, so writes stay inline.
+            val voice = opened
+            val reuse = if (current != null && current.recipe.voiceKey == recipe.voiceKey) reusableClips(current) else emptyMap()
+            val items =
+                listOfNotNull(recipe.title?.let { store.titleFile(versionDir) to it }) +
+                    recipe.sentences.mapIndexed { index, sentence -> store.clipFile(versionDir, index) to sentence }
+            val ahead = HashMap<Int, Deferred<TtsPcmClip?>>()
+            var launchFrom = 0
+
+            fun needsSynthesis(index: Int): Boolean = !items[index].first.isFile && reuse[items[index].second] == null
+
+            fun launchAhead(from: Int) {
+                launchFrom = maxOf(launchFrom, from)
+                while (launchFrom < items.size && ahead.size < voice.parallelism) {
+                    val index = launchFrom++
+                    if (needsSynthesis(index)) ahead[index] = async { synthesize(voice, items[index].second, versionDir, index, stats) }
+                }
+            }
+
+            fun stop(outcome: JobOutcome): JobOutcome {
+                this@coroutineScope.coroutineContext.cancelChildren()
+                return outcome
+            }
+            var consecutiveEmpty = 0
+            for ((done, item) in items.withIndex()) {
+                publishProgress(job, text, done, items.size, recipe, stats, voice)
+                // Moving another job first switches at the next sentence; this one keeps its clips and resumes later.
+                // So does choosing another place to generate.
+                if (!stillWanted(job) || !isNext(job) || synthesizers.location(job.voice) != voice.location) {
+                    return@coroutineScope stop(JobOutcome.Interrupted)
+                }
+                val (target, sentence) = item
+                if (target.isFile) continue
+                if (done > 0 && done % REFIT_CHECK_CLIPS == 0) voice.fitToDevice()
+                val reused = reuse[sentence]?.let(store::readClip)
+                launchAhead(done)
+                // Started ahead unless a reusable clip was expected; one that turns out unreadable is generated now.
+                val pending =
+                    ahead.remove(done) ?: if (reused == null) async { synthesize(voice, sentence, versionDir, done, stats) } else null
+                val clip =
+                    reused ?: pending?.await()
+                        ?: return@coroutineScope stop(JobOutcome.Failed("Could not generate: \"${sentence.take(FAILED_TEXT_CHARS)}\""))
+                consecutiveEmpty = if (clip.pcm.isEmpty() && reused == null) consecutiveEmpty + 1 else 0
+                if (consecutiveEmpty >= MAX_CONSECUTIVE_EMPTY) return@coroutineScope stop(JobOutcome.Failed("The voice produced no audio"))
+                store.writeClip(target, clip)
+            }
+            null
         }
-        return null
-    }
 
     /**
      * Publishing is allowed only while the job is still wanted and the chapter's text and the library
@@ -316,9 +356,10 @@ internal class NarrationGenerator(
         voice: NarrationSynthesizer,
         sentence: String,
         versionDir: File,
+        index: Int,
         stats: GenerationStats,
     ): TtsPcmClip? {
-        val temporary = File(versionDir, "render.wav.tmp")
+        val temporary = File(versionDir, "render-$index.wav.tmp")
         val startedAt = now()
         try {
             // One retry: a single hiccup must not fail a whole chapter.
@@ -381,12 +422,18 @@ internal class NarrationGenerator(
     /** Whether [job] is still the one the queue wants generated now (nothing was moved ahead of it). */
     private fun isNext(job: NarrationJob): Boolean = NarrationPlanning.next(queue.state.value.jobs)?.id == job.id
 
+    /** Speeds are kept per place: a computer generates several times faster than the phone. */
+    private fun speedKey(
+        engine: String,
+        voice: NarrationSynthesizer,
+    ): String = voice.location?.let { "$engine@${it.substringBefore('|')}" } ?: engine
+
     /**
      * The open synthesizer for [voice], re-fitted to the device: Kokoro must not run more threads
      * than Android currently lets the app use (fewer cores in the background).
      */
     private suspend fun openSynthesizer(voice: NarrationVoice): NarrationSynthesizer {
-        synthesizer?.takeIf { it.voice == voice }?.let {
+        synthesizer?.takeIf { it.voice == voice && it.location == synthesizers.location(voice) }?.let {
             it.fitToDevice()
             return it
         }
@@ -407,10 +454,12 @@ internal class NarrationGenerator(
         total: Int,
         recipe: NarrationRecipe,
         stats: GenerationStats,
+        voice: NarrationSynthesizer,
     ) {
+        val speedKey = speedKey(job.voice.engine, voice)
         val document = queue.state.value
         val measuredSpeed = stats.speed(now())
-        val speed = measuredSpeed ?: document.speed[job.voice.engine] ?: NarrationPlanning.DEFAULT_SPEED
+        val speed = measuredSpeed ?: document.speed[speedKey] ?: document.speed[job.voice.engine] ?: NarrationPlanning.DEFAULT_SPEED
         // This chapter's own voice rate, once enough of it is measured, beats the stored average.
         val measured = stats.msPerChar().takeIf { stats.characters >= MIN_STATS_CHARACTERS }
         val chapterAudio =
@@ -428,6 +477,7 @@ internal class NarrationGenerator(
                 chapterEtaMs = NarrationPlanning.generationMs(remainingHere, speed),
                 speed = measuredSpeed,
                 queuedAfter = others,
+                generatingOn = voice.locationName,
             )
     }
 
@@ -441,6 +491,7 @@ internal class NarrationGenerator(
 
     private fun recordStats(
         engine: String,
+        speedKey: String,
         stats: GenerationStats,
     ) {
         if (stats.characters < MIN_STATS_CHARACTERS) return
@@ -448,7 +499,7 @@ internal class NarrationGenerator(
             document.copy(
                 msPerChar = document.msPerChar + (engine to NarrationPlanning.blend(document.msPerChar[engine], stats.msPerChar())),
                 speed =
-                    stats.speed(now())?.let { document.speed + (engine to NarrationPlanning.blend(document.speed[engine], it)) }
+                    stats.speed(now())?.let { document.speed + (speedKey to NarrationPlanning.blend(document.speed[speedKey], it)) }
                         ?: document.speed,
             )
         }
@@ -486,9 +537,12 @@ internal class NarrationGenerator(
         }
     }
 
-    private fun pause(reason: String) {
+    private fun pause(
+        reason: String,
+        forServer: Boolean = false,
+    ) {
         ActivityLog.record(ActivityCategory.TTS, "narration_paused", "reason" to reason)
-        queue.update { it.copy(paused = true, pauseReason = reason) }
+        queue.update { it.copy(paused = true, pauseReason = reason, pausedForServer = forServer) }
     }
 
     private class GenerationStats(
@@ -498,6 +552,8 @@ internal class NarrationGenerator(
         var audioMs = 0L
         var realMs = 0L
 
+        // Sentences generating at once all report here.
+        @Synchronized
         fun add(
             chars: Int,
             audio: Long,

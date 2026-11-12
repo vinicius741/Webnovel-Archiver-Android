@@ -19,6 +19,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -56,7 +59,7 @@ class NarrationCoordinator internal constructor(
             store = store,
             queue = queue,
             source = source,
-            synthesizers = AndroidNarrationSynthesizers(context, kokoro),
+            synthesizers = AndroidNarrationSynthesizers(context, kokoro) { queue.state.value.generateOnServer },
             onPublished = ::onPublished,
             generationAllowed = generationAllowed,
         )
@@ -338,11 +341,11 @@ class NarrationCoordinator internal constructor(
         }
 
     fun pause() {
-        queue.update { it.copy(paused = true, pauseReason = null) }
+        queue.update { it.copy(paused = true, pauseReason = null, pausedForServer = false) }
     }
 
     fun resume() {
-        queue.update { it.copy(paused = false, pauseReason = null) }
+        queue.update { it.copy(paused = false, pauseReason = null, pausedForServer = false) }
         if (hasRunnableWork()) startService()
     }
 
@@ -361,6 +364,92 @@ class NarrationCoordinator internal constructor(
     fun markScreenOffPromptShown() {
         queue.update { it.copy(screenOffPromptShown = true) }
     }
+
+    /** Adds a computer, or saves changes to one with the same id; returns the saved server. */
+    fun saveServer(
+        id: String?,
+        name: String,
+        address: String,
+        token: String,
+    ): NarrationServer {
+        val server =
+            NarrationServer(
+                id = id ?: UUID.randomUUID().toString(),
+                name = name.trim(),
+                address = address.trim(),
+                token = NarrationServerPlanning.normalizeToken(token),
+            )
+        queue.update { document ->
+            val exists = document.servers.any { it.id == server.id }
+            document.copy(
+                servers =
+                    if (exists) {
+                        document.servers.map {
+                            if (it.id ==
+                                server.id
+                            ) {
+                                server
+                            } else {
+                                it
+                            }
+                        }
+                    } else {
+                        document.servers + server
+                    },
+            )
+        }
+        return server
+    }
+
+    /** Removes a computer; chapters it was generating continue on this phone. */
+    fun removeServer(id: String) {
+        queue.update { document ->
+            document.copy(
+                servers = document.servers.filter { it.id != id },
+                generateOn = document.generateOn.takeUnless { it == id },
+            )
+        }
+    }
+
+    /**
+     * Where Kokoro chapters generate: a server id, or null for this phone. A chapter in progress
+     * switches at its next sentence. Choosing a place resumes a queue that paused because the previous
+     * one could not be reached.
+     */
+    fun setGenerateOn(serverId: String?) {
+        queue.update { document ->
+            val resume = document.paused && document.pausedForServer
+            document.copy(
+                generateOn = serverId?.takeIf { id -> document.servers.any { it.id == id } },
+                paused = document.paused && !resume,
+                pauseReason = if (resume) null else document.pauseReason,
+                pausedForServer = false,
+            )
+        }
+        if (hasRunnableWork()) startService()
+    }
+
+    /** Connects to [server] and speaks one sentence: a summary of the connection, or why it failed. */
+    suspend fun testServer(server: NarrationServer): Result<String> =
+        runCatching {
+            val endpoint =
+                NarrationServerEndpoint.parse(server.address)
+                    ?: throw NarrationServerProblem("The address is not valid")
+            val client = NarrationServerClient(endpoint, server.token, server.name)
+            val info = client.info()
+            NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
+            // One sentence per model copy at once, as generation runs, so the speed is the server's total.
+            val started = System.currentTimeMillis()
+            val clips =
+                coroutineScope {
+                    (0 until info.workers.coerceIn(1, NarrationServerPlanning.MAX_IN_FLIGHT))
+                        .map { index ->
+                            async { client.synthesize(TEST_SENTENCES[index % TEST_SENTENCES.size], KokoroVoices.default.speakerId) }
+                        }.awaitAll()
+                }
+            if (clips.any { it == null }) throw NarrationServerProblem("${server.name} connected but could not generate audio")
+            NarrationServerPlanning.testSummary(info, endpoint, clips.sumOf { it!!.durationMs }, System.currentTimeMillis() - started)
+        }
 
     fun remove(jobIds: Set<String>) {
         queue.update { it.copy(jobs = it.jobs.filter { job -> job.id !in jobIds }) }
@@ -442,6 +531,13 @@ class NarrationCoordinator internal constructor(
         private const val QUEUE_FILE = "queue.json"
         private const val GOOGLE_TTS = "com.google.android.tts"
         private const val SPEED_TEST_WAIT_MS = 60_000L
+        private val TEST_SENTENCES =
+            listOf(
+                "Beyond the walls, the river had swollen with three days of rain, and the old bridge groaned under every cart.",
+                "He set the lantern on the table and waited for the others to find their seats.",
+                "By the time the fourth watch began, Captain Arlen had read the letter twice and folded it into his coat.",
+                "\"You're late,\" Mira said, without looking up from the map she had spread across the desk.",
+            )
     }
 }
 

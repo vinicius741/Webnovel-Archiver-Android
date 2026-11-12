@@ -44,6 +44,12 @@ internal object KokoroVoices {
 
     fun isEngine(enginePackage: String?): Boolean = enginePackage == ENGINE_ID
 
+    /**
+     * What a clip depends on besides its text: model, speaker and text preparation. The phone and a
+     * narration server running the same model produce interchangeable clips under the same key.
+     */
+    fun voiceKey(speakerId: Int): String = "$ENGINE_ID|speaker=$speakerId|text=${KokoroTextPlanning.VERSION}"
+
     fun identifier(voice: KokoroVoice): String = ID_PREFIX + voice.code
 
     fun isKokoroIdentifier(identifier: String?): Boolean = identifier?.startsWith(ID_PREFIX) == true

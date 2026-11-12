@@ -140,7 +140,7 @@ internal object NarrationScreenPlanning {
             job != null ->
                 GenerationBanner(
                     GenerationBanner.State.GENERATING,
-                    "Generating · ${percent(progress.fraction)}",
+                    "Generating" + (progress.generatingOn?.let { " on $it" } ?: "") + " · ${percent(progress.fraction)}",
                     chapterTitle = progress.chapterTitle,
                     storyTitle = progress.storyTitle,
                     storyId = job.storyId,

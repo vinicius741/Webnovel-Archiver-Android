@@ -58,6 +58,27 @@ data class NarrationQueueDocument(
     val speed: Map<String, Double> = emptyMap(),
     /** The one-time offer to allow generating with the screen off has been shown. */
     val screenOffPromptShown: Boolean = false,
+    /** The user's computers that can generate Kokoro audio (see `docs/tts/remote-narration-servers.md`). */
+    val servers: List<NarrationServer> = emptyList(),
+    /** Id of the server Kokoro chapters generate on; null generates on this phone. */
+    val generateOn: String? = null,
+    /** Generation paused itself because that server could not be used; choosing a place resumes it. */
+    val pausedForServer: Boolean = false,
+) {
+    /** The server Kokoro chapters generate on, or null for this phone. */
+    val generateOnServer: NarrationServer? get() = generateOn?.let { id -> servers.firstOrNull { it.id == id } }
+}
+
+/**
+ * A computer running `scripts/narration-server` that generates Kokoro audio for this phone. [address]
+ * is what the user typed: a host or IP, optionally with a port. Stored only in the narration folder,
+ * which backups leave out, so the token stays on this phone.
+ */
+data class NarrationServer(
+    val id: String = "",
+    val name: String = "",
+    val address: String = "",
+    val token: String = "",
 )
 
 /**
@@ -142,6 +163,8 @@ data class NarrationProgress(
     val queuedAfter: Int = 0,
     /** The chapter is about to start: its text is read and the voice is loading. */
     val preparing: Boolean = false,
+    /** The computer generating it, or null on this phone. */
+    val generatingOn: String? = null,
 ) {
     val fraction: Float get() = if (total <= 0) 0f else done.toFloat() / total
 }

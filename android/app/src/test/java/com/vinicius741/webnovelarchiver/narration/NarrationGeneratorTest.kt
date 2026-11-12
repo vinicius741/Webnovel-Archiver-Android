@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.narration
 import com.vinicius741.webnovelarchiver.tts.TtsPcmClip
 import com.vinicius741.webnovelarchiver.tts.TtsWavWriter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -63,22 +64,44 @@ class NarrationGeneratorTest {
         var opened = 0
         var refits = 0
 
+        /** Stand-ins for a narration server: where it generates, how many at once, and when it breaks. */
+        var where: String? = null
+        var inFlight = 1
+        var problemOn: String? = null
+        var speakDelayMs = 0L
+        var running = 0
+        var maxRunning = 0
+
+        override fun location(voice: NarrationVoice): String? = where
+
         override suspend fun open(voice: NarrationVoice): NarrationSynthesizer {
             if (unavailable) throw NarrationVoiceUnavailable("Engine missing")
             opened++
             onOpen()
+            val openedAt = where
+            val openedInFlight = inFlight
             return object : NarrationSynthesizer {
                 override val voice = voice
                 override val voiceKey = "fake|${voice.voiceId}"
+                override val location = openedAt
+                override val parallelism = openedInFlight
 
                 override suspend fun synthesize(
                     text: String,
                     output: File,
                 ): TtsPcmClip? {
                     if (text == failOn) return null
+                    if (text == problemOn) throw NarrationServerProblem("Can't reach Mac")
+                    running++
+                    maxRunning = maxOf(maxRunning, running)
+                    try {
+                        if (speakDelayMs > 0) delay(speakDelayMs)
+                    } finally {
+                        running--
+                    }
                     spoken += text
                     onSpeak(text)
-                    return TtsWavWriter.pcm16(FloatArray(2_400) { 0.5f }, 24_000)
+                    return TtsWavWriter.pcm16(FloatArray(2_400 + text.length) { 0.5f }, 24_000)
                 }
 
                 override suspend fun fitToDevice() {
@@ -454,6 +477,67 @@ class NarrationGeneratorTest {
                     .first(),
             )
             assertEquals(listOf("Second sentence.", "Third sentence."), synthesizers.spoken)
+            assertNotNull(store.pack("s", "c"))
+        }
+
+    @Test
+    fun aServerGeneratesSeveralSentencesAtOnceAndWritesThemInOrder() =
+        runTest {
+            // Each sentence is longer than the one before, and so is its fake clip: a swapped clip would show.
+            source.sentences = (1..12).map { "Sentence ${"x".repeat(it * 10)}." }
+            synthesizers.where = "mac"
+            synthesizers.inFlight = 4
+            synthesizers.speakDelayMs = 50
+            generator.runJob(enqueue())
+            val pack = store.pack("s", "c")!!
+            assertEquals(4, synthesizers.maxRunning)
+            assertEquals(13, synthesizers.spoken.size)
+            val sizes = source.sentences.indices.map { store.readClip(store.clipFile(pack.dir, it))!!.pcm.size }
+            assertEquals(sizes.sorted(), sizes)
+            assertEquals(sizes.size, sizes.toSet().size)
+        }
+
+    @Test
+    fun anUnreachableServerPausesTheQueueAndKeepsTheClips() =
+        runTest {
+            synthesizers.where = "mac"
+            synthesizers.problemOn = "Second sentence."
+            val job = enqueue()
+            generator.runJob(job)
+            val document = queue.state.value
+            assertTrue(document.paused)
+            assertTrue(document.pausedForServer)
+            assertEquals("Can't reach Mac", document.pauseReason)
+            assertEquals(NarrationJobState.QUEUED, document.jobs.single().state)
+            assertNull(store.pack("s", "c"))
+            // Resuming continues from the missing clips.
+            synthesizers.problemOn = null
+            synthesizers.spoken.clear()
+            queue.update { it.copy(paused = false, pauseReason = null, pausedForServer = false) }
+            generator.runJob(
+                queue.state.value.jobs
+                    .single(),
+            )
+            assertNotNull(store.pack("s", "c"))
+            assertFalse(synthesizers.spoken.contains("First sentence."))
+        }
+
+    @Test
+    fun choosingAnotherPlaceSwitchesAtTheNextSentence() =
+        runTest {
+            synthesizers.where = "mac"
+            synthesizers.onSpeak = { if (it == "First sentence.") synthesizers.where = null }
+            generator.runJob(enqueue())
+            assertNull(store.pack("s", "c"))
+            assertEquals(listOf("Chapter One", "First sentence."), synthesizers.spoken)
+            // The rerun reopens on the phone and finishes the rest.
+            synthesizers.spoken.clear()
+            generator.runJob(
+                queue.state.value.jobs
+                    .single(),
+            )
+            assertEquals(listOf("Second sentence.", "Third sentence."), synthesizers.spoken)
+            assertEquals(2, synthesizers.opened)
             assertNotNull(store.pack("s", "c"))
         }
 }
