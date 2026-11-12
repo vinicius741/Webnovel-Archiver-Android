@@ -86,10 +86,7 @@ internal class ChapterSelectionAdapter(
                 setPadding(context.dp(Space.MD), context.dp(Space.XS), context.dp(Space.LG), context.dp(Space.XS))
                 isClickable = true
                 isFocusable = true
-                layoutParams =
-                    RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        bottomMargin = context.dp(Space.XS)
-                    }
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(checkbox)
                 addView(
                     index,
@@ -114,16 +111,13 @@ internal class ChapterSelectionAdapter(
         val selected = item.chapter.id in selectedIds
         val anchored = position == rangeAnchor
         val colors = ThemeManager.colors
-        val radius =
-            holder.row.context
-                .dp(ThemeManager.shapes.cardRadius)
-                .toFloat()
+        // Rows sit on the list's card (CardListDecoration); selection is a faint gold wash, the range start a gold index.
         val background =
             when {
-                anchored -> strokeBg(colors.elevation1, radius, colors.primary, holder.row.context.dp(2))
-                selected -> roundedBg(colors.secondaryContainer, radius)
-                else -> roundedBg(colors.elevation1, radius)
+                selected -> roundedBg(colors.primary and SELECTED_ALPHA_MASK, 0f)
+                else -> roundedBg(android.graphics.Color.TRANSPARENT, 0f)
             }
+        holder.index.setTextColor(if (anchored) colors.primary else colors.faint)
 
         holder.checkbox.setOnCheckedChangeListener(null)
         holder.checkbox.isChecked = selected
@@ -134,7 +128,7 @@ internal class ChapterSelectionAdapter(
         val titleLabel = ChapterRowPlanning.displayTitle(item.chapter.title)
         holder.index.text = indexLabel
         holder.title.text = titleLabel
-        holder.row.background = ripple(background, radius, colors.onSurface)
+        holder.row.background = ripple(background, 0f, colors.onSurface)
         holder.row.contentDescription =
             "Chapter $indexLabel, $titleLabel, ${if (selected) "selected" else "not selected"}"
         holder.row.setOnClickListener {
@@ -311,3 +305,5 @@ internal class ChapterDragSelectionTouchListener(
         list.parent?.requestDisallowInterceptTouchEvent(false)
     }
 }
+
+private const val SELECTED_ALPHA_MASK = 0x14FFFFFF

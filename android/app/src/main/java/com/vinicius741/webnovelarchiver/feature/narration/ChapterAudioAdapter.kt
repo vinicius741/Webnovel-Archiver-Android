@@ -44,14 +44,26 @@ internal class ChapterAudioAdapter(
     private var chapters: List<Chapter> = emptyList()
     private val statuses = HashMap<String, NarrationChapterStatus>()
 
+    /** The row's leading and trailing parts that swap with selection mode. */
+    private class RowEnds(
+        val checkbox: CheckBox,
+        val icon: ImageView,
+        val bookmark: ImageView,
+        val more: ImageView,
+    )
+
     private class RowHolder(
         val row: LinearLayout,
-        val checkbox: CheckBox,
+        val ends: RowEnds,
         val title: TextView,
         val status: TextView,
         val bar: ProgressBar,
-        val bookmark: ImageView,
-    ) : RecyclerView.ViewHolder(row)
+    ) : RecyclerView.ViewHolder(row) {
+        val checkbox get() = ends.checkbox
+        val icon get() = ends.icon
+        val bookmark get() = ends.bookmark
+        val more get() = ends.more
+    }
 
     @android.annotation.SuppressLint("NotifyDataSetChanged") // Statuses change across the whole list at once.
     fun submit(
@@ -97,32 +109,56 @@ internal class ChapterAudioAdapter(
                 isClickable = false
                 isFocusable = false
             }
+        val icon =
+            ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
         val title =
-            makeText(context, "", Type.BODY_MEDIUM, ThemeManager.colors.onSurface).apply {
-                maxLines = 2
+            makeText(context, "", Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
+                maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
             }
         val status = makeText(context, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
         val bar = makeProgress(context, 0f) as ProgressBar
         val bookmark =
             ImageView(context).apply {
-                setImageDrawable(context.tintedIcon(R.drawable.wna_bookmark, ThemeManager.colors.primary))
+                setImageDrawable(context.tintedIcon(R.drawable.wna_bookmark, ThemeManager.colors.bookmark))
                 contentDescription = "Bookmark"
+            }
+        val more =
+            ImageView(context).apply {
+                setImageDrawable(context.tintedIcon(R.drawable.wna_more_vert, ThemeManager.colors.faint))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
         val texts =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(title)
-                addView(status)
-                addView(bar, (bar.layoutParams as LinearLayout.LayoutParams).apply { topMargin = context.dp(Space.XS) })
+                addView(
+                    status,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin =
+                            context.dp(1)
+                    },
+                )
+                addView(bar, (bar.layoutParams as LinearLayout.LayoutParams).apply { topMargin = context.dp(6) })
             }
         val row =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(context.dp(Space.SM), context.dp(Space.SM), context.dp(Space.SM), context.dp(Space.SM))
+                minimumHeight = context.dp(ROW_MIN_HEIGHT_DP)
+                setPadding(context.dp(Space.MD + 2), context.dp(Space.SM), context.dp(Space.MD), context.dp(Space.SM))
                 layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 addView(checkbox)
+                addView(
+                    icon,
+                    LinearLayout.LayoutParams(context.dp(STATUS_ICON_DP), context.dp(STATUS_ICON_DP)).apply {
+                        marginEnd =
+                            context.dp(Space.MD)
+                    },
+                )
                 addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 addView(
                     bookmark,
@@ -131,8 +167,12 @@ internal class ChapterAudioAdapter(
                             context.dp(Space.SM)
                     },
                 )
+                addView(
+                    more,
+                    LinearLayout.LayoutParams(context.dp(ICON_DP), context.dp(ICON_DP)).apply { marginStart = context.dp(Space.SM) },
+                )
             }
-        return RowHolder(row, checkbox, title, status, bar, bookmark)
+        return RowHolder(row, RowEnds(checkbox, icon, bookmark, more), title, status, bar)
     }
 
     override fun onBindViewHolder(
@@ -171,6 +211,29 @@ internal class ChapterAudioAdapter(
     ) {
         holder.status.text = statusLabel(status)
         holder.status.setTextColor(statusColor(status))
+        // A round status badge: play when ready, a waveform while generating, a clock while queued.
+        val colors = ThemeManager.colors
+        val (res, tint, fill) =
+            when (status) {
+                is NarrationChapterStatus.Ready -> Triple(R.drawable.wna_play_circle, colors.primary, colors.primaryContainer)
+                is NarrationChapterStatus.Generating -> Triple(R.drawable.wna_graphic_eq, colors.secondary, colors.secondaryContainer)
+                is NarrationChapterStatus.Queued -> Triple(R.drawable.wna_schedule, colors.onSurfaceVariant, colors.elevation3)
+                is NarrationChapterStatus.Failed, is NarrationChapterStatus.Outdated ->
+                    Triple(
+                        R.drawable.wna_error,
+                        colors.error,
+                        colors.errorContainer,
+                    )
+                else -> Triple(R.drawable.wna_radio_unchecked, colors.faint, colors.elevation2)
+            }
+        holder.icon.setImageDrawable(holder.icon.context.tintedIcon(res, tint))
+        holder.icon.background =
+            roundedBg(
+                fill,
+                holder.icon.context
+                    .dp(STATUS_ICON_DP / 2)
+                    .toFloat(),
+            )
         if (status is NarrationChapterStatus.Generating) {
             holder.bar.visibility = View.VISIBLE
             holder.bar.progress = (status.progress.coerceIn(0f, 1f) * PERCENT).toInt()
@@ -185,14 +248,12 @@ internal class ChapterAudioAdapter(
     ) {
         val selected = selection.active && selection.isSelected(chapter.id)
         holder.checkbox.visibility = if (selection.active) View.VISIBLE else View.GONE
+        holder.icon.visibility = if (selection.active) View.GONE else View.VISIBLE
+        holder.more.visibility = if (selection.active) View.GONE else View.VISIBLE
         holder.checkbox.isChecked = selected
-        val radius =
-            holder.row.context
-                .dp(ThemeManager.shapes.cardRadius)
-                .toFloat()
         holder.row.background =
             if (selected) {
-                roundedBg(ThemeManager.colors.secondaryContainer, radius)
+                android.graphics.drawable.ColorDrawable(ThemeManager.colors.primary and SELECTED_ALPHA_MASK)
             } else {
                 selectableRipple(ThemeManager.colors.primary and RIPPLE_ALPHA_MASK)
             }
@@ -203,6 +264,9 @@ internal class ChapterAudioAdapter(
         const val ROW = 1
         const val PERCENT = 100
         const val ICON_DP = 20
+        const val STATUS_ICON_DP = 34
+        const val ROW_MIN_HEIGHT_DP = 62
+        const val SELECTED_ALPHA_MASK = 0x14FFFFFF
         const val RIPPLE_ALPHA_MASK = 0x22FFFFFF
         const val PROGRESS = "progress"
         const val SELECTION = "selection"

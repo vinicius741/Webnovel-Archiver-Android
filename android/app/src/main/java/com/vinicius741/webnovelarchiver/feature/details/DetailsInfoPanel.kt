@@ -1,186 +1,60 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
+import android.graphics.Color
+import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
-import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetric
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
+import com.vinicius741.webnovelarchiver.domain.story.SourceMetadataPlanning
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
-import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
-import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
-import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
-import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
-import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
-import com.vinicius741.webnovelarchiver.feature.downloads.startSourceCheck
-import com.vinicius741.webnovelarchiver.feature.downloads.storySourceCheck
-import com.vinicius741.webnovelarchiver.feature.story.generateConfiguredEpub
-import com.vinicius741.webnovelarchiver.feature.story.openEpubForStory
-import com.vinicius741.webnovelarchiver.feature.story.syncStory
+import com.vinicius741.webnovelarchiver.feature.story.StoryTab
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.source.PatreonSession
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn
-import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.GridLayout
+import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.WrapLayout
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeBadge
-import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
+import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeSectionHeader
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.ripple
+import com.vinicius741.webnovelarchiver.ui.roundedBg
+import com.vinicius741.webnovelarchiver.ui.strokeBg
+import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
-/** Builds the info panel and returns the stable views the download-refresh loop patches in place after progress events. */
-@Suppress("CyclomaticComplexMethod") // One linear UI builder intentionally reflects mutually exclusive story states.
-internal fun ScreenHost.buildDetailsInfoPanel(
+/*
+ * The Overview tab under the hero ("About" beside the hero pane on the inner screen): engagement
+ * stat cards, content warnings, the Patreon card, the description with Read more and Listen, tags,
+ * and a short details list.
+ */
+
+/** Builds the About part into [container]; returns the description's Listen button for the player observer. */
+internal fun ScreenHost.addDetailsAbout(
+    container: LinearLayout,
     story: Story,
-    operation: StoryOperationState?,
-    aiOperation: StoryOperationState?,
-    downloadSummary: DownloadDetailsPlanning.StoryDownloadSummary,
-    pacingStatus: DownloadPacingUiStatus? = null,
-): DetailsInfoPanel {
-    val isBusy = operation != null
-    val infoPanel = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
-    val header = buildDetailsHeader(story)
-    infoPanel.addView(header.view)
-    // Source metadata stays in the top summary area; after a long synopsis it looked uncaptured.
-    buildSourceMetadataFlow(story)?.let(infoPanel::addView)
-
-    // Mutable slots the caller patches after progress events; non-null only when rendered.
-    var bannerSlot: LinearLayout? = null
-    var downloadActionSlot: LinearLayout? = null
-    var operationSlot: LinearLayout? = null
-    var aiOperationSlot: LinearLayout? = null
-
-    if (aiOperation?.kind == StoryOperationKind.AI_COVER) {
-        aiOperationSlot = makeStoryOperationSlot(app, aiOperation)
-        infoPanel.addView(aiOperationSlot!!)
-    } else if (story.id in repository.aiCoverUnseen.value || aiControlsScreenState.coverDrafts[story.id] != null) {
-        // A finished background cover waits for a decision; lead straight to it.
-        infoPanel.addView(
-            makeFullWidthButton(app, "Review new AI cover", Btn.TONAL, R.drawable.wna_auto_awesome, dp(Space.SM + 2)) {
-                showAiControls(story.id, AiControlsTab.COVER)
-            },
-        )
-    }
-    if (story.isArchived == true) {
-        // Only a legacy archive whose startup fold failed reaches here; the fold retries each start.
-        infoPanel.addView(
-            makeText(
-                app,
-                "Old archive copy: read-only until it merges into its novel",
-                Type.LABEL_MEDIUM,
-                ThemeManager.colors.tertiary,
-            ).apply {
-                gravity = Gravity.CENTER
-                setPadding(0, dp(Space.SM), 0, dp(Space.XS))
-            },
-        )
-    }
-    if (story.isArchived != true && story.sourceSyncState.availability != SourceAvailability.available) {
-        infoPanel.addView(buildSourceAvailabilityNotice(story))
-    }
-    val removedNoticeHiddenThrough = repository.getDisplayPreferences().removedChaptersNoticeHiddenThrough?.get(story.id)
-    if (RemovedChapterPlanning.showsRemovedNotice(story, removedNoticeHiddenThrough)) {
-        infoPanel.addView(buildRemovedChaptersNotice(story))
-    }
-    if (StoryActionGuards.canSync(story)) {
-        val syncLabel =
-            when {
-                operation?.kind == StoryOperationKind.SYNC -> "Checking Source..."
-                story.sourceSyncState.availability != SourceAvailability.available -> "Check Source Again"
-                else -> "Sync Chapters"
-            }
-        infoPanel.addView(
-            makeFullWidthButton(
-                app,
-                syncLabel,
-                Btn.FILLED,
-                R.drawable.wna_refresh,
-                dp(Space.SM + 2),
-                enabled = !isBusy,
-            ) {
-                syncStory(story)
-            },
-        )
-    }
-    if (operation?.kind == StoryOperationKind.SYNC) {
-        operationSlot = makeStoryOperationSlot(app, operation)
-        infoPanel.addView(operationSlot!!)
-    }
-    if (StoryActionGuards.canQueueDownloads(story)) {
-        downloadActionSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
-        renderDetailsDownloadAction(downloadActionSlot!!, story, downloadSummary, isBusy)
-        infoPanel.addView(downloadActionSlot!!)
-    }
-    if (shouldShowDetailsBanner(downloadSummary)) {
-        // Stable slot: the refresh loop swaps the banner child in place instead of rebuilding the
-        // screen. Patching a detached slot view is safe and shows on reattach.
-        bannerSlot =
-            LinearLayout(app).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(
-                    makeDownloadProgressBanner(
-                        app,
-                        downloadSummary,
-                        pacingStatus,
-                        sourceCheck = storySourceCheck(story.id),
-                        onVerify = { startSourceCheck(it.providerId, it.sampleUrl) },
-                    ) { showQueue() },
-                )
-            }
-        infoPanel.addView(bannerSlot!!)
-    }
-    if (operation?.kind == StoryOperationKind.CLEANUP) {
-        // Stable slot: progress ticks patch in place; per-chapter showDetails calls flickered.
-        operationSlot = makeStoryOperationSlot(app, operation)
-        infoPanel.addView(operationSlot!!)
-    }
-    val hasEpub = (!story.epubPaths.isNullOrEmpty()) || !story.epubPath.isNullOrBlank()
-    val generateLabel = if (operation?.kind == StoryOperationKind.EPUB) "Generating..." else "Generate EPUB"
-    val generateEpubButton =
-        makeFullWidthButton(
-            app,
-            generateLabel,
-            Btn.TONAL,
-            R.drawable.wna_menu_book,
-            dp(Space.SM + 2),
-            enabled =
-                story.downloadedChapters > 0 && !isBusy,
-        ) {
-            generateConfiguredEpub(story)
-        }
-    infoPanel.addView(generateEpubButton)
-    if (operation?.kind == StoryOperationKind.EPUB) {
-        operationSlot = makeStoryOperationSlot(app, operation)
-        infoPanel.addView(operationSlot!!)
-    }
-    infoPanel.addView(
-        makeFullWidthButton(
-            app,
-            "Read EPUB",
-            Btn.OUTLINED,
-            R.drawable.wna_book_open,
-            dp(Space.SM + 2),
-            enabled =
-                hasEpub && !isBusy,
-        ) {
-            openEpubForStory(story)
-        },
-    )
-    if (story.epubStale == true && hasEpub) {
-        infoPanel.addView(buildStaleEpubNotice(story, isBusy))
-    }
-
-    // Render the card for any Patreon URL, even without public stats: a link-only card surfaces the
-    // creator's Patreon instead of showing nothing, which reads as having none.
+    twoPane: Boolean,
+): Button? {
+    val isBusy = storyOperation?.storyId == story.id
+    addStatCards(container, story, twoPane)
+    addWarningsAndUpdated(container, story)
     if (!story.effectivePatreonUrl.isNullOrBlank()) {
-        infoPanel.addView(
+        container.addView(
             buildPatreonStatsCard(
                 stats = story.patreonStats,
                 patreonUrl = story.effectivePatreonUrl,
@@ -191,124 +65,215 @@ internal fun ScreenHost.buildDetailsInfoPanel(
                         PatreonSession.isPresent(),
                         PatreonSession.storedAt,
                     ),
-                onShowTrends = { showTrends(story.id, FOCUS_PATREON_USD) },
+                onShowTrends = { switchStoryTab(story.id, StoryTab.TRENDS, AppRoute.Trends(story.id, FOCUS_PATREON_USD)) },
                 onEarlyAccess = { showPatreonEarlyAccessPicker(story) },
                 onEarlyAccessPrompt = { action -> handleEarlyAccessPrompt(story, action) },
                 earlyAccessEnabled = !isBusy,
                 onEditLink = { showPatreonLinkDialog(story) }.takeIf { !isBusy && StoryActionGuards.canModifyStory(story) },
             ),
         )
+    } else if (StoryActionGuards.canModifyStory(story)) {
+        container.addView(buildNoPatreonCard(story, isBusy))
     }
+    val aiOperation = aiOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_DESCRIPTION }
+    val listen = addDescription(container, story, aiOperation)
+    addTags(container, story)
+    addDetailsList(container, story)
+    return listen
+}
 
-    val descriptionViews = addDetailsDescription(infoPanel, story, aiOperation)
-    if (aiOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
-        aiOperationSlot = descriptionViews.aiOperationSlot
+/** Invites adding the author's Patreon, which tracks members and early access. */
+private fun ScreenHost.buildNoPatreonCard(
+    story: Story,
+    isBusy: Boolean,
+): View {
+    val colors = ThemeManager.colors
+    val radius = dp(ThemeManager.shapes.cardRadius).toFloat()
+    return LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(Spacing.LG), dp(Spacing.MD + 2), dp(Spacing.LG), dp(Spacing.MD + 2))
+        background = ripple(strokeBg(colors.elevation1, radius, colors.line, dp(1)), radius, colors.onSurface)
+        isClickable = !isBusy
+        isFocusable = !isBusy
+        addView(
+            ImageView(app).apply {
+                setImageDrawable(app.tintedIcon(R.drawable.wna_star, colors.onSurfaceVariant))
+            },
+            LinearLayout.LayoutParams(dp(22), dp(22)),
+        )
+        addView(
+            LinearLayout(app).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(Spacing.MD + 2), 0, dp(Spacing.MD), 0)
+                addView(makeText(app, "No Patreon linked", Type.TITLE_SMALL, colors.onSurface))
+                addView(
+                    makeText(app, "Add the author's Patreon to track members and early access.", Type.BODY_SMALL, colors.onSurfaceVariant),
+                )
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        addView(
+            ImageView(app).apply {
+                setImageDrawable(app.tintedIcon(R.drawable.wna_add, colors.primary))
+            },
+            LinearLayout.LayoutParams(dp(22), dp(22)),
+        )
+        contentDescription = "Add Patreon link"
+        if (!isBusy) setOnClickListener { showPatreonLinkDialog(story) }
+        layoutParams =
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(Spacing.LG)
+            }
     }
-    addDetailsTags(infoPanel, story)
+}
 
-    return DetailsInfoPanel(
-        infoPanel,
-        header.progressSummary,
-        bannerSlot,
-        downloadActionSlot,
-        generateEpubButton,
-        operationSlot,
-        aiOperationSlot,
-        descriptionViews.listenButton,
+/**
+ * The active synopsis (source or AI) under an About header with Listen; the slim AI progress
+ * block stays here so backing out of the AI tab mid-generation still shows the job running.
+ */
+private fun ScreenHost.addDescription(
+    container: LinearLayout,
+    story: Story,
+    operation: StoryOperationState?,
+): Button? {
+    val description = AiDescriptionPlanning.activeDescription(story)
+    if (description == null && operation == null) return null
+    val colors = ThemeManager.colors
+    val header =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(makeSectionHeader(app, "About").apply { setPadding(dp(Spacing.XS), 0, dp(Spacing.SM), 0) })
+            if (AiDescriptionPlanning.isAiDescriptionActive(story)) {
+                addView(
+                    makeBadge(
+                        app,
+                        "AI",
+                        colors.primaryContainer,
+                        colors.onPrimaryContainer,
+                    ).withStartIcon(R.drawable.wna_auto_awesome, colors.onPrimaryContainer),
+                )
+            }
+            addView(View(app), LinearLayout.LayoutParams(0, 1, 1f))
+        }
+    val listen =
+        description?.let {
+            makeButton(app, "Listen", Btn.TEXT, R.drawable.wna_speaker) { toggleDescriptionTts(story) }.also { button ->
+                button.minHeight = dp(40)
+                button.minimumHeight = dp(40)
+                header.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+        }
+    container.addView(
+        header,
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(Spacing.LG)
+        },
+    )
+    description?.let { addDescriptionText(container, story, it) }
+    if (operation != null) {
+        makeStoryOperationSlot(app, operation).also {
+            detailsAiOperationSlot = it
+            container.addView(it)
+        }
+    }
+    return listen
+}
+
+private fun ScreenHost.addTags(
+    container: LinearLayout,
+    story: Story,
+) {
+    val tags = story.tags?.filter(String::isNotBlank)?.takeIf { it.isNotEmpty() } ?: return
+    val colors = ThemeManager.colors
+    container.addView(makeSectionHeader(app, "Tags"))
+    container.addView(
+        WrapLayout(app).apply {
+            horizontalSpacingDp = Spacing.SM
+            verticalSpacingDp = Spacing.SM
+            val radius = dp(ThemeManager.shapes.chipRadius).toFloat()
+            tags.forEach { tag ->
+                addView(
+                    makeText(app, tag, Type.LABEL_LARGE, colors.onSurface).apply {
+                        setPadding(dp(Spacing.MD), dp(6), dp(Spacing.MD), dp(6))
+                        background = strokeBg(Color.TRANSPARENT, radius, colors.outline, dp(1))
+                    },
+                )
+            }
+        },
     )
 }
 
-/** Stable container whose children are swapped per tick by [renderStoryOperationProgress] without tearing down Details. */
+/** Source, type, when it was added and last synced, and its library tab. */
+private fun ScreenHost.addDetailsList(
+    container: LinearLayout,
+    story: Story,
+) {
+    val colors = ThemeManager.colors
+    val providerName = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.name ?: "—"
+    val tabName =
+        story.tabId?.let { id ->
+            repository.tabs
+                .get()
+                .firstOrNull { it.id == id }
+                ?.name
+        } ?: "Unassigned"
+    val rows =
+        listOf(
+            Triple(R.drawable.wna_globe, "Source", providerName),
+            Triple(R.drawable.wna_list, "Type", story.sourceMetadata.sourceType?.takeIf { it.isNotBlank() } ?: "—"),
+            Triple(R.drawable.wna_event, "Added", story.dateAdded?.let(::formatSourceDate) ?: "—"),
+            Triple(R.drawable.wna_refresh, "Last synced", story.lastChapterSyncAt?.let { formatAgo(it) } ?: "Never"),
+            Triple(R.drawable.wna_tab, "Tab", tabName),
+        )
+    container.addView(makeSectionHeader(app, "Details"))
+    val radius = dp(ThemeManager.shapes.cardRadius).toFloat()
+    val card =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            background = strokeBg(colors.elevation1, radius, colors.line, dp(1))
+        }
+    rows.forEachIndexed { index, (icon, label, value) ->
+        if (index >
+            0
+        ) {
+            card.addView(
+                View(app).apply { setBackgroundColor(colors.line) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)),
+            )
+        }
+        card.addView(
+            LinearLayout(app).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = dp(DETAIL_ROW_DP)
+                setPadding(dp(Spacing.LG), 0, dp(Spacing.LG), 0)
+                addView(
+                    ImageView(app).apply { setImageDrawable(app.tintedIcon(icon, colors.onSurfaceVariant)) },
+                    LinearLayout.LayoutParams(dp(20), dp(20)),
+                )
+                addView(
+                    makeText(app, label, Type.BODY_MEDIUM, colors.onSurface).apply { setPadding(dp(Spacing.LG), 0, dp(Spacing.SM), 0) },
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                )
+                addView(makeText(app, value, Type.BODY_MEDIUM, colors.onSurfaceVariant).apply { maxLines = 1 })
+            },
+        )
+    }
+    container.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+}
+
+/** Stable container whose children are swapped per tick by [renderStoryOperationProgress] without tearing down the page. */
 internal fun makeStoryOperationSlot(
     context: android.content.Context,
     operation: StoryOperationState,
 ): LinearLayout =
     LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
+        setPadding(0, context.dp(Spacing.SM), 0, 0)
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         renderStoryOperationProgress(this, operation)
     }
 
-/** Result of [buildDetailsInfoPanel]: the panel plus the stable views the refresh loop patches. */
-internal data class DetailsInfoPanel(
-    val view: LinearLayout,
-    /** Header's downloaded / total summary, patched as each chapter finishes. */
-    val headerProgressSummary: android.view.View?,
-    /** Live download banner slot, non-null only when the banner is shown. */
-    val bannerSlot: LinearLayout?,
-    /** "Download Remaining" action slot, non-null only when downloads can be queued. */
-    val downloadActionSlot: LinearLayout?,
-    /** Generate action enabled when the first downloaded chapter arrives. */
-    val generateEpubButton: Button,
-    /** In-flight sync / cleanup / EPUB progress slot, patched in place per tick; null when none runs. */
-    val operationSlot: LinearLayout?,
-    /** In-flight AI cover / description progress slot; null when no AI job runs for this story. */
-    val aiOperationSlot: LinearLayout?,
-    /** Description "Listen" button, patched in place by the description-TTS observer. */
-    val descriptionTtsButton: Button?,
-)
-
-/**
- * Renders the active synopsis, source or AI, with copy, expand, and Listen. The slim AI progress
- * block stays here so backing out of AI Controls mid-generation still shows the job running.
- */
-private fun ScreenHost.addDetailsDescription(
-    infoPanel: LinearLayout,
-    story: Story,
-    operation: StoryOperationState?,
-): DetailsDescriptionViews {
-    val activeDescription = AiDescriptionPlanning.activeDescription(story)
-    val showingAi = AiDescriptionPlanning.isAiDescriptionActive(story)
-    val generating = operation?.kind == StoryOperationKind.AI_DESCRIPTION
-    if (activeDescription == null && !generating) return DetailsDescriptionViews(null, null)
-    val descCol =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-            setPadding(0, dp(Space.MD), 0, dp(Space.SM))
-        }
-    if (showingAi) {
-        val aiBadge = makeBadge(app, "AI-generated", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer)
-        aiBadge.layoutParams =
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(Space.SM)
-            }
-        descCol.addView(aiBadge)
-    }
-    val listenButton = activeDescription?.let { addDescriptionTextAndListen(descCol, story, it) }
-    val aiOperationSlot =
-        if (generating && operation != null) {
-            makeStoryOperationSlot(app, operation).also(descCol::addView)
-        } else {
-            null
-        }
-    infoPanel.addView(descCol)
-    return DetailsDescriptionViews(listenButton, aiOperationSlot)
-}
-
-/** Views [addDetailsDescription] hands back to the Details screen builder. */
-internal data class DetailsDescriptionViews(
-    /** Description "Listen" button for the TTS observer; null when no description is displayed. */
-    val listenButton: Button?,
-    /** AI-generation progress slot, non-null only while an AI_DESCRIPTION operation is active. */
-    val aiOperationSlot: LinearLayout?,
-)
-
-private fun ScreenHost.addDetailsTags(
-    infoPanel: LinearLayout,
-    story: Story,
-) {
-    story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
-        infoPanel.addView(
-            WrapLayout(app).apply {
-                horizontalSpacingDp = Space.SM
-                verticalSpacingDp = Space.SM
-                setPadding(0, dp(Space.MD), 0, dp(Space.MD))
-                tags.forEach { tag ->
-                    addView(makeBadge(app, tag, ThemeManager.colors.surfaceVariant, ThemeManager.colors.onSurfaceVariant))
-                }
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            },
-        )
-    }
-}
+private const val DETAIL_ROW_DP = 52

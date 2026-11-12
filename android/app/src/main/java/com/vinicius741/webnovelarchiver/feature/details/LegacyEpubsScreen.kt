@@ -23,6 +23,7 @@ import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
+import com.vinicius741.webnovelarchiver.ui.makeSectionHeader
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
@@ -42,7 +43,7 @@ import java.util.Locale
  */
 internal fun ScreenHost.showLegacyEpubs(storyId: String) {
     val story = repository.story(storyId) ?: return showLibrary()
-    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title) {
+    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB files", subtitle = story.title) {
         addView(
             makeEmptyState(
                 context,
@@ -73,13 +74,13 @@ private fun ScreenHost.renderLegacyEpubs(
     // Leftovers newest-first (inverse of listEpubs) so recently abandoned files surface first; current keeps reading order.
     val leftover = onDisk.filter { it.absolutePath !in referenced }.asReversed()
 
-    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title) {
+    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB files", subtitle = story.title) {
         if (onDisk.isEmpty()) {
             addView(
                 makeEmptyState(
                     context,
                     title = "No EPUB files",
-                    message = "Generate an EPUB from the details screen to see it here.",
+                    message = "Generate an EPUB from the story page to see it here.",
                     iconRes = R.drawable.wna_book_open,
                 ),
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
@@ -233,7 +234,7 @@ internal class LegacyEpubsAdapter(
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             minimumHeight = context.dp(64)
-            setPadding(context.dp(Space.MD), context.dp(Space.SM), context.dp(Space.MD), context.dp(Space.SM))
+            setPadding(context.dp(Space.LG), context.dp(Space.MD), context.dp(Space.SM), context.dp(Space.XS))
             isClickable = false
             isFocusable = false
             layoutParams =
@@ -291,15 +292,7 @@ internal class LegacyEpubsAdapter(
         ) {
             root.removeAllViews()
             val colors = ThemeManager.colors
-            root.addView(
-                TextView(root.context).apply {
-                    text = "$title ($count)"
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_MEDIUM.size())
-                    typeface = Typeface.create(typeface, Typeface.BOLD)
-                    setTextColor(colors.primary)
-                    setPadding(root.context.dp(Space.MD), root.context.dp(Space.SM), 0, root.context.dp(Space.XS))
-                },
-            )
+            root.addView(makeSectionHeader(root.context, "$title · $count"))
         }
     }
 
@@ -322,13 +315,9 @@ internal class LegacyEpubsAdapter(
             val badge = if (item.isReferenced) "Active" else "Leftover"
             tags.subtitle.text = "$badge · ${formatBytes(file.length())}"
             tags.created.text = "Created ${formatEpubDate(file.lastModified())}"
-            // Leftovers get an outlined surface to read as clean-up candidates.
-            root.background =
-                if (item.isReferenced) {
-                    ripple(roundedBg(colors.elevation1, radius), radius, colors.onSurface)
-                } else {
-                    ripple(strokeBg(colors.elevation1, radius, colors.outline, root.context.dp(1)), radius, colors.onSurface)
-                }
+            // Hairline card for the current files; leftovers get a stronger outline to read as clean-up candidates.
+            val border = if (item.isReferenced) colors.line else colors.outline
+            root.background = ripple(strokeBg(colors.elevation1, radius, border, root.context.dp(1)), radius, colors.onSurface)
             tags.seeButton.setOnClickListener { onSee(file) }
             // Referenced files must never be deleted here — that would dangle the story's active EPUB.
             if (item.isReferenced) {

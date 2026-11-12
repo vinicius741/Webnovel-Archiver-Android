@@ -2,340 +2,110 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
-import androidx.core.widget.doAfterTextChanged
-import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
 import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
-import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
-import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
+import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.readerTtsTransport
-import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
-import com.vinicius741.webnovelarchiver.ui.AppBarAction
-import com.vinicius741.webnovelarchiver.ui.Btn
-import com.vinicius741.webnovelarchiver.ui.Space
-import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
-import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.makeButton
-import com.vinicius741.webnovelarchiver.ui.makeDivider
-import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
-import com.vinicius741.webnovelarchiver.ui.makeSearchField
-import com.vinicius741.webnovelarchiver.ui.rememberListPosition
-import com.vinicius741.webnovelarchiver.ui.screen
-import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.tickerFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
-internal fun ScreenHost.showDetails(storyId: String) {
+/**
+ * The story page's Overview tab (the hero, then About), or its Chapters tab when [chapters] is set.
+ * Live download events patch the hero and the chapter rows in place ([observeDetailsDownload]).
+ */
+internal fun ScreenHost.showDetails(
+    storyId: String,
+    chapters: Boolean = false,
+) {
     // Drop the previous collector before its views are torn down.
     detachDetailsTtsListener()
-    // Seed from the cached library; the download observer below patches this in place afterward.
     val story = repository.story(storyId) ?: return showLibrary()
-    val screenKey = AppRoute.Details(story.id).stableKey
-    activeStory = story
-    // Re-render on fold/unfold/rotation so the layout switches live.
-    rerender = { showDetails(storyId) }
-    val layout = currentScreenLayout()
-    val operation = storyOperation?.takeIf { it.storyId == story.id }
-    // AI jobs only show progress here; they never gate the content actions.
-    val aiOperation = this.aiOperation?.takeIf { it.storyId == story.id }
-    val isBusy = operation != null
-    // The cached queue drives the initial render; later events patch rows in place.
-    val queue = repository.queue()
-    val jobsForStory = queue.filter { it.storyId == story.id }
-    val downloadSummary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
-    val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
-    val initialPacingSnapshots = app.appContainer.downloadPacer.snapshots.value.values
-    val waitingChapterIds = waitingChapterIds(jobsForStory, initialPacingSnapshots, app.appContainer.time.nowMillis())
-    val initialPacingStatus =
-        detailsPacingStatus(
-            storyId = story.id,
-            storySourceUrl = story.sourceUrl,
-            jobsForStory = jobsForStory,
-            snapshots = initialPacingSnapshots,
-            nowMillis = app.appContainer.time.nowMillis(),
-            allJobs = queue,
-        )
-    // Stable refs for the refresh closure: the views can detach when scrolled off-screen.
-    var headerProgressSummary: View? = null
-    var bannerSlot: ViewGroup? = null
-    var downloadActionSlot: LinearLayout? = null
-    var generateEpubButton: Button? = null
-    var chaptersBinding: androidx.recyclerview.widget.RecyclerView? = null
-    // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
-    detailsOperationSlot = null
-    detailsAiOperationSlot = null
-    // Remembered with the history entry, so returning from the reader keeps the search.
-    var chapterQuery = routeMemory.queries[screenKey].orEmpty()
-    var clearChapterSearch: () -> Unit = {}
-    screen(
-        route = AppRoute.Details(story.id),
-        title = story.title,
-        subtitle = "by ${story.author}",
-        actions = listOf(AppBarAction(R.drawable.wna_more_vert, "More options") { showDetailsOverflow(story) }),
-        // The RecyclerView must be the scroll surface; a ScrollView wrapper defeats row recycling.
-        scrollable = false,
-        backIntercept = BackIntercept(isActive = { chapterQuery.isNotEmpty() }, clear = { clearChapterSearch() }),
-    ) {
-        val panel = buildDetailsInfoPanel(story, operation, aiOperation, downloadSummary, initialPacingStatus)
-        val infoPanel = panel.view
-        headerProgressSummary = panel.headerProgressSummary
-        bannerSlot = panel.bannerSlot
-        downloadActionSlot = panel.downloadActionSlot
-        generateEpubButton = panel.generateEpubButton
-        // Direct ref, not a tree walk: in compact layout the slot can detach inside the RecyclerView header.
-        detailsOperationSlot = panel.operationSlot
-        detailsAiOperationSlot = panel.aiOperationSlot
-
-        val chapterControls =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(0, dp(Space.SM), 0, 0)
-            }
-        val search = makeSearchField(context, "Search chapters")
-        if (chapterQuery.isNotEmpty()) search.setText(chapterQuery)
-        clearChapterSearch = { search.text.clear() }
-        chapterControls.addView(search)
-        val chipsContainer =
-            com.vinicius741.webnovelarchiver.ui.WrapLayout(context).apply {
-                horizontalSpacingDp = Space.SM
-                verticalSpacingDp = Space.SM
-                setPadding(0, dp(Space.MD), 0, dp(Space.MD))
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            }
-        chapterControls.addView(chipsContainer)
-
-        val chaptersContainer =
-            androidx.recyclerview.widget.RecyclerView(context).apply {
-                layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
-                setHasFixedSize(false)
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-            }
-        chaptersBinding = chaptersContainer
-
-        // Compact: details + controls ride as the list header; two-pane keeps them above the list.
-        val listHeader: View? =
-            if (!layout.isTwoPane) {
-                buildCompactListHeader(infoPanel, chapterControls)
-            } else {
-                null
-            }
-
-        var chapterFilter = repository.chapterFilterSettings.get().filterMode
-
-        var pick: (String) -> Unit = {}
-        pick = { mode ->
-            chapterFilter = mode
-            scope.launch { repository.chapterFilterSettings.save(ChapterFilterSettings(mode)) }
-            renderFilterChips(chipsContainer, chapterFilter, story, pick)
-            renderChapterList(
-                story,
-                chaptersContainer,
-                chapterQuery,
-                chapterFilter,
-                chipsContainer,
-                pick,
-                chapterStatuses,
-                waitingChapterIds,
-                listHeader,
-            )
-        }
-        search.doAfterTextChanged {
-            chapterQuery = it?.toString().orEmpty()
-            routeMemory.queries[screenKey] = chapterQuery
-            renderChapterList(
-                story,
-                chaptersContainer,
-                chapterQuery,
-                chapterFilter,
-                chipsContainer,
-                pick,
-                chapterStatuses,
-                waitingChapterIds,
-                listHeader,
-            )
-        }
-        renderFilterChips(chipsContainer, chapterFilter, story, pick)
-        renderChapterList(
-            story,
-            chaptersContainer,
-            chapterQuery,
-            chapterFilter,
-            chipsContainer,
-            pick,
-            chapterStatuses,
-            waitingChapterIds,
-            listHeader,
-        )
-
-        if (layout.isTwoPane) {
-            val leftScroll = scroll(infoPanel)
-            val rightPane =
-                LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    addView(chapterControls)
-                    addView(chaptersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-                }
-            val shell =
-                LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    addView(
-                        leftScroll,
-                        LinearLayout.LayoutParams(dp(DETAILS_TWO_PANE_LEFT_WIDTH_DP), ViewGroup.LayoutParams.MATCH_PARENT).apply {
-                            marginEnd = dp(DETAILS_TWO_PANE_GAP_DP)
-                        },
-                    )
-                    addView(rightPane, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
-                }
-            // Weighted (not MATCH_PARENT) so the docked TTS transport below still fits.
-            addView(shell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    val route = AppRoute.Details(story.id, chapters)
+    rerender = { showDetails(storyId, chapters) }
+    var chaptersTab: ChaptersTab? = null
+    storyScreen(
+        route = route,
+        story = story,
+        // The chapter RecyclerView must be the scroll surface; a ScrollView wrapper defeats row recycling.
+        scrollable = !chapters,
+        backIntercept =
+            BackIntercept(
+                isActive = { chaptersTab?.hasQuery?.invoke() == true },
+                clear = { chaptersTab?.clearSearch?.invoke() },
+            ),
+    ) { frame ->
+        if (chapters) {
+            val tab = buildChaptersTab(this, story, route.stableKey)
+            chaptersTab = tab
+            frame.chapterList = tab.list
         } else {
-            addView(chaptersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            val listen = addDetailsAbout(this, story, frame.twoPane)
+            addDescriptionPlayer(frame.footer, story, listen)
         }
-
-        // Docked outside the scrollers so controls stay reachable; only description sessions drive this bar.
-        var ttsSnapshot = detailsDescriptionSnapshotSeed(repository.getTtsSession(), ttsEngine.playbackState.value, story.id)
-        var ttsPlayPause: ImageView? = null
-        val ttsTransport =
-            readerTtsTransport(
-                snapshot = ttsSnapshot,
-                onPlayPause = { ttsPlayPause = it },
-                onPrev = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS) },
-                onPlayPauseTap = {
-                    val action =
-                        if (ttsSnapshot?.isPaused != false) {
-                            TtsForegroundService.ACTION_RESUME_SESSION
-                        } else {
-                            TtsForegroundService.ACTION_PAUSE
-                        }
-                    TtsForegroundService.command(app, action)
-                },
-                onNext = { TtsForegroundService.command(app, TtsForegroundService.ACTION_NEXT) },
-                onStop = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
-            )
-        ttsTransport.visibility = if (ttsSnapshot != null) View.VISIBLE else View.GONE
-        addView(ttsTransport, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        observeDetailsDescriptionTts(
-            story = story,
-            listenButton = panel.descriptionTtsButton,
-            transportBar = ttsTransport,
-            transportPlayPause = ttsPlayPause,
-            initialSnapshot = ttsSnapshot,
-            onSnapshot = { ttsSnapshot = it },
-        )
-
-        rememberListPosition(chaptersContainer)
     }
-    val root = frame.getChildAt(0)
-    val bindings =
-        DetailsBindings(
-            root = root,
-            chapters = requireNotNull(chaptersBinding),
-            headerProgressSummary = headerProgressSummary,
-            bannerSlot = bannerSlot,
-            downloadActionSlot = downloadActionSlot,
-            generateEpubButton = requireNotNull(generateEpubButton),
-        )
-    observeDetailsDownload(storyId, bindings, isBusy, initialPacingStatus)
 }
 
-private fun ScreenHost.buildCompactListHeader(
-    infoPanel: LinearLayout,
-    chapterControls: LinearLayout,
-): LinearLayout =
-    LinearLayout(app).apply {
-        orientation = LinearLayout.VERTICAL
-        var infoExpanded = true
-        val collapseToggle = makeButton(app, "Hide details", Btn.TEXT, R.drawable.wna_chevron_down) {}
-        collapseToggle.setOnClickListener {
-            infoExpanded = !infoExpanded
-            infoPanel.visibility = if (infoExpanded) View.VISIBLE else View.GONE
-            collapseToggle.text = if (infoExpanded) "Hide details" else "Show details"
-        }
-        addView(
-            collapseToggle,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin =
-                    dp(Space.XS)
-            },
-        )
-        addView(infoPanel)
-        addView(makeDivider(app))
-        addView(chapterControls)
-    }
-
-internal fun ScreenHost.renderDetailsDownloadAction(
-    slot: LinearLayout,
-    story: Story,
-    summary: DownloadDetailsPlanning.StoryDownloadSummary,
-    isBusy: Boolean,
+/** Docked under the Overview, outside its scroller, while the description is read aloud. */
+private fun ScreenHost.addDescriptionPlayer(
+    footer: LinearLayout,
+    story: com.vinicius741.webnovelarchiver.domain.model.Story,
+    listenButton: android.widget.Button?,
 ) {
-    slot.removeAllViews()
-    val remainingChapters = story.chapters.count { !it.downloaded }
-    if (
-        remainingChapters == 0 ||
-        !com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
-            .canQueueDownloads(story)
-    ) {
-        return
-    }
-    val enabled = !isBusy && !summary.isActive
-    val label = if (remainingChapters == story.chapters.size) "Download All" else "Download Remaining ($remainingChapters)"
-    slot.addView(
-        makeFullWidthButton(
-            app,
-            label,
-            Btn.FILLED,
-            R.drawable.wna_download,
-            dp(Space.SM + 2),
-            enabled = enabled,
-        ) {
-            val latest = repository.story(story.id) ?: return@makeFullWidthButton
-            queueDownload(
-                latest,
-                latest.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null },
-            )
-        },
-    )
-    slot.addView(
-        makeFullWidthButton(app, "Select Chapters", Btn.TEXT, R.drawable.wna_list) {
-            showChapterSelection(story.id)
-        },
+    var ttsSnapshot = detailsDescriptionSnapshotSeed(repository.getTtsSession(), ttsEngine.playbackState.value, story.id)
+    var ttsPlayPause: ImageView? = null
+    val transport =
+        readerTtsTransport(
+            snapshot = ttsSnapshot,
+            onPlayPause = { ttsPlayPause = it },
+            onPrev = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS) },
+            onPlayPauseTap = {
+                val action =
+                    if (ttsSnapshot?.isPaused !=
+                        false
+                    ) {
+                        TtsForegroundService.ACTION_RESUME_SESSION
+                    } else {
+                        TtsForegroundService.ACTION_PAUSE
+                    }
+                TtsForegroundService.command(app, action)
+            },
+            onNext = { TtsForegroundService.command(app, TtsForegroundService.ACTION_NEXT) },
+            onStop = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
+        )
+    transport.visibility = if (ttsSnapshot != null) View.VISIBLE else View.GONE
+    footer.addView(transport, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    observeDetailsDescriptionTts(
+        story = story,
+        listenButton = listenButton,
+        transportBar = transport,
+        transportPlayPause = ttsPlayPause,
+        initialSnapshot = ttsSnapshot,
+        onSnapshot = { ttsSnapshot = it },
     )
 }
-
-/** Left info-pane width (dp) in the two-pane layout. */
-private const val DETAILS_TWO_PANE_LEFT_WIDTH_DP = 360
-
-/** Gap (dp) between the two panes. */
-private const val DETAILS_TWO_PANE_GAP_DP = Space.MD
 
 /**
- * Subscribes the in-place download-refresh loop for the Details screen. Download state is emitted
- * process-wide by the shared repository; this patches the chapter rows, download controls, and
- * banner after a coherent event and never polls disk or rebuilds the screen for progress ticks.
- * If the list is being dragged/flung, events are coalesced until it becomes idle so an adapter update cannot
- * interfere with the gesture.
+ * Patches the story page's download surfaces (hero actions, banner, coverage, chapter rows) after
+ * each coherent download event, never polling disk or rebuilding the page for progress ticks.
+ * While the chapter list is dragged or flung, events wait until it is idle. The collector lives as
+ * long as [DetailsBindings.root] stays on screen, so any tab that shows the hero can use it.
  */
 internal fun ScreenHost.observeDetailsDownload(
     storyId: String,
     bindings: DetailsBindings,
-    isBusy: Boolean,
-    initialPacingStatus: DownloadPacingUiStatus?,
 ) {
-    if (frame.childCount == 0) return
     val root = bindings.root
+    if (root.parent !== frame) return
     val handler = android.os.Handler(android.os.Looper.getMainLooper())
     var patchPosted = false
     var pendingSnapshot: DownloadUiSnapshot? = null
@@ -347,19 +117,16 @@ internal fun ScreenHost.observeDetailsDownload(
             object : Runnable {
                 override fun run() {
                     if (root.parent !== frame) return
-                    if (bindings.chapters.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
+                    val scrolling =
+                        bindings.chapters?.scrollState?.let { it != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE } == true
+                    if (scrolling) {
                         handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
                         return
                     }
                     patchPosted = false
                     val snapshot = pendingSnapshot
                     pendingSnapshot = null
-                    refreshDetailsDownload(
-                        storyId,
-                        bindings,
-                        isBusy,
-                        snapshot,
-                    )
+                    refreshDetailsDownload(storyId, bindings, snapshot)
                 }
             }
         handler.post(patch)
@@ -368,17 +135,12 @@ internal fun ScreenHost.observeDetailsDownload(
     val initialSnapshot = repository.downloadState.value
     var observedLibraryVersion = initialSnapshot.libraryVersion
     var observedQueueVersion = initialSnapshot.queueVersion
-    var observedPacingStatus = initialPacingStatus
-    screenObserver =
+    var observedPacingStatus = currentPacingStatus(storyId)
+    val job =
         scope.launch {
             launch {
                 repository.downloadState.collect { snapshot ->
-                    if (
-                        snapshot.libraryVersion == observedLibraryVersion &&
-                        snapshot.queueVersion == observedQueueVersion
-                    ) {
-                        return@collect
-                    }
+                    if (snapshot.libraryVersion == observedLibraryVersion && snapshot.queueVersion == observedQueueVersion) return@collect
                     observedLibraryVersion = snapshot.libraryVersion
                     observedQueueVersion = snapshot.queueVersion
                     if (root.parent === frame) {
@@ -393,26 +155,14 @@ internal fun ScreenHost.observeDetailsDownload(
                     tickerFlow(nowMillis = app.appContainer.time::nowMillis),
                 ) { pacing, now -> pacing.values to now }
                     .collect { (pacing, now) ->
-                        if (root.parent !== frame) return@collect
+                        if (root.parent !== frame || bindings.hero == null) return@collect
                         val hasLiveTimer =
                             observedPacingStatus != null ||
                                 pacing.any { it.nextRequestAtMillis > now } ||
-                                repository.downloadState.value.queue.any {
-                                    it.storyId == storyId && (it.nextRetryAt ?: 0L) > now
-                                }
+                                repository.downloadState.value.queue
+                                    .any { it.storyId == storyId && (it.nextRetryAt ?: 0L) > now }
                         if (!hasLiveTimer) return@collect
-                        val story = repository.story(storyId) ?: return@collect
-                        val queue = repository.queue()
-                        val jobsForStory = queue.filter { it.storyId == storyId }
-                        val pacingStatus =
-                            detailsPacingStatus(
-                                storyId = storyId,
-                                storySourceUrl = story.sourceUrl,
-                                jobsForStory = jobsForStory,
-                                snapshots = pacing,
-                                nowMillis = now,
-                                allJobs = queue,
-                            )
+                        val pacingStatus = currentPacingStatus(storyId, pacing, now)
                         if (pacingStatus != observedPacingStatus) {
                             observedPacingStatus = pacingStatus
                             refreshDetailsPacingBanner(storyId, bindings, pacing, now)
@@ -420,4 +170,32 @@ internal fun ScreenHost.observeDetailsDownload(
                     }
             }
         }
+    // The page owns the collector: it stops when this tree leaves the screen (tab switch, fold, Back).
+    root.addOnAttachStateChangeListener(
+        object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) = Unit
+
+            override fun onViewDetachedFromWindow(v: View) {
+                job.cancel()
+                v.removeOnAttachStateChangeListener(this)
+            }
+        },
+    )
+}
+
+private fun ScreenHost.currentPacingStatus(
+    storyId: String,
+    pacing: Collection<DownloadPacingSnapshot> = app.appContainer.downloadPacer.snapshots.value.values,
+    now: Long = app.appContainer.time.nowMillis(),
+): DownloadPacingUiStatus? {
+    val story = repository.story(storyId) ?: return null
+    val queue = repository.queue()
+    return detailsPacingStatus(
+        storyId = storyId,
+        storySourceUrl = story.sourceUrl,
+        jobsForStory = queue.filter { it.storyId == storyId },
+        snapshots = pacing,
+        nowMillis = now,
+        allJobs = queue,
+    )
 }
