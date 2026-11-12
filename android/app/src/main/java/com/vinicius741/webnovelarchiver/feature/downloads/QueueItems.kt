@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.download.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
+import com.vinicius741.webnovelarchiver.download.DownloadPacingUiKind
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadQueueSectionPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadQueueStatusCopy
@@ -14,7 +15,7 @@ import com.vinicius741.webnovelarchiver.download.QueueStoryPlan
 import com.vinicius741.webnovelarchiver.download.SourceCheckCard
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 
-/** Colour role for a status line; the adapter maps it to theme colours at bind time. */
+/** Colour role for a status line; the adapter maps it to theme colours at bind time (WARNING is copper). */
 internal enum class QueueTone { NORMAL, ACTIVE, WARNING, ERROR, DONE }
 
 /** One row of the Downloads list. Plain data, so DiffUtil only rebinds rows whose text changed. */
@@ -23,7 +24,7 @@ internal sealed interface QueueItem {
 }
 
 internal data class QueueSummaryItem(
-    val text: String,
+    val summary: QueueSummary,
 ) : QueueItem {
     override val key = "summary"
 }
@@ -77,6 +78,8 @@ internal data class QueueChapterItem(
     val jobStatus: String,
     val blocked: Boolean,
     val inlineRetry: Boolean,
+    /** The novel's last open chapter row, which closes its card. */
+    val last: Boolean = false,
 ) : QueueItem {
     override val key = "chapter:$jobId"
 }
@@ -100,7 +103,7 @@ internal fun buildQueueItems(
     expandOverride: Map<String, Boolean>,
 ): List<QueueItem> {
     val waiting = DownloadPacingUiPlanning.waitingJobs(pacing, queue, nowMillis)
-    val items = mutableListOf<QueueItem>(QueueSummaryItem(DownloadQueueStatusCopy.summaryLine(plan)))
+    val items = mutableListOf<QueueItem>(QueueSummaryItem(QueueSummaryPlanning.summary(plan)))
     checkCards.forEach { items += QueueCheckItem(it, siteName(it.providerId)) }
     if (plan.failedChapters > 0) items += QueueFailedItem(plan.failedChapters)
 
@@ -126,7 +129,7 @@ internal fun buildQueueItems(
                     title = story.title,
                     subtitle = "${siteName(story.providerId)} · ${story.counts.completed} of ${story.counts.total} chapters",
                     status = DownloadQueueStatusCopy.storyStatusLine(story, storyPacing),
-                    tone = storyTone(story),
+                    tone = storyTone(story, storyPacing?.kind),
                     completed = story.counts.completed,
                     total = story.counts.total,
                     section = story.section,
@@ -136,7 +139,7 @@ internal fun buildQueueItems(
                     expanded = expanded,
                 )
             if (expanded) {
-                unfinished.forEach { job ->
+                unfinished.forEachIndexed { index, job ->
                     val blocked =
                         story.blocked &&
                             (job.status == DownloadJobStatus.Pending.wire || DownloadQueueSectionPlanning.isBlockedFailure(job))
@@ -157,6 +160,7 @@ internal fun buildQueueItems(
                             jobStatus = job.status,
                             blocked = blocked,
                             inlineRetry = terminal && !blocked,
+                            last = index == unfinished.lastIndex,
                         )
                 }
             }
@@ -193,9 +197,13 @@ internal fun buildQueueItems(
     return items
 }
 
-private fun storyTone(story: QueueStoryPlan): QueueTone =
+private fun storyTone(
+    story: QueueStoryPlan,
+    pacing: DownloadPacingUiKind?,
+): QueueTone =
     when {
         story.blocked -> QueueTone.WARNING
+        pacing == DownloadPacingUiKind.RATE_LIMIT_WAIT || pacing == DownloadPacingUiKind.RETRY_WAIT -> QueueTone.WARNING
         story.section == QueueSection.DOWNLOADING -> QueueTone.ACTIVE
         story.section == QueueSection.FINISHED && (story.counts.hasFailed || story.counts.hasCancelled) -> QueueTone.ERROR
         story.section == QueueSection.FINISHED -> QueueTone.DONE

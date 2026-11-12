@@ -9,7 +9,7 @@ import com.vinicius741.webnovelarchiver.feature.story.share
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
-import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.SegmentedControl
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
@@ -20,11 +20,13 @@ import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showCleanupRules() {
+    rerender = { showCleanupRules() }
     val state = cleanupScreenState
     val mode = state.mode
     screen(
         route = AppRoute.CleanupRules,
-        title = "Text Cleanup",
+        title = "Text cleanup",
+        subtitle = "Applied to read-aloud and downloaded text",
         actions =
             listOf(
                 AppBarAction(R.drawable.wna_share, "Export cleanup rules") {
@@ -32,20 +34,18 @@ internal fun ScreenHost.showCleanupRules() {
                 },
             ),
     ) {
-        // Tabs stay above the scrolling pane, even at the bottom of a long sentence list.
-        row {
-            CleanupMode.values().forEach { tab ->
-                addView(
-                    makeButton(context, tab.label, if (tab == mode) Btn.FILLED else Btn.TONAL) {
-                        state.mode = tab
-                        showCleanupRules()
-                    }.apply { isSelected = tab == mode },
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        if (tab == CleanupMode.REGEX) marginStart = dp(Space.SM)
-                    },
-                )
-            }
-        }
+        // The segmented control stays above the scrolling pane, even at the bottom of a long list.
+        val counts = listOf(repository.sentenceRemovalList.get().size, repository.regexRules.get().size)
+        val modes = CleanupMode.values().toList()
+        addView(
+            SegmentedControl(context, modes.map { it.label }, modes.indexOf(mode), counts) { index ->
+                state.mode = modes[index]
+                showCleanupRules()
+            }.view,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(Space.XS)
+            },
+        )
         val body =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL

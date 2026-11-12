@@ -4,11 +4,14 @@ import android.app.AlertDialog
 import android.graphics.Typeface
 import android.text.InputType
 import android.widget.EditText
+import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
+import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.cleanup.RegexCleanupPresets
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
 import com.vinicius741.webnovelarchiver.ui.FormLayout
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -18,23 +21,28 @@ import com.vinicius741.webnovelarchiver.ui.applyFormStyle
 import com.vinicius741.webnovelarchiver.ui.applyInputStyle
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeField
+import com.vinicius741.webnovelarchiver.ui.makeSheetRow
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.makeThemedSpinner
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.scroll
+import com.vinicius741.webnovelarchiver.ui.showBottomSheet
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showCleanupPresetPicker() {
-    val presets = RegexCleanupPresets.Preset.values()
-    AlertDialog
-        .Builder(app)
-        .setTitle("Choose a cleanup preset")
-        .setItems(presets.map { it.title }.toTypedArray()) { _, index -> showCleanupPresetDialog(presets[index]) }
-        .setNegativeButton("Cancel", null)
-        .show()
-        .applyAppTheme()
+    val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+    var sheet: BottomSheetHandle? = null
+    RegexCleanupPresets.Preset.values().forEach { preset ->
+        body.addView(
+            makeSheetRow(app, preset.title, preset.description, R.drawable.wna_filter) {
+                sheet?.dismiss()
+                showCleanupPresetDialog(preset)
+            },
+        )
+    }
+    sheet = showBottomSheet(app, title = "Add preset", subtitle = "Ready-made rules you can tune before adding", body = body)
 }
 
 internal fun ScreenHost.showCleanupPresetDialog(

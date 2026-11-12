@@ -3,7 +3,9 @@ package com.vinicius741.webnovelarchiver.feature.downloads
 import android.app.AlertDialog
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
@@ -13,6 +15,7 @@ import com.vinicius741.webnovelarchiver.download.DownloadCounts
 import com.vinicius741.webnovelarchiver.download.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
 import com.vinicius741.webnovelarchiver.download.DownloadQueueSectionPlanning
+import com.vinicius741.webnovelarchiver.download.DownloadQueueStatusCopy
 import com.vinicius741.webnovelarchiver.download.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAppBarPlan
@@ -21,19 +24,21 @@ import com.vinicius741.webnovelarchiver.download.QueueSection
 import com.vinicius741.webnovelarchiver.download.SourceCheckCard
 import com.vinicius741.webnovelarchiver.download.SourceCheckOutcome
 import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
-import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
+import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
+import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
-import com.vinicius741.webnovelarchiver.ui.ThemeManager
+import com.vinicius741.webnovelarchiver.ui.activeCoverSource
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
 import com.vinicius741.webnovelarchiver.ui.layout.queueMaxWidth
+import com.vinicius741.webnovelarchiver.ui.loadImage
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.rememberListPosition
 import com.vinicius741.webnovelarchiver.ui.screen
@@ -82,7 +87,12 @@ internal fun ScreenHost.showQueue() {
             app.appContainer.time.nowMillis(),
         )
     }
-    screen(route = AppRoute.Queue, title = "Downloads", actions = queueAppBarActions(initialAppBar)) {
+    screen(
+        route = AppRoute.Queue,
+        title = "Downloads",
+        subtitle = QueueSummaryPlanning.subtitle(initialPlan),
+        actions = queueAppBarActions(initialAppBar),
+    ) {
         // Width-capped centered column so tablets/Fold don't stretch edge-to-edge; no effect on phones.
         val centered = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val centeredShell =
@@ -98,7 +108,7 @@ internal fun ScreenHost.showQueue() {
                 )
             }
         emptySlot = FrameLayout(context)
-        adapter = QueueListAdapter(app, queueListActions(session, renderNow))
+        adapter = QueueListAdapter(app, queueListActions(session, renderNow)) { view, id -> bindQueueCover(view, id) }
         list =
             RecyclerView(context).apply {
                 layoutManager = LinearLayoutManager(context)
@@ -209,6 +219,8 @@ private fun ScreenHost.renderQueue(
     outcomes: Map<String, SourceCheckOutcome>,
     nowMillis: Long,
 ) {
+    val plan = queuePlan(queue)
+    setQueueSubtitle(QueueSummaryPlanning.subtitle(plan))
     if (queue.isEmpty()) {
         list.visibility = View.GONE
         emptySlot.visibility = View.VISIBLE
@@ -218,7 +230,9 @@ private fun ScreenHost.renderQueue(
                     app,
                     message = "Chapters you download will appear here while they download.",
                     title = "Nothing downloading",
-                    iconRes = R.drawable.wna_download,
+                    iconRes = R.drawable.wna_download_done,
+                    actionLabel = "Find new chapters",
+                    onAction = { showUpdates() },
                 ),
             )
         }
@@ -227,7 +241,6 @@ private fun ScreenHost.renderQueue(
     }
     list.visibility = View.VISIBLE
     emptySlot.visibility = View.GONE
-    val plan = queuePlan(queue)
     val cards = DownloadQueueSectionPlanning.checkCards(plan.blockedSites, outcomes, nowMillis)
     adapter.submit(buildQueueItems(plan, cards, queue, pacing.values, nowMillis, storyExpandOverride))
 }
@@ -299,4 +312,21 @@ internal fun ScreenHost.launchQueueControl(
             toast("Couldn't save that change")
         }
     }
+}
+
+/** Loads a novel's current cover into its card; tapping the cover opens it full screen. */
+private fun ScreenHost.bindQueueCover(
+    view: ImageView,
+    storyId: String,
+) {
+    val story = repository.story(storyId)
+    val source = story?.let { activeCoverSource(it) }
+    if (source == null) {
+        view.setImageDrawable(null)
+        view.setOnClickListener(null)
+        view.isClickable = false
+        return
+    }
+    view.setOnClickListener { repository.story(storyId)?.let { showCoverDialog(it) } }
+    loadImage(source, view, fallbackOnError = if (source is java.io.File) story.coverUrl?.takeIf { it.isNotBlank() } else null)
 }

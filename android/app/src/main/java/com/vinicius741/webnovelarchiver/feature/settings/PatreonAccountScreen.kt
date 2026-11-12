@@ -91,8 +91,9 @@ internal fun ScreenHost.showPatreonAccount(storyId: String? = null) {
     val signedIn = status is AccountStatus.SignedIn
     val firefox = FirefoxLauncher.installedPackage(app)
 
-    screen(route = AppRoute.PatreonAccount(storyId), title = "Patreon Account", scrollable = true) {
-        addView(buildStatusCard(this, status, storyId))
+    screen(route = AppRoute.PatreonAccount(storyId), title = "Patreon account", scrollable = true) {
+        capSettingsWidth(this)
+        buildStatusCard(this, status, storyId)
         if (signedIn && !state.stepsExpanded) {
             fullButton("Sign in with a different account", Btn.TEXT, bottomMarginDp = Space.SM) {
                 state.stepsExpanded = true
@@ -188,11 +189,12 @@ private fun ScreenHost.buildStatusCard(
             AccountStatus.Rejected -> "Patreon didn't accept the saved sign-in" to "It may have expired. Follow the steps below again."
             is AccountStatus.Unreachable -> "Sign-in saved" to "Couldn't reach Patreon to confirm it: ${status.reason}"
         }
-    return parent.card {
-        text(title, Type.TITLE_SMALL)
-        body?.let {
-            spacer(Space.XS)
-            text(it, Type.BODY_SMALL, colors.onSurfaceVariant)
+    val tint = if (status is AccountStatus.Rejected) colors.error else colors.secondary
+    return parent.tintedCard(tint) {
+        iconColumnRow(R.drawable.wna_favorite, tint).apply {
+            addView(makeEyebrow(context, "Patreon", tint))
+            addView(makeText(context, title, Type.TITLE_SMALL, colors.onSurface).apply { textSize = STATUS_TITLE_SP })
+            body?.let { addView(makeText(context, it, Type.BODY_SMALL, colors.onSurfaceVariant).apply { setPadding(0, dp(2), 0, 0) }) }
         }
         val story = storyId?.let { repository.story(it) }
         if (status is AccountStatus.SignedIn && story != null && story.patreonEarlyAccess != null) {
@@ -367,3 +369,5 @@ private suspend fun ScreenHost.checkAccount(): AccountStatus =
     ) {
         AccountStatus.Unreachable(error.message ?: error.javaClass.simpleName)
     }
+
+private const val STATUS_TITLE_SP = 15f
