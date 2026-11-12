@@ -92,7 +92,7 @@ class ChapterCoverageBar(
         fillPaint.color = c.primary
         // Error red, not tertiary: in some themes tertiary lands too close to primary and the pin
         // vanishes into the fill. Red is distinct in every theme.
-        bookmarkPaint.color = c.error
+        bookmarkPaint.color = c.bookmark
         bookmarkHaloPaint.color = c.surface
     }
 

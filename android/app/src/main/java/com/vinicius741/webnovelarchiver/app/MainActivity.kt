@@ -18,6 +18,7 @@ import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
@@ -46,6 +47,7 @@ import com.vinicius741.webnovelarchiver.navigation.LibraryScreenState
 import com.vinicius741.webnovelarchiver.navigation.RouteViewMemory
 import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.ShellBadgePlanning
 import com.vinicius741.webnovelarchiver.navigation.ShellDestination
 import com.vinicius741.webnovelarchiver.navigation.ShellNavigationPlanning
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
@@ -274,6 +276,7 @@ class MainActivity :
                     attachAiJobChip(root)
                     attachAiJobBridges()
                     container.awaitRepositoryReady()
+                    attachShellBadges(container.narration)
                     initializeUiAfterRepositoryReady()
                     ttsEngine.restorePausedSession()
                     container.simulation?.attachIndicator(root)
@@ -476,6 +479,22 @@ class MainActivity :
         super.onConfigurationChanged(newConfig)
         shell.onConfigurationChanged()
         rerender?.invoke()
+    }
+
+    /**
+     * Keeps the navigation badges current: novels whose next chapter may be out (Updates), novels
+     * with chapters waiting to download (Downloads), and a dot while audio generates (Listen).
+     */
+    private fun attachShellBadges(narration: com.vinicius741.webnovelarchiver.narration.NarrationCoordinator) {
+        scope.launch {
+            repository.downloadState.collect { snapshot ->
+                shell.setBadge(ShellDestination.UPDATES, UpdatesPlanning.badgeCount(snapshot.library, System.currentTimeMillis()))
+                shell.setBadge(ShellDestination.DOWNLOADS, ShellBadgePlanning.downloadsBadge(snapshot.queue))
+            }
+        }
+        scope.launch {
+            narration.progress.collect { progress -> shell.setBadge(ShellDestination.LISTEN, null, dot = progress != null) }
+        }
     }
 
     /** A navigation bar / rail tap: start that destination's history over the Library root. */
