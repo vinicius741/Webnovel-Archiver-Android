@@ -15,7 +15,9 @@ data class NarrationRequest(
 @Suppress("TooManyFunctions") // One cohesive set of pure rules, each unit-tested on its own.
 object NarrationPlanning {
     const val DEFAULT_KEEP_AHEAD = 5
-    val KEEP_AHEAD_CHOICES = listOf(0, 1, 3, 5, 10)
+
+    /** The most chapters keep-ahead reaches past the playing one (the "Chapters ahead" stepper's top). */
+    const val KEEP_AHEAD_MAX = 30
 
     /** Kokoro at 1x, measured on novel text; replaced by each engine's own measurement. */
     const val DEFAULT_MS_PER_CHAR = 62.0
@@ -130,7 +132,8 @@ object NarrationPlanning {
     /**
      * The chapters keep-ahead should queue: within the [count] chapters right after [currentChapterId]
      * (the order auto-advance plays them in), those that can be played and have neither a pack nor a
-     * job. The window is fixed before filtering, so refills never reach further ahead than [count].
+     * job. The window is fixed before filtering, so refills never reach further ahead than [count],
+     * itself capped at [KEEP_AHEAD_MAX].
      */
     fun keepAheadChapters(
         chapters: List<Chapter>,
@@ -145,7 +148,7 @@ object NarrationPlanning {
         if (current < 0) return emptyList()
         return chapters
             .drop(current + 1)
-            .take(count)
+            .take(count.coerceAtMost(KEEP_AHEAD_MAX))
             .filter { isPlayable(it) && !hasPack(it.id) && !hasJob(it.id) }
             .map { it.id }
     }

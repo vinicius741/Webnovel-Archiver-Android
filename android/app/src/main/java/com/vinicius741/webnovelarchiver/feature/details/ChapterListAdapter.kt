@@ -2,7 +2,14 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.TextUtils
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -20,90 +27,79 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.chapterStatusDot
 import com.vinicius741.webnovelarchiver.ui.dot
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
-import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /**
- * RecyclerView adapter for the Details chapter list (recycling keeps huge novels from re-inflating
- * every row on each render/filter tick). [chapterStatuses] carries live per-chapter download state
- * from the queue so rows can show spinner/queued/failed feedback beyond the static downloaded dot.
+ * The Chapters tab's rows (recycling keeps huge novels from inflating every row on each filter or
+ * download tick). [show] re-filters and diffs by chapter id, so a download event rebinds only the
+ * rows whose state changed. Rows are transparent; [com.vinicius741.webnovelarchiver.ui.CardListDecoration]
+ * draws the card behind them.
  */
-class ChapterListAdapter(
+@Suppress("TooManyFunctions") // RecyclerView adapter: overrides plus one bind helper per row part.
+class ChapterListAdapter internal constructor(
     private val host: ScreenHost,
-    private var chapters: List<Pair<Int, Chapter>>,
     private var story: Story,
-    private var isEmptyState: Boolean = false,
-    private val list: androidx.recyclerview.widget.RecyclerView,
-    private var query: String = "",
-    private var filter: String = "all",
-    private var chapterStatuses: Map<String, DownloadJobStatus> = emptyMap(),
-    private var waitingChapterIds: Set<String> = emptySet(),
-    private val chipsContainer: ViewGroup,
-    private val onPick: (String) -> Unit,
+    private val onToggleBookmark: (Chapter) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     init {
         // Stable ids: RecyclerView tracks rows by chapter id across DiffUtil updates, not position.
         setHasStableIds(true)
     }
 
-    private val typeEmpty = 0
-    private val typeChapter = 1
+    private var chapters: List<Pair<Int, Chapter>> = emptyList()
+    private var query = ""
+    private var filter = "all"
+    private var chapterStatuses: Map<String, DownloadJobStatus> = emptyMap()
+    private var waitingChapterIds: Set<String> = emptySet()
 
     /** Skeleton built once in onCreateViewHolder; bind only mutates contents. */
     class RowHolder(
         val row: LinearLayout,
         val statusSlot: FrameLayout,
         val title: TextView,
-        val subtitleSlot: LinearLayout,
+        val subtitle: TextView,
         val bookmark: ImageView,
     ) : RecyclerView.ViewHolder(row)
 
     class EmptyHolder(
-        val row: LinearLayout,
-        val label: TextView,
+        row: LinearLayout,
     ) : RecyclerView.ViewHolder(row)
 
-    fun update(
-        chapters: List<Pair<Int, Chapter>>,
+    /** Shows [story]'s chapters through [query] and [filter], diffing against what is on screen. */
+    fun show(
         story: Story,
-        isEmptyState: Boolean,
         query: String,
         filter: String,
-        chapterStatuses: Map<String, DownloadJobStatus>,
-        waitingChapterIds: Set<String> = emptySet(),
+        statuses: Map<String, DownloadJobStatus> = chapterStatuses,
+        waiting: Set<String> = waitingChapterIds,
     ) {
-        val previous = this.chapters
-        val previousEmpty = this.isEmptyState
+        val previous = chapters
         val previousBookmarkId = this.story.lastReadChapterId
-        val previousChapterStatuses = this.chapterStatuses
-        val previousWaitingChapterIds = this.waitingChapterIds
-        this.chapters = chapters
+        val previousStatuses = chapterStatuses
+        val previousWaiting = waitingChapterIds
+        val next = ChapterFilterPlanning.filter(story, query, filter)
+        val wasEmpty = previous.isEmpty()
         this.story = story
-        this.isEmptyState = isEmptyState
         this.query = query
         this.filter = filter
-        this.chapterStatuses = chapterStatuses
-        this.waitingChapterIds = waitingChapterIds
-        // DiffUtil keyed by chapter id animates changes and rebinds only changed rows; the
-        // empty-state toggle changes the tree shape, so it needs a full notify.
-        if (previousEmpty != isEmptyState) {
+        chapterStatuses = statuses
+        waitingChapterIds = waiting
+        chapters = next
+        // The empty row changes the tree shape, so it needs a full notify.
+        if (wasEmpty || next.isEmpty()) {
+            @Suppress("NotifyDataSetChanged")
             notifyDataSetChanged()
             return
         }
-        if (isEmptyState) {
-            notifyDataSetChanged()
-            return
-        }
-        val next = chapters
+        val bookmarkId = story.lastReadChapterId
         DiffUtil
             .calculateDiff(
                 object : DiffUtil.Callback() {
@@ -120,32 +116,38 @@ class ChapterListAdapter(
                         oldItemPosition: Int,
                         newItemPosition: Int,
                     ): Boolean {
-                        val (oldIndex, oldChapter) = previous[oldItemPosition]
-                        val (newIndex, newChapter) = next[newItemPosition]
-                        val nextBookmarkId = story.lastReadChapterId
+                        val (oldIndex, old) = previous[oldItemPosition]
+                        val (newIndex, new) = next[newItemPosition]
                         return oldIndex == newIndex &&
-                            oldChapter.id == newChapter.id &&
-                            oldChapter.title == newChapter.title &&
-                            oldChapter.downloaded == newChapter.downloaded &&
-                            oldChapter.downloadedAt == newChapter.downloadedAt &&
-                            previousChapterStatuses[oldChapter.id] == chapterStatuses[newChapter.id] &&
-                            (oldChapter.id in previousWaitingChapterIds) == (newChapter.id in waitingChapterIds) &&
-                            (previousBookmarkId == oldChapter.id) == (nextBookmarkId == newChapter.id)
+                            old.title == new.title &&
+                            old.downloaded == new.downloaded &&
+                            old.downloadedAt == new.downloadedAt &&
+                            previousStatuses[old.id] == statuses[new.id] &&
+                            (old.id in previousWaiting) == (new.id in waiting) &&
+                            (previousBookmarkId == old.id) == (bookmarkId == new.id)
                     }
                 },
             ).dispatchUpdatesTo(this)
     }
 
-    /** Live query/filter so in-place download refreshes can re-filter without a screen rebuild. */
-    fun currentQuery(): String = query
+    /** A download event: same query and filter, new story and queue state. */
+    fun refresh(
+        story: Story,
+        statuses: Map<String, DownloadJobStatus>,
+        waiting: Set<String>,
+    ) = show(story, query, filter, statuses, waiting)
 
-    fun currentFilter(): String = filter
+    /** Adapter position of [chapterId] among the shown rows, or -1. */
+    fun positionOf(chapterId: String): Int = chapters.indexOfFirst { it.second.id == chapterId }
 
-    override fun getItemViewType(position: Int): Int = if (isEmptyState) typeEmpty else typeChapter
+    /** Number of chapters shown (0 while the "No chapters match" row is up). */
+    fun shownCount(): Int = chapters.size
+
+    override fun getItemViewType(position: Int): Int = if (chapters.isEmpty()) TYPE_EMPTY else TYPE_CHAPTER
 
     override fun getItemId(position: Int): Long =
-        if (isEmptyState) {
-            RecyclerView.NO_ID
+        if (chapters.isEmpty()) {
+            EMPTY_ID
         } else {
             chapters[position]
                 .second.id
@@ -153,38 +155,44 @@ class ChapterListAdapter(
                 .toLong()
         }
 
+    override fun getItemCount(): Int = if (chapters.isEmpty()) 1 else chapters.size
+
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
-    ): RecyclerView.ViewHolder {
-        val context = parent.context
-        return when (viewType) {
-            typeEmpty -> createEmptyHolder(context)
-            else -> createChapterHolder(context)
+    ): RecyclerView.ViewHolder =
+        if (viewType == TYPE_EMPTY) {
+            createEmptyHolder(parent.context)
+        } else {
+            createChapterHolder(parent.context)
         }
-    }
 
     private fun createEmptyHolder(context: Context): EmptyHolder {
         val row =
             LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(context.dp(Space.MD), context.dp(Space.SM + 2), context.dp(Space.XS + 2), context.dp(Space.SM + 2))
-                layoutParams =
-                    LinearLayout
-                        .LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ).apply { bottomMargin = context.dp(Space.XS + 2) }
-            }
-        val label =
-            makeText(context, "", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+                orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(context.dp(Space.LG), context.dp(Space.LG), context.dp(Space.LG), context.dp(Space.LG))
+                setPadding(
+                    context.dp(Spacing.XL),
+                    context.dp(Spacing.XL + Spacing.SM),
+                    context.dp(Spacing.XL),
+                    context.dp(Spacing.XL + Spacing.SM),
+                )
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(
+                    makeText(context, "No chapters match", Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
+                        gravity =
+                            Gravity.CENTER
+                    },
+                )
+                addView(
+                    makeText(context, "Try another search or filter.", Type.BODY_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(0, context.dp(Spacing.XS), 0, 0)
+                    },
+                )
             }
-        row.addView(label)
-        row.isClickable = false
-        return EmptyHolder(row, label)
+        return EmptyHolder(row)
     }
 
     private fun createChapterHolder(context: Context): RowHolder {
@@ -192,62 +200,52 @@ class ChapterListAdapter(
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                minimumHeight = context.dp(64)
-                setPadding(context.dp(Space.LG), context.dp(Space.SM), context.dp(Space.SM), context.dp(Space.SM))
-                layoutParams =
-                    LinearLayout
-                        .LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ).apply { bottomMargin = context.dp(Space.XS) }
+                minimumHeight = context.dp(ROW_MIN_HEIGHT_DP)
+                setPadding(context.dp(Spacing.LG), context.dp(Spacing.SM), context.dp(Spacing.XS), context.dp(Spacing.SM))
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             }
         // The status slot's leading child is swapped in bind; the rest of the skeleton is reused.
-        val statusSlot = chapterStatusSlot(context, host.dot(ThemeManager.colors.outlineVariant))
+        val statusSlot = chapterStatusSlot(context, host.dot(ThemeManager.colors.faint))
         val title =
             makeText(context, "", Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
                 includeFontPadding = false
             }
-        val subtitleSlot =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
+        val subtitle =
+            makeText(context, "", Type.CAPTION, ThemeManager.colors.onSurfaceVariant).apply {
+                includeFontPadding = false
+                maxLines = 2
+                setPadding(0, context.dp(Spacing.XS), 0, 0)
             }
         val titleColumn =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                setPadding(context.dp(Space.XS), 0, context.dp(Space.XS), 0)
+                setPadding(context.dp(Spacing.SM + 2), 0, context.dp(Spacing.XS), 0)
                 addView(title)
-                addView(subtitleSlot)
+                addView(subtitle)
             }
         val bookmark =
             ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setPadding(context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2))
+                setPadding(context.dp(Spacing.SM + 2), context.dp(Spacing.SM + 2), context.dp(Spacing.SM + 2), context.dp(Spacing.SM + 2))
                 background = selectableRipple(ThemeManager.colors.onSurface)
                 isClickable = true
                 isFocusable = true
-                layoutParams = LinearLayout.LayoutParams(context.dp(44), context.dp(44))
             }
         row.addView(statusSlot)
-        row.addView(titleColumn)
-        row.addView(bookmark)
-        return RowHolder(row, statusSlot, title, subtitleSlot, bookmark)
+        row.addView(titleColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(bookmark, LinearLayout.LayoutParams(context.dp(BOOKMARK_TAP_DP), context.dp(BOOKMARK_TAP_DP)))
+        return RowHolder(row, statusSlot, title, subtitle, bookmark)
     }
 
     override fun onBindViewHolder(
         holder: RecyclerView.ViewHolder,
         position: Int,
     ) {
+        if (holder !is RowHolder) return
         val (index, chapter) = chapters[position]
-        when (holder) {
-            is EmptyHolder -> {
-                holder.label.text = chapter.title
-                return
-            }
-            is RowHolder -> bindChapterHolder(holder, index, chapter)
-        }
+        bindChapterHolder(holder, index, chapter)
     }
 
     private fun bindChapterHolder(
@@ -256,46 +254,40 @@ class ChapterListAdapter(
         chapter: Chapter,
     ) {
         val context: Context = holder.row.context
-        // Not-downloaded chapters aren't tappable — including downloading/queued/failed ones, whose
-        // live status still shows via the dot/spinner/subtitle.
+        val colors = ThemeManager.colors
+        // Not-downloaded chapters aren't readable; their live status still shows in the row.
         val openable = chapter.downloaded
-        val radiusPx = context.dp(Space.SM).toFloat()
-        holder.row.apply {
-            background =
-                if (openable) {
-                    ripple(roundedBg(ThemeManager.colors.elevation1, radiusPx), radiusPx, ThemeManager.colors.onSurface)
-                } else {
-                    roundedBg(ThemeManager.colors.elevation1, radiusPx)
-                }
-            isClickable = openable
-            isFocusable = openable
-            setOnClickListener { if (openable) host.showReader(story.id, chapter.id) }
-        }
-        // Queue status takes precedence over the static downloaded flag.
+        val isBookmarked = story.lastReadChapterId == chapter.id
+        holder.row.background = if (isBookmarked) bookmarkRowBackground(context) else selectableRipple(colors.onSurface)
+        holder.row.isClickable = openable
+        holder.row.isFocusable = openable
+        holder.row.setOnClickListener { if (openable) host.showReader(story.id, chapter.id) }
         val liveStatus = chapterStatuses[chapter.id]
         val waitingForDelay = chapter.id in waitingChapterIds
         setStatusLeading(holder.statusSlot, liveStatus, chapter.downloaded, waitingForDelay, context)
-        holder.title.text = ChapterRowPlanning.displayTitle(chapter.title)
-        // Dim the title when not openable so the row reads as disabled.
-        holder.title.setTextColor(if (openable) ThemeManager.colors.onSurface else ThemeManager.colors.onSurfaceVariant)
-        holder.row.contentDescription =
-            "Chapter ${ChapterRowPlanning.indexLabel(index)}, ${ChapterRowPlanning.displayTitle(chapter.title)}"
-        holder.subtitleSlot.removeAllViews()
-        holder.subtitleSlot.addView(
-            subtitleText(index, liveStatus, chapter, waitingForDelay, context),
-        )
-        // One-tap bookmark: outline by default, filled when this is the novel's bookmark.
-        val isBookmarked = story.lastReadChapterId == chapter.id
+        val displayTitle = ChapterRowPlanning.displayTitle(chapter.title)
+        holder.title.text = displayTitle
+        holder.title.setTextColor(if (openable) colors.onSurface else colors.onSurfaceVariant)
+        holder.row.contentDescription = "Chapter ${ChapterRowPlanning.indexLabel(index)}, $displayTitle"
+        bindSubtitle(holder.subtitle, index, liveStatus, chapter, waitingForDelay)
         holder.bookmark.setImageDrawable(
             context.tintedIcon(
                 if (isBookmarked) R.drawable.wna_bookmark else R.drawable.wna_bookmark_outline,
-                if (isBookmarked) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant,
+                if (isBookmarked) colors.bookmark else colors.faint,
             ),
         )
         holder.bookmark.contentDescription = if (isBookmarked) "Clear bookmark" else "Bookmark chapter"
-        holder.bookmark.setOnClickListener {
-            host.toggleChapterBookmark(story, chapter, list, chipsContainer, filter, query, onPick)
-        }
+        holder.bookmark.setOnClickListener { onToggleBookmark(chapter) }
+    }
+
+    /** The bookmarked row: a faint ivory wash with an ivory bar on its leading edge. */
+    private fun bookmarkRowBackground(context: Context): android.graphics.drawable.Drawable {
+        val ivory = ThemeManager.colors.bookmark
+        val wash = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(ivory and BOOKMARK_WASH_MASK, Color.TRANSPARENT))
+        val layers = LayerDrawable(arrayOf(wash, ColorDrawable(ivory)))
+        layers.setLayerWidth(1, context.dp(BOOKMARK_BAR_DP))
+        layers.setLayerGravity(1, Gravity.START or Gravity.FILL_VERTICAL)
+        return ripple(layers, 0f, ThemeManager.colors.onSurface)
     }
 
     /** Swaps [statusSlot]'s leading child; colors are baked into Views, so they must be swapped. */
@@ -306,35 +298,30 @@ class ChapterListAdapter(
         waitingForDelay: Boolean,
         context: Context,
     ) {
+        val colors = ThemeManager.colors
         val desired: View =
             when (liveStatus) {
-                DownloadJobStatus.Downloading -> if (waitingForDelay) host.dot(ThemeManager.colors.secondary) else chapterSpinner(context)
-                DownloadJobStatus.Pending -> host.dot(ThemeManager.colors.primary)
-                DownloadJobStatus.Failed -> host.dot(ThemeManager.colors.error)
-                else -> host.chapterStatusDot(downloaded)
+                DownloadJobStatus.Downloading -> if (waitingForDelay) host.dot(colors.secondary) else chapterSpinner(context)
+                DownloadJobStatus.Pending -> host.dot(colors.onSurfaceVariant)
+                DownloadJobStatus.Failed -> host.dot(colors.error)
+                else -> host.dot(if (downloaded) colors.primary else colors.faint)
             }
         // Keep a running spinner across rebinds; dots (color baked in) always swap to recolor.
         val current = statusSlot.getChildAt(0)
-        val keepSpinner = desired is ProgressBar && current is ProgressBar
-        if (keepSpinner) return
+        if (desired is ProgressBar && current is ProgressBar) return
         statusSlot.removeAllViews()
-        statusSlot.addView(
-            desired,
-            FrameLayout.LayoutParams(
-                context.dp(if (desired is ProgressBar) 16 else 10),
-                context.dp(if (desired is ProgressBar) 16 else 10),
-                Gravity.START or Gravity.CENTER_VERTICAL,
-            ),
-        )
+        val size = context.dp(if (desired is ProgressBar) SPINNER_DP else DOT_DP)
+        statusSlot.addView(desired, FrameLayout.LayoutParams(size, size, Gravity.START or Gravity.CENTER_VERTICAL))
     }
 
-    private fun subtitleText(
+    private fun bindSubtitle(
+        view: TextView,
         index: Int,
         liveStatus: DownloadJobStatus?,
         chapter: Chapter,
         waitingForDelay: Boolean,
-        context: Context,
-    ): TextView {
+    ) {
+        val colors = ThemeManager.colors
         val label =
             ChapterRowPlanning.metadataLabel(
                 index,
@@ -346,25 +333,46 @@ class ChapterListAdapter(
                 removedFromSource = chapter.isRemovedFromSource,
                 hasAudio = host.narration.store.pack(story.id, chapter.id) != null,
             )
-        val color =
-            when (liveStatus) {
-                DownloadJobStatus.Downloading -> if (waitingForDelay) ThemeManager.colors.secondary else ThemeManager.colors.primary
-                DownloadJobStatus.Failed -> ThemeManager.colors.error
-                // Quiet metadata so the title stays the focus.
-                else -> ThemeManager.colors.onSurfaceVariant
-            }
-        return makeText(context, label, Type.CAPTION, color).apply {
-            includeFontPadding = false
-            setPadding(0, context.dp(Space.XS), 0, 0)
+        val spanned = SpannableString(label)
+        // Generated audio reads in gold, like the Audio tab.
+        val audioAt = label.indexOf(AUDIO_LABEL)
+        if (audioAt >=
+            0
+        ) {
+            spanned.setSpan(
+                ForegroundColorSpan(colors.primary),
+                audioAt,
+                audioAt + AUDIO_LABEL.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
         }
+        view.text = spanned
+        view.setTextColor(
+            when (liveStatus) {
+                DownloadJobStatus.Downloading -> if (waitingForDelay) colors.secondary else colors.primary
+                DownloadJobStatus.Failed -> colors.error
+                else -> colors.onSurfaceVariant
+            },
+        )
     }
 
-    override fun getItemCount(): Int = chapters.size
+    private companion object {
+        const val TYPE_EMPTY = 0
+        const val TYPE_CHAPTER = 1
+        const val EMPTY_ID = Long.MIN_VALUE
+        const val ROW_MIN_HEIGHT_DP = 64
+        const val BOOKMARK_TAP_DP = 44
+        const val BOOKMARK_BAR_DP = 3
+        const val BOOKMARK_WASH_MASK = 0x17FFFFFF
+        const val SPINNER_DP = 14
+        const val DOT_DP = 8
+        const val AUDIO_LABEL = "Audio"
+    }
 }
 
 /**
- * Small indeterminate spinner sized to match the chapter status dot (10dp), used in place of the
- * dot for a chapter currently being fetched. Primary-tinted so it reads as "active work".
+ * Small indeterminate spinner sized to match the chapter status dot, used in place of the dot for
+ * a chapter currently being fetched. Primary-tinted so it reads as "active work".
  */
 internal fun chapterSpinner(context: Context): View {
     val size = context.dp(16)

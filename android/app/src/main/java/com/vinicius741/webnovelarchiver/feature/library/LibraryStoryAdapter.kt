@@ -12,9 +12,12 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.ThemeManager
+import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
+import com.vinicius741.webnovelarchiver.ui.makeText
 
 /** Builds only the cards visible in a page; the same adapter serves single and paged libraries. */
 internal class LibraryStoryAdapter(
@@ -38,7 +41,7 @@ internal class LibraryStoryAdapter(
         val manager = GridLayoutManager(list.context, grid.columns.coerceAtLeast(1))
         manager.spanSizeLookup =
             object : GridLayoutManager.SpanSizeLookup() {
-                override fun getSpanSize(position: Int): Int = if (visible.isEmpty()) manager.spanCount else 1
+                override fun getSpanSize(position: Int): Int = if (getItemViewType(position) == STORY) 1 else manager.spanCount
             }
         list.layoutManager = manager
         list.adapter = this
@@ -58,11 +61,14 @@ internal class LibraryStoryAdapter(
         sortAscending: Boolean,
     ) {
         if (this.query == query && this.tags == tags && this.sortOption == sortOption && this.sortAscending == sortAscending) return
+        val queryChanged = this.query != query
         this.query = query
         this.tags = tags.toSet()
         this.sortOption = sortOption
         this.sortAscending = sortAscending
         updateVisible()
+        // The count line names the query, so it changes even when the same novels match.
+        if (queryChanged && visible.isNotEmpty()) notifyItemChanged(0)
     }
 
     /** Rebinds one story's card after its selection changed, or every card for [storyId] == null (Select All). */
@@ -72,7 +78,7 @@ internal class LibraryStoryAdapter(
             return
         }
         val index = visible.indexOfFirst { it.id == storyId }
-        if (index >= 0) notifyItemChanged(index)
+        if (index >= 0) notifyItemChanged(index + HEADER_ROWS)
     }
 
     fun replaceStories(latest: List<Story>) {
@@ -91,9 +97,14 @@ internal class LibraryStoryAdapter(
         notifyDataSetChanged()
     }
 
-    override fun getItemCount(): Int = visible.size.coerceAtLeast(1)
+    override fun getItemCount(): Int = if (visible.isEmpty()) 1 else visible.size + HEADER_ROWS
 
-    override fun getItemViewType(position: Int): Int = if (visible.isEmpty()) EMPTY else STORY
+    override fun getItemViewType(position: Int): Int =
+        when {
+            visible.isEmpty() -> EMPTY
+            position < HEADER_ROWS -> COUNT
+            else -> STORY
+        }
 
     override fun onCreateViewHolder(
         parent: ViewGroup,
@@ -105,13 +116,18 @@ internal class LibraryStoryAdapter(
                 val gap = cardSideGap(parent.context)
                 marginStart = gap
                 marginEnd = gap
-                bottomMargin = parent.context.dp(Space.MD + Space.XS)
+                bottomMargin = parent.context.dp(if (grid.viewMode == LibraryViewMode.COVERS) Space.LG + Space.XS else Space.MD)
             }
         val card =
             when {
                 viewType != STORY -> null
                 grid.viewMode == LibraryViewMode.COVERS -> makeLibraryCoverTile(parent.context)
-                else -> makeCard(parent.context)
+                else ->
+                    makeCard(parent.context).apply {
+                        val pad = parent.context.dp(Space.MD)
+                        setPadding(pad, pad, pad, pad)
+                        clipToOutline = true
+                    }
             }
         card?.let {
             root.addView(
@@ -129,14 +145,24 @@ internal class LibraryStoryAdapter(
     ) {
         val card = holder.card
         if (card != null) {
-            if (grid.viewMode == LibraryViewMode.COVERS) {
-                host.bindLibraryCoverTile(card, visible[position])
-            } else {
-                host.bindLibraryStoryCard(card, visible[position], alignToTop = grid.columns > 1)
-            }
+            val story = visible[position - HEADER_ROWS]
+            if (grid.viewMode == LibraryViewMode.COVERS) host.bindLibraryCoverTile(card, story) else host.bindLibraryStoryCard(card, story)
             return
         }
         holder.root.removeAllViews()
+        if (holder.itemViewType == COUNT) {
+            holder.root.addView(
+                makeText(
+                    holder.root.context,
+                    LibraryFiltersPlanning.countLine(visible.size, query),
+                    Type.BODY_SMALL,
+                    ThemeManager.colors.faint,
+                ).apply {
+                    setPadding(context.dp(Space.XS), context.dp(Space.XS), 0, context.dp(Space.SM))
+                },
+            )
+            return
+        }
         val state =
             if (query.isNotBlank() || tags.isNotEmpty()) {
                 makeEmptyState(
@@ -148,7 +174,7 @@ internal class LibraryStoryAdapter(
             } else {
                 makeEmptyState(
                     holder.root.context,
-                    message = "Novels you add or move here will show up in this tab.",
+                    message = "Long-press novels in another tab to move them here.",
                     title = "Nothing here yet",
                     iconRes = R.drawable.wna_menu_book,
                     actionLabel = "Add a story",
@@ -166,6 +192,10 @@ internal class LibraryStoryAdapter(
     private companion object {
         const val STORY = 0
         const val EMPTY = 1
+        const val COUNT = 2
+
+        /** The "N novels" line above the cards. */
+        const val HEADER_ROWS = 1
     }
 
     private fun cardSideGap(context: Context): Int = context.dp(Space.LG) / 2

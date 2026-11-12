@@ -5,8 +5,11 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadForegroundService
 import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
+import com.vinicius741.webnovelarchiver.feature.details.returnToStory
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.details.showStoryScreen
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.updates.isSyncingFromUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
@@ -49,13 +52,8 @@ internal fun ScreenHost.queueDownload(
             if (app.isFinishing || app.isDestroyed) return@runOnUiThread
             result
                 .onSuccess {
-                    val detailsScreenKey = "${story.title}|by ${story.author}"
-                    if (
-                        activeStory?.id == story.id &&
-                        (frame.tag == screenTagAtEnqueue || frame.tag == detailsScreenKey)
-                    ) {
-                        showDetails(story.id)
-                    }
+                    // Still where the download was started: show the story with its new queue state.
+                    if (activeStory?.id == story.id && frame.tag == screenTagAtEnqueue) returnToStory(story.id)
                 }.onFailure { error ->
                     toast(error.message ?: "Could not queue downloads")
                 }
@@ -128,6 +126,16 @@ internal fun ScreenHost.syncStory(
         toast(StoryActionGuards.archivedActionMessage("Sync"))
         return
     }
+    // One run per story: a second Sync (Trends' "Sync now", a retry) would race the first.
+    if (storyOperation?.storyId == story.id) {
+        toast("Please wait for the current operation to finish")
+        return
+    }
+    // Updates syncs one novel at a time outside this slot; the engine has no per-story lock.
+    if (isSyncingFromUpdates(story.id)) {
+        toast("This novel is syncing from Updates. Try again when it finishes.")
+        return
+    }
     // Ensure Details is showing so the inline spinner is visible (Sync can be triggered from the
     // Library dialog, where activeStory may differ or be null).
     if (activeStory?.id != story.id) showDetails(story.id)
@@ -144,7 +152,7 @@ internal fun ScreenHost.syncStory(
                     app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
                 }
             clearStoryOperation(synced.id, StoryOperationKind.SYNC, rerender = false)
-            showDetails(synced.id)
+            showStoryScreen(synced.id)
             handleManualSyncDownloads(synced, downloadPlan)
         } catch (error: Throwable) {
             // Never swallow cancellation.
@@ -152,15 +160,15 @@ internal fun ScreenHost.syncStory(
             Timber.w(error, "In-place sync failed for %s", story.id)
             clearStoryOperation(story.id, StoryOperationKind.SYNC, rerender = false)
             if (error is SourceAccessBlockedException) {
-                showDetails(story.id)
+                showStoryScreen(story.id)
                 showSourceAccessBlockedDialog(story.sourceUrl) {
                     syncStory(story, mode)
                 }
                 return@launch
             }
             toast(error.message ?: "Sync failed")
-            // Stay on Details (not the Library) so the user sees the result in context.
-            showDetails(story.id)
+            // Stay on the story (not the Library) so the user sees the result in context.
+            showStoryScreen(story.id)
         }
     }
 }

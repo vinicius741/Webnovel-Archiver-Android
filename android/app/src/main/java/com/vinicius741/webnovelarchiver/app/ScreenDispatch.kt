@@ -23,6 +23,7 @@ import com.vinicius741.webnovelarchiver.feature.settings.showPatreonAccount
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showTabs
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
+import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 
@@ -36,6 +37,7 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
         AppRoute.Library -> showLibrary()
         AppRoute.AddStory -> showAddStory()
         AppRoute.Queue -> showQueue()
+        AppRoute.Updates -> showUpdates()
         AppRoute.Player -> showPlayer()
         AppRoute.Narration -> showNarration()
         AppRoute.Settings -> showSettings()
@@ -56,7 +58,7 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
 /** Per-novel routes, split out so [renderRouteDispatch] stays under detekt's complexity budget. */
 private fun ScreenHost.renderStoryRouteDispatch(route: AppRoute) {
     when (route) {
-        is AppRoute.Details -> showDetails(route.storyId)
+        is AppRoute.Details -> showDetails(route.storyId, route.chapters)
         is AppRoute.ChapterSelection -> showChapterSelection(route.storyId, route.selectedChapterIds)
         is AppRoute.LegacyEpubs -> showLegacyEpubs(route.storyId)
         is AppRoute.Trends -> showTrends(route.storyId, route.focus)

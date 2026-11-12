@@ -22,7 +22,7 @@ class ReaderContentRendererTest {
         assertTrue(html.contains("max-width: 100%"))
         assertTrue(html.contains("color: inherit !important"))
         assertTrue(html.contains("background-color: transparent !important"))
-        assertTrue(html.contains("padding: 12px 12px 72px 12px"))
+        assertTrue(html.contains("padding: 8px 10px 40px 10px"))
         assertTrue(html.contains("<meta name=\"viewport\""))
     }
 
@@ -76,7 +76,7 @@ class ReaderContentRendererTest {
                 includeTtsScript = true,
             )
 
-        assertTrue(html.contains("#7C4DFF33"))
+        assertTrue(html.contains("#7C4DFF38"))
         assertFalse(html.contains("border-left"))
     }
 
@@ -124,5 +124,50 @@ class ReaderContentRendererTest {
         // findTtsGroup must fall back to the plural attribute and return its first token.
         assertTrue(html.contains("node.dataset.ttsGroups"))
         assertTrue(html.contains("tokens[0]"))
+    }
+
+    @Test
+    fun frameAddsKickerAndNextChapterCardOnlyWithTheBridge() {
+        val colors = ReaderContentRenderer.ReaderDocumentColors("#000000", "#FFFFFF")
+        val frame = ReaderContentRenderer.ReaderFrame(kicker = "Story · Chapter 2", nextChapterTitle = "Three & Four")
+        val withBridge = ReaderContentRenderer.document("T", "<p>x</p>", 1.0f, colors, includeTtsScript = true, frame = frame)
+        val withoutBridge = ReaderContentRenderer.document("T", "<p>x</p>", 1.0f, colors, includeTtsScript = false, frame = frame)
+
+        assertTrue(withBridge.contains("Story · Chapter 2"))
+        assertTrue(withBridge.contains("Three &amp; Four"))
+        assertTrue(withBridge.contains("WnaTts.nextChapter()"))
+        assertFalse(withoutBridge.contains("WnaTts.nextChapter()"))
+    }
+
+    @Test
+    fun endNoteShowsWhenThereIsNoNextChapter() {
+        val colors = ReaderContentRenderer.ReaderDocumentColors("#000000", "#FFFFFF")
+        val html =
+            ReaderContentRenderer.document(
+                "T",
+                "<p>x</p>",
+                1.0f,
+                colors,
+                includeTtsScript = true,
+                frame = ReaderContentRenderer.ReaderFrame(endNote = "You're at the latest chapter."),
+            )
+
+        assertTrue(html.contains("wna-end-note"))
+        assertFalse(html.contains("WnaTts.nextChapter()\""))
+    }
+
+    @Test
+    fun scriptStopsFollowingWhenTheReaderDrags() {
+        val html =
+            ReaderContentRenderer.document(
+                "T",
+                "<p>x</p>",
+                1.0f,
+                ReaderContentRenderer.ReaderDocumentColors("#000000", "#FFFFFF"),
+                includeTtsScript = true,
+            )
+
+        assertTrue(html.contains("onFollowChanged"))
+        assertTrue(html.contains("WnaTts.follow"))
     }
 }

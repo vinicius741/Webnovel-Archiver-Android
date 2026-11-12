@@ -13,6 +13,7 @@ import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.CardListDecoration
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -24,7 +25,9 @@ import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.size
+import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
+import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 
 internal fun ScreenHost.showChapterSelection(
@@ -46,7 +49,7 @@ internal fun ScreenHost.showChapterSelection(
 
     screen(
         route = AppRoute.ChapterSelection(story.id, initialSelectedIds),
-        title = "Select Chapters",
+        title = "Select chapters",
         subtitle = story.title,
     ) {
         if (items.isEmpty()) {
@@ -74,14 +77,16 @@ internal fun ScreenHost.showChapterSelection(
             selectedIds.clear()
             selectedIds.addAll(nextSelection)
             adapter.refreshSelection(previous, selectedIds)
-            downloadButton.text = "Download ${selectedIds.size} Selected"
+            downloadButton.text = "Download ${selectedIds.size} selected"
+            downloadButton.isEnabled = selectedIds.isNotEmpty()
+            downloadButton.alpha = if (selectedIds.isEmpty()) DISABLED_ALPHA else 1f
         }
 
         fun finishRangeMode(message: String? = null) {
             val oldAnchor = rangeAnchor
             rangeMode = false
             rangeAnchor = null
-            rangeButton.text = "Select Range"
+            rangeButton.text = "Select range"
             adapter.setRangeAnchor(null, oldAnchor)
             hint.text = message ?: DEFAULT_SELECTION_HINT
         }
@@ -118,29 +123,26 @@ internal fun ScreenHost.showChapterSelection(
             }
         }
 
-        hint =
-            makeText(context, DEFAULT_SELECTION_HINT, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                setPadding(0, 0, 0, context.dp(Space.SM))
-            }
-        addView(hint)
+        hint = makeText(context, DEFAULT_SELECTION_HINT, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
+        addView(selectionHintCard(hint))
 
         flow(spacing = Space.SM) {
             rangeButton =
-                button("Select Range", Btn.TONAL, R.drawable.wna_filter) {
+                button("Select range", Btn.TONAL, R.drawable.wna_filter) {
                     if (rangeMode) {
                         finishRangeMode()
                     } else {
                         rangeMode = true
                         rangeAnchor = null
-                        rangeButton.text = "Cancel Range"
+                        rangeButton.text = "Cancel range"
                         hint.text = "Tap the first chapter in your range."
                     }
                 }
-            button("All", Btn.TEXT, R.drawable.wna_check) {
+            button("All", Btn.OUTLINED, R.drawable.wna_check) {
                 finishRangeMode("All available chapters selected.")
                 updateSelection(orderedIds.toSet())
             }
-            button("Clear", Btn.TEXT, R.drawable.wna_close) {
+            button("Clear", Btn.OUTLINED, R.drawable.wna_close) {
                 finishRangeMode("Selection cleared.")
                 updateSelection(emptySet())
             }
@@ -151,10 +153,11 @@ internal fun ScreenHost.showChapterSelection(
                 layoutManager = LinearLayoutManager(context)
                 itemAnimator = null
                 clipToPadding = false
-                setPadding(0, context.dp(Space.SM), 0, context.dp(Space.SM))
+                setPadding(0, context.dp(Space.MD), 0, context.dp(Space.SM))
             }
         adapter = ChapterSelectionAdapter(items, selectedIds, ::handleTap)
         list.adapter = adapter
+        list.addItemDecoration(CardListDecoration(context) { true })
         list.addOnItemTouchListener(
             ChapterDragSelectionTouchListener(
                 list = list,
@@ -182,9 +185,10 @@ internal fun ScreenHost.showChapterSelection(
 
         downloadButton =
             fullButton(
-                "Download ${selectedIds.size} Selected",
+                "Download ${selectedIds.size} selected",
                 Btn.FILLED,
                 R.drawable.wna_download,
+                topMarginDp = Space.SM,
                 bottomMarginDp = 0,
             ) {
                 val selectedIndexes = items.filter { it.chapter.id in selectedIds }.map { it.originalIndex }
@@ -193,6 +197,27 @@ internal fun ScreenHost.showChapterSelection(
                 } else {
                     queueDownload(story, selectedIndexes)
                 }
+            }
+    }
+}
+
+/** The hint in a quiet card, as the prototype shows it above the actions. */
+private fun ScreenHost.selectionHintCard(hint: TextView): LinearLayout {
+    val colors = ThemeManager.colors
+    val radius = dp(14).toFloat()
+    return LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        setPadding(dp(Space.MD), dp(Space.MD), dp(Space.MD), dp(Space.MD))
+        background = strokeBg(colors.elevation1, radius, colors.line, dp(1))
+        addView(
+            android.widget.ImageView(app).apply { setImageDrawable(app.tintedIcon(R.drawable.wna_checklist, colors.primary)) },
+            LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(Space.SM + 2) },
+        )
+        addView(hint, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        layoutParams =
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(Space.XS)
             }
     }
 }

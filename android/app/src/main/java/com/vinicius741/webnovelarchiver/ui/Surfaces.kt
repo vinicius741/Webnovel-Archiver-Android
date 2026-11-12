@@ -37,10 +37,8 @@ fun makeCard(
     return LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(pad, pad, pad, pad)
-        background =
-            roundedBg(surfaceColor, radiusPx).also {
-                if (elevationLevel > 0) elevate(elevationLevel.toFloat() + 1f)
-            }
+        // v3: flat surfaces separated by a hairline border instead of drop shadows.
+        background = strokeBg(surfaceColor, radiusPx, colors.line, context.dp(1).coerceAtLeast(1))
         showDividers = LinearLayout.SHOW_DIVIDER_NONE
         clipToPadding = false
     }
@@ -51,15 +49,16 @@ fun makeSectionHeader(
     context: Context,
     title: String,
 ): TextView =
-    makeText(context, title, Type.LABEL_LARGE, ThemeManager.colors.primary).apply {
-        setPadding(context.dp(2), context.dp(Space.MD + 2), context.dp(2), context.dp(Space.XS))
-        letterSpacing = 0.08f
+    makeText(context, title, Type.LABEL_MEDIUM, ThemeManager.colors.primary).apply {
+        setPadding(context.dp(Space.XS), context.dp(Space.XL - 2), context.dp(Space.XS), context.dp(Space.SM + 2))
+        isAllCaps = true
+        letterSpacing = 0.06f
     }
 
 /** Thin divider line using the theme's outline-variant color. */
 fun makeDivider(context: Context): View =
     View(context).apply {
-        setBackgroundColor(ThemeManager.colors.outlineVariant)
+        setBackgroundColor(ThemeManager.colors.line)
         layoutParams =
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, context.dp(1)).apply {
                 setMargins(0, context.dp(Space.SM), 0, context.dp(Space.SM))

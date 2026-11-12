@@ -14,6 +14,9 @@ class AppRouteTest {
             listOf(
                 AppRoute.Library,
                 AppRoute.Details("story:/ ünicode"),
+                AppRoute.Details("story:/ ünicode", chapters = true),
+                AppRoute.NarrationStory("story", "chapter"),
+                AppRoute.Trends("story", "score"),
                 AppRoute.Reader("story:1", "chapter/2"),
                 AppRoute.ChapterSelection("story", setOf("chapter:2", "chapter 1")),
                 AppRoute.AiControls("story:/ ünicode"),
@@ -105,5 +108,37 @@ class AppRouteTest {
     fun `author novels route returns to its story details`() {
         assertEquals(AppRoute.Details("story:1"), AppRoute.AuthorNovels("story:1").parent)
         assertNotEquals(AppRoute.AuthorNovels("a").stableKey, AppRoute.AuthorNovels("b").stableKey)
+    }
+
+    @Test
+    fun `story tabs have their own keys and the overview decodes from older saved stacks`() {
+        val overview = AppRoute.Details("story")
+        val chapters = AppRoute.Details("story", chapters = true)
+        assertNotEquals(overview.stableKey, chapters.stableKey)
+        assertEquals(overview, AppRouteCodec.decode(AppRouteCodec.encode(overview)))
+        // A stack saved before the Chapters tab existed carries a single argument.
+        assertEquals(overview, AppRouteCodec.decode("details:73746f7279"))
+        assertNull(AppRouteCodec.decode("details:73746f7279:7a7a"))
+    }
+
+    @Test
+    fun `every story tab leaves the story for the library when opened cold`() {
+        assertEquals(AppRoute.Library, AppRoute.Details("story").parent)
+        assertEquals(AppRoute.Library, AppRoute.Details("story", chapters = true).parent)
+        assertEquals(AppRoute.Library, AppRoute.Trends("story").parent)
+        assertEquals(AppRoute.Library, AppRoute.AiControls("story").parent)
+        assertEquals(AppRoute.Library, AppRoute.NarrationStory("story").parent)
+    }
+
+    @Test
+    fun `switching tabs replaces the history entry so back leaves the story`() {
+        val navigator = AppNavigator()
+        navigator.navigate(AppRoute.Details("story"))
+        navigator.replace(AppRoute.Details("story", chapters = true))
+        navigator.replace(AppRoute.NarrationStory("story"))
+        navigator.replace(AppRoute.Trends("story"))
+
+        assertEquals(listOf(AppRoute.Library, AppRoute.Trends("story")), navigator.history)
+        assertEquals(AppRoute.Library, navigator.back())
     }
 }

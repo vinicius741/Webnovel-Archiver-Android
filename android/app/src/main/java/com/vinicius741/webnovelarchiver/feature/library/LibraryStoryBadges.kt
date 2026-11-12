@@ -1,95 +1,107 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
+import android.graphics.Typeface
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
-import android.widget.FrameLayout
-import android.widget.ImageView
-import androidx.core.graphics.ColorUtils
+import android.widget.LinearLayout
+import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.ReleaseCadencePlanning
+import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.WrapLayout
 import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.formatScore
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
 import com.vinicius741.webnovelarchiver.ui.roundedBg
+import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.sourceAvailabilityBadge
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
-/** Same vertical padding [makeBadge] gives its pills. */
-private const val BADGE_VERTICAL_PADDING_DP = 3
-private const val NEW_CHAPTER_DESCRIPTION = "Next chapter may be out, sync to check"
+internal const val NEW_CHAPTER_DESCRIPTION = "Next chapter may be out, sync to check"
+
+/** Same vertical padding the status pills use, so a text-only item lines up with them. */
+private const val PILL_VERTICAL_PADDING_DP = 3
 
 /**
- * The predicted next chapter came due after the last chapter sync, so syncing would likely find it.
- * Late authors (already checked well past the usual gap) are not flagged.
+ * The next chapter may be out: the same rule as the Updates "May be out" list and its badge, so
+ * the Library and Updates never disagree.
  */
-internal fun mayHaveNewChapter(story: Story): Boolean = ReleaseCadencePlanning.mayHaveNewChapter(story)
+internal fun mayHaveNewChapter(story: Story): Boolean {
+    val now = System.currentTimeMillis()
+    return UpdatesPlanning.mayBeOut(ReleaseCadencePlanning.forecast(story, now), story.lastChapterSyncAt, now)
+}
 
-/** List-card row: source name, publication status, availability, and the new-chapter hint; null when empty. */
+/** List-card meta row: source, publication status, availability, score, and the "New?" hint; null when empty. */
 internal fun ScreenHost.libraryBadgeRow(story: Story): View? {
+    val colors = ThemeManager.colors
     val items =
         listOfNotNull(
             SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let {
-                makeText(app, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
-                    // Matches the pills' box so the top-aligned wrap row keeps the label centered.
+                makeText(app, it.name, Type.LABEL_MEDIUM, colors.primary).apply {
                     includeFontPadding = false
-                    setPadding(0, dp(BADGE_VERTICAL_PADDING_DP), 0, dp(BADGE_VERTICAL_PADDING_DP))
+                    setPadding(0, dp(PILL_VERTICAL_PADDING_DP), 0, dp(PILL_VERTICAL_PADDING_DP))
                 }
             },
             publicationStatusBadge(story),
             sourceAvailabilityBadge(story),
-            if (mayHaveNewChapter(story)) newChapterBadge() else null,
+            story.score?.takeIf { it.isNotBlank() }?.let { inlineScore(it) },
+            if (mayHaveNewChapter(story)) newChapterPill() else null,
         )
     if (items.isEmpty()) return null
     // Wraps rather than squeezing the last pill when a narrow card cannot fit every badge.
     return WrapLayout(app).apply {
-        horizontalSpacingDp = Space.SM
-        verticalSpacingDp = Space.XS
-        setPadding(0, dp(Space.XS), 0, 0)
+        horizontalSpacingDp = Spacing.SM
+        verticalSpacingDp = Spacing.XS
+        setPadding(0, dp(Spacing.SM - 2), 0, 0)
         items.forEach(::addView)
     }
 }
 
-/** Small text-free refresh glyph for the list card's badge row; sized to the pills' line height. */
-private fun ScreenHost.newChapterBadge(): View {
-    val size = dp(LIST_ICON_BOX_DP)
-    val pad = dp(LIST_ICON_PADDING_DP)
-    return ImageView(app).apply {
-        contentDescription = NEW_CHAPTER_DESCRIPTION
-        setImageDrawable(app.tintedIcon(R.drawable.wna_refresh, ThemeManager.colors.primary))
-        scaleType = ImageView.ScaleType.FIT_CENTER
-        setPadding(pad, pad, pad, pad)
-        layoutParams = ViewGroup.MarginLayoutParams(size, size)
+/** "★ 4.74": a gold star and the score in bold. */
+private fun ScreenHost.inlineScore(score: String): View =
+    LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(PILL_VERTICAL_PADDING_DP), 0, dp(PILL_VERTICAL_PADDING_DP))
+        addView(
+            android.widget.ImageView(app).apply { setImageDrawable(app.tintedIcon(R.drawable.wna_star, ThemeManager.colors.primary)) },
+            LinearLayout.LayoutParams(dp(STAR_DP), dp(STAR_DP)).apply { marginEnd = dp(2) },
+        )
+        addView(
+            makeText(app, formatScore(score), Type.LABEL_MEDIUM, ThemeManager.colors.onSurface).apply { includeFontPadding = false },
+        )
+        contentDescription = "Score ${formatScore(score)}"
     }
-}
 
-/** Small top-end refresh glyph on a cover-grid tile, on a translucent disc so it reads on any cover. */
-internal fun ScreenHost.newChapterCoverBadge(): ImageView {
-    val size = dp(COVER_ICON_BOX_DP)
-    val inset = dp(Space.XS + 2)
-    val pad = dp(LIST_ICON_PADDING_DP + 1)
+/** Gold "New?" pill with a sync glyph: the next chapter may be out. */
+private fun ScreenHost.newChapterPill(): View {
     val colors = ThemeManager.colors
-    return ImageView(app).apply {
+    return TextView(app).apply {
+        text = "New?"
         contentDescription = NEW_CHAPTER_DESCRIPTION
-        setImageDrawable(app.tintedIcon(R.drawable.wna_refresh, colors.primary))
-        scaleType = ImageView.ScaleType.FIT_CENTER
-        setPadding(pad, pad, pad, pad)
-        background = roundedBg(ColorUtils.setAlphaComponent(colors.surface, COVER_DISC_ALPHA), size / 2f)
-        layoutParams =
-            FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.END).apply {
-                setMargins(0, inset, inset, 0)
-            }
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_SMALL.size())
+        typeface = Typeface.create(typeface, Typeface.BOLD)
+        setTextColor(colors.onPrimaryContainer)
+        includeFontPadding = false
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(Spacing.SM), dp(PILL_VERTICAL_PADDING_DP), dp(Spacing.SM), dp(PILL_VERTICAL_PADDING_DP))
+        background = roundedBg(colors.primaryContainer, dp(Spacing.SM + 2).toFloat())
+        app.tintedIcon(R.drawable.wna_sync, colors.onPrimaryContainer)?.let { icon ->
+            val size = dp(PILL_ICON_DP)
+            icon.setBounds(0, 0, size, size)
+            setCompoundDrawablesRelative(icon, null, null, null)
+            compoundDrawablePadding = dp(3)
+        }
     }
 }
 
-private const val LIST_ICON_BOX_DP = 18
-private const val LIST_ICON_PADDING_DP = 2
-private const val COVER_ICON_BOX_DP = 20
-private const val COVER_DISC_ALPHA = 0xB3
+private const val STAR_DP = 14
+private const val PILL_ICON_DP = 12

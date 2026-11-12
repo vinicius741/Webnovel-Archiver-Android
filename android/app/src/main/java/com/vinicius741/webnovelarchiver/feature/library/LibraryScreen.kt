@@ -1,82 +1,113 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
 import android.view.Gravity
-import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPositions
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
-import com.vinicius741.webnovelarchiver.feature.narration.playIfGenerated
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
-import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
-import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
-import com.vinicius741.webnovelarchiver.ui.Space
-import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.iconButton
+import com.vinicius741.webnovelarchiver.ui.ScreenChrome
 import com.vinicius741.webnovelarchiver.ui.layout.resolveScreenLayout
-import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
-import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.screenMetrics
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.lang.ref.WeakReference
 
+/**
+ * The Library: a large app bar (search opens in the bar), the tab bar with counts, the active
+ * sort/filter row, and one swipeable page of list cards or covers per tab. Long-press starts
+ * selection, which swaps the navigation bar for a Move / Download / Delete bar.
+ */
 internal fun ScreenHost.showLibrary() {
     activeStory = null
     // Capture the ScreenHost here; inside screen{} `this` is the body LinearLayout.
     val host = this
     // Re-render on window/setting changes so the column count reflows live.
     rerender = { showLibrary() }
+    // A re-render (fold, search, selection) replaces the screen the open sheet was built against.
+    libraryExtras.sortFilterSheet?.get()?.dismiss()
+    libraryExtras.sortFilterSheet = null
     val grid = currentLibraryGrid()
     var stories: List<Story> = repository.library()
     val selectedCount = pruneLibrarySelection(stories)
-    var toggleSelectAll: () -> Unit = {}
+    val selecting = selectedCount > 0
+    val searching = !selecting && (libraryExtras.searchOpen || libraryScreenState.query.isNotEmpty())
     var renderedProgress = stories.associate { it.id to (it.downloadedChapters to it.totalChapters) }
     var refreshLibraryContent: ((List<Story>) -> Unit)? = null
     val tabs = repository.tabs.get().sortedBy { it.order }
-    var clearLibraryFilters: (() -> Unit)? = null
+    val hasUnassigned = stories.any { it.tabId == null }
+    val prefs = repository.getDisplayPreferences()
+    var filterState =
+        LibraryFilterState(
+            selectedTabId = LibraryTabSelection.resolve(prefs.libraryTabId, tabs, hasUnassigned),
+            query = libraryScreenState.query,
+            selectedTags = libraryScreenState.selectedTags,
+            sortOption = prefs.librarySortOption.ifBlank { "lastUpdated" },
+            sortAscending = prefs.librarySortAscending,
+        )
+    // One closure applies filters to whichever grid surface (shared grid or pager adapter) is showing.
+    var applyFilters: () -> Unit = {}
+    var onFiltersChanged: () -> Unit = {}
+    val openSheet = {
+        val handle =
+            showLibrarySortFilterSheet(stories, tabs, { filterState }) { next ->
+                val sortChanged = next.sortOption != filterState.sortOption || next.sortAscending != filterState.sortAscending
+                filterState = next
+                libraryScreenState.selectedTags = next.selectedTags
+                if (sortChanged) persistLibrarySort(next.sortOption, next.sortAscending)
+                applyFilters()
+                onFiltersChanged()
+            }
+        libraryExtras.sortFilterSheet = WeakReference(handle)
+    }
+    // R22: debounce the per-page grid rebuild to the pause between keystrokes.
+    var searchGeneration = 0
+    val onQuery: (String) -> Unit = { query ->
+        filterState = filterState.copy(query = query)
+        libraryScreenState.query = query
+        refreshBackCallback()
+        searchGeneration += 1
+        debounceLibraryFilterApply(scope, searchGeneration, { searchGeneration }, applyFilters)
+    }
     screen(
         route = AppRoute.Library,
         title = LibrarySelectionPlanning.screenTitle(selectedCount),
-        subtitle = LibrarySelectionPlanning.screenSubtitle(stories.size, selectedCount),
-        actions = libraryAppBarActions(selectedCount > 0, grid.viewMode) { toggleSelectAll() },
-        fab = if (selectedCount > 0) null else ({ showAddStory() }),
-        closeAction = if (selectedCount > 0) ({ exitLibrarySelection() }) else null,
-        backIntercept = libraryBackIntercept { clearLibraryFilters },
-        fullWidthBody = true,
+        chrome = ScreenChrome.IMMERSIVE,
+        closeAction = if (selecting) ({ exitLibrarySelection() }) else null,
+        backIntercept = libraryBackIntercept(),
     ) {
-        addView(host.continueListeningCard())
-        val hasUnassigned = stories.any { it.tabId == null }
-        val initialSelectedTabId: String? =
-            LibraryTabSelection.resolve(
-                repository.getDisplayPreferences().libraryTabId,
-                tabs,
-                hasUnassigned,
+        val setFilterDot =
+            addLibraryHeader(
+                this,
+                selectedCount,
+                searching,
+                stories.size,
+                grid.viewMode,
+                filterState,
+                LibraryHeaderActions(
+                    onSelectAll = { toggleSelectAllLibrary(filterState.applyTo(stories).map(Story::id)) },
+                    onOpenSheet = { openSheet() },
+                    onQuery = onQuery,
+                ),
             )
-
+        if (!selecting && !searching) addView(host.continueListeningCard())
+        val initialSelectedTabId = filterState.selectedTabId
         if (stories.isEmpty()) {
             renderEmptyLibrary(this, tabs, stories, initialSelectedTabId)
             return@screen
         }
-
-        val search = makeSearchField(context, "Search stories")
-        // Re-seeded before the doAfterTextChanged registration below, so restoring fires no debounce;
-        // the chip builder reads search.text and narrows to the restored query on first build.
-        if (libraryScreenState.query.isNotEmpty()) search.setText(libraryScreenState.query)
 
         // Shared bar+pager tab ordering: Unassigned (null sentinel) first when present, then tabs, then All.
         val pageTabs: List<String?> =
@@ -85,99 +116,44 @@ internal fun ScreenHost.showLibrary() {
                 addAll(tabs.map { it.id })
                 add(LibraryTabSelection.ALL_TAB_ID)
             }
-
-        val persistedSort = repository.getDisplayPreferences()
-        var filterState =
-            LibraryFilterState(
-                selectedTabId = initialSelectedTabId,
-                query = libraryScreenState.query,
-                selectedTags = libraryScreenState.selectedTags,
-                sortOption = persistedSort.librarySortOption.ifBlank { "lastUpdated" },
-                sortAscending = persistedSort.librarySortAscending,
-            )
-
-        // R22: keystroke debounce for the expensive per-page grid rebuild.
-        var searchApplyGeneration = 0
-        var clearingFilters = false
-
-        // One closure applies filters to whichever grid surface (shared grid or pager adapter) is showing.
-        var applyFilters: () -> Unit = {}
-        // Hoisted so the tag-toggle callback can re-highlight chips; assigned filters.rebuildChips below.
-        var refreshFilters: (String?, Set<String>) -> Unit = { _, _ -> }
-
-        val filters =
-            makeLibraryFilters(
-                context,
-                search,
-                tabs.isNotEmpty(),
-                stories,
-                filterState.selectedTabId,
-                filterState.selectedTags,
-                filterState.sortOption,
-                filterState.sortAscending,
-                { newSort ->
-                    filterState = filterState.copy(sortOption = newSort.first, sortAscending = newSort.second)
-                    persistLibrarySort(filterState.sortOption, filterState.sortAscending)
-                    applyFilters()
-                },
-                { tag ->
-                    val nextTags = filterState.selectedTags.toMutableSet()
-                    if (!nextTags.add(tag)) nextTags.remove(tag)
-                    filterState = filterState.copy(selectedTags = nextTags)
-                    libraryScreenState.selectedTags = filterState.selectedTags
-                    refreshFilters(filterState.selectedTabId, filterState.selectedTags)
-                    applyFilters()
-                },
-                onClearFilters = { clearLibraryFilters?.invoke() },
-                expandedInitially = libraryScreenState.filtersExpanded,
-                onExpandedChanged = { libraryScreenState.filtersExpanded = it },
-            )
-        // Chips follow the active tab: All = union, a specific tab = only its labels.
-        // Every query/tag change passes through here, so the Back callback tracks it too.
-        refreshFilters = { tabId, tags ->
-            filters.rebuildChips(tabId, tags)
-            refreshBackCallback()
-        }
-        clearLibraryFilters = {
-            filterState = filterState.clearFilters()
-            libraryScreenState.query = filterState.query
-            libraryScreenState.selectedTags = filterState.selectedTags
-            clearingFilters = true
-            search.text.clear()
-            clearingFilters = false
-            // Cancel any pending search debounce and show the unfiltered results now.
-            searchApplyGeneration += 1
-            refreshFilters(filterState.selectedTabId, filterState.selectedTags)
-            applyFilters()
-        }
-
         val tabBar =
             makeLibraryTabBar(context, tabs, stories, filterState.selectedTabId) { newTabId ->
                 filterState = filterState.copy(selectedTabId = newTabId)
                 persistLibraryTab(newTabId)
-                refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                 applyFilters()
             }
         addView(tabBar.view)
-        addView(filters.view)
-
-        search.doAfterTextChanged {
-            if (clearingFilters) return@doAfterTextChanged
-            filterState = filterState.copy(query = it?.toString().orEmpty())
-            libraryScreenState.query = filterState.query
-            // Indicators and chip options track the live query too.
-            filters.syncActiveFilters(filterState.selectedTags)
-            refreshFilters(filterState.selectedTabId, filterState.selectedTags)
-            // R22: rebuilding every page's grid per keystroke is the library's biggest avoidable
-            // cost — debounce the actual filtering to the pause between keystrokes. The snapshot
-            // captured at fire time keeps a fast typist's late keystroke authoritative.
-            searchApplyGeneration += 1
-            debounceLibraryFilterApply(scope, searchApplyGeneration, { searchApplyGeneration }, applyFilters)
+        val activeRow =
+            makeLibraryActiveFilterRow(
+                onOpenSheet = { openSheet() },
+                onRemoveTag = { tag ->
+                    filterState = filterState.copy(selectedTags = filterState.selectedTags - tag)
+                    libraryScreenState.selectedTags = filterState.selectedTags
+                    applyFilters()
+                    onFiltersChanged()
+                },
+                onClear = {
+                    filterState = filterState.copy(selectedTags = emptySet())
+                    libraryScreenState.selectedTags = emptySet()
+                    applyFilters()
+                    onFiltersChanged()
+                },
+            )
+        addView(activeRow.view)
+        activeRow.render(filterState)
+        onFiltersChanged = {
+            activeRow.render(filterState)
+            setFilterDot(filterState.selectedTags.isNotEmpty())
+            refreshBackCallback()
         }
 
-        // Select All targets whatever the current tab shows after search/tag filters.
-        toggleSelectAll = { toggleSelectAllLibrary(filterState.applyTo(stories).map(Story::id)) }
-
+        val refreshFromRepository: (List<Story>, (List<Story>) -> Unit) -> Unit = { latest, replace ->
+            val changed = latest.filter { renderedProgress[it.id] != (it.downloadedChapters to it.totalChapters) }
+            renderedProgress = latest.associate { it.id to (it.downloadedChapters to it.totalChapters) }
+            stories = latest
+            replace(latest)
+            changed.forEach { patchLibraryProgress(frame, it) }
+        }
         if (pageTabs.size >= 2) {
             // Each page owns a scrolling grid; bar and pager stay two-way synced.
             val adapter = LibraryPagesAdapter(host, stories, pageTabs, grid)
@@ -187,20 +163,11 @@ internal fun ScreenHost.showLibrary() {
                     // No over-scroll glow; the tab bar's indicator signals the swipe.
                     getChildAt(0).overScrollMode = android.view.View.OVER_SCROLL_NEVER
                 }
-            val initialPage = pageTabs.indexOf(filterState.selectedTabId).coerceAtLeast(0)
-            pager.setCurrentItem(initialPage, false)
-
-            applyFilters = {
-                adapter.updateFilter(filterState.query, filterState.selectedTags, filterState.sortOption, filterState.sortAscending)
-            }
+            pager.setCurrentItem(pageTabs.indexOf(filterState.selectedTabId).coerceAtLeast(0), false)
+            applyFilters =
+                { adapter.updateFilter(filterState.query, filterState.selectedTags, filterState.sortOption, filterState.sortAscending) }
             libraryScreenState.refreshStoryCards = adapter::refreshCards
-            refreshLibraryContent = { latest ->
-                val changed = latest.filter { renderedProgress[it.id] != (it.downloadedChapters to it.totalChapters) }
-                renderedProgress = latest.associate { it.id to (it.downloadedChapters to it.totalChapters) }
-                stories = latest
-                adapter.replaceStories(latest)
-                changed.forEach { patchLibraryProgress(frame, it) }
-            }
+            refreshLibraryContent = { latest -> refreshFromRepository(latest, adapter::replaceStories) }
             // The changed-id check stops bar-initiated switches from feeding back.
             var suppressingPageCallback = false
             pager.registerOnPageChangeCallback(
@@ -212,7 +179,6 @@ internal fun ScreenHost.showLibrary() {
                             filterState = filterState.copy(selectedTabId = newTabId)
                             persistLibraryTab(newTabId)
                             tabBar.selectVisual(newTabId)
-                            refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                             applyFilters()
                         }
                     }
@@ -227,28 +193,16 @@ internal fun ScreenHost.showLibrary() {
                     pager.post { suppressingPageCallback = false }
                 }
             }
-            addView(pager, verticalFill().apply { topMargin = dp(Space.LG) })
+            addView(pager, verticalFill())
             applyFilters()
         } else {
             val list = RecyclerView(context)
             val adapter = LibraryStoryAdapter(host, grid, filterState.selectedTabId, stories)
             adapter.attachTo(list)
             libraryScreenState.refreshStoryCards = adapter::refreshCards
-            applyFilters = {
-                adapter.updateFilter(
-                    filterState.query,
-                    filterState.selectedTags,
-                    filterState.sortOption,
-                    filterState.sortAscending,
-                )
-            }
-            refreshLibraryContent = { latest ->
-                val changed = latest.filter { renderedProgress[it.id] != (it.downloadedChapters to it.totalChapters) }
-                renderedProgress = latest.associate { it.id to (it.downloadedChapters to it.totalChapters) }
-                stories = latest
-                adapter.replaceStories(latest)
-                changed.forEach { patchLibraryProgress(frame, it) }
-            }
+            applyFilters =
+                { adapter.updateFilter(filterState.query, filterState.selectedTags, filterState.sortOption, filterState.sortAscending) }
+            refreshLibraryContent = { latest -> refreshFromRepository(latest, adapter::replaceStories) }
             val gridShell =
                 MaxWidthFrameLayout(context).apply {
                     maxContentWidthDp = grid.maxContentWidthDp
@@ -263,148 +217,101 @@ internal fun ScreenHost.showLibrary() {
                 }
             val scrollKey = LibraryTabSelection.memoryKey(filterState.selectedTabId)
             list.trackScrollInto(libraryScreenState.tabScrollPositions, scrollKey)
-            addView(gridShell, verticalFill().apply { topMargin = dp(Space.LG) })
+            addView(gridShell, verticalFill())
             applyFilters()
             list.restoreScrollOnce(libraryScreenState.tabScrollPositions[scrollKey] ?: 0)
         }
-        if (selectedCount > 0) addView(makeLibrarySelectionBar())
+        if (selecting) addView(makeLibrarySelectionBar())
     }
-    refreshLibraryContent?.let { refresh ->
-        val renderedRoot = frame.getChildAt(0)
-        // Captured before launch: still catches a racing publish because StateFlow re-emits a new version.
-        var observedLibraryVersion = repository.downloadState.value.libraryVersion
-        screenObserver =
-            scope.launch {
-                repository.downloadState.collect { snapshot ->
-                    if (renderedRoot.parent !== frame) return@collect
-                    if (snapshot.libraryVersion == observedLibraryVersion) return@collect
-                    observedLibraryVersion = snapshot.libraryVersion
-                    refresh(snapshot.library)
-                }
-            }
-    }
+    // The selection bar replaces the navigation until selection ends (the next render resets it).
+    if (selecting) shell.setNavigationSuppressed(true)
+    refreshLibraryContent?.let { refresh -> observeLibrary(refresh) }
 }
 
+/** The header's callbacks into the Library's filter state. */
+private class LibraryHeaderActions(
+    val onSelectAll: () -> Unit,
+    val onOpenSheet: () -> Unit,
+    val onQuery: (String) -> Unit,
+)
+
 /**
- * A quiet way back into the last book when nothing is loaded in the player. It stays hidden while the
- * mini-player is showing, and after an explicit stop it appears the next time the Library opens.
- * Dismissing it lasts across restarts, until the listener plays something again.
+ * Adds the app bar for the current mode (selecting, searching, or browsing) and returns how to
+ * show or hide its Sort & filter dot.
  */
-private fun ScreenHost.continueListeningCard(): View {
-    val container =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            visibility = View.GONE
-            layoutParams =
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = dp(SCREEN_SIDE_PADDING_DP)
-                    marginEnd = dp(SCREEN_SIDE_PADDING_DP)
-                    bottomMargin = dp(Space.MD)
-                }
+private fun ScreenHost.addLibraryHeader(
+    container: LinearLayout,
+    selectedCount: Int,
+    searching: Boolean,
+    novelCount: Int,
+    viewMode: LibraryViewMode,
+    state: LibraryFilterState,
+    actions: LibraryHeaderActions,
+): (Boolean) -> Unit {
+    val filtersActive = state.selectedTags.isNotEmpty()
+    return when {
+        selectedCount > 0 -> {
+            container.addView(makeLibrarySelectionTopBar(selectedCount, onClose = { exitLibrarySelection() }) { actions.onSelectAll() })
+            val noDot: (Boolean) -> Unit = {}
+            noDot
         }
-    if (ttsEngine.playbackState.value.snapshot != null) return container
-    scope.launch {
-        val positions = runCatching { repository.getTtsStoryPositions() }.getOrDefault(emptyList())
-        val dismissedThrough = repository.getDisplayPreferences().continueListeningDismissedThrough
-        val target = TtsContinueListening.target(positions, dismissedThrough) { repository.story(it) } ?: return@launch
-        if (ttsEngine.playbackState.value.snapshot != null) return@launch
-        container.addView(
-            makeButton(
-                app,
-                "Continue listening: ${target.story.title} · ${target.chapter.title}",
-                Btn.TONAL,
-                R.drawable.wna_play,
-            ) {
-                playIfGenerated(target.story.id, target.chapter.id) {
-                    container.visibility = View.GONE
-                    TtsForegroundService.start(app, target.story.id, target.chapter.id)
-                }
-            },
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
-        )
-        container.addView(
-            app.iconButton(R.drawable.wna_close, "Dismiss continue listening") {
-                container.visibility = View.GONE
-                persistContinueListeningDismissal(positions.maxOf { it.updatedAt })
-            },
-        )
-        container.visibility = View.VISIBLE
+        searching -> {
+            val bar = makeLibrarySearchBar(state.query, filtersActive, onClose = { closeLibrarySearch() }) { actions.onOpenSheet() }
+            container.addView(bar.view)
+            bar.field.doAfterTextChanged { actions.onQuery(it?.toString().orEmpty()) }
+            if (libraryExtras.searchOpen && state.query.isEmpty()) focusSearch(bar.field)
+            bar.setFilterDot
+        }
+        else -> {
+            val appBar = makeLibraryAppBar(novelCount, viewMode, filtersActive) { actions.onOpenSheet() }
+            container.addView(appBar.view)
+            val setDot: (Boolean) -> Unit = { on -> appBar.setDot(SORT_FILTER_LABEL, on) }
+            setDot
+        }
     }
-    return container
+}
+
+/** Patches the rendered Library when the repository publishes a new library version. */
+private fun ScreenHost.observeLibrary(refresh: (List<Story>) -> Unit) {
+    val renderedRoot = frame.getChildAt(0)
+    // Captured before launch: still catches a racing publish because StateFlow re-emits a new version.
+    var observedLibraryVersion = repository.downloadState.value.libraryVersion
+    screenObserver =
+        scope.launch {
+            repository.downloadState.collect { snapshot ->
+                if (renderedRoot.parent !== frame) return@collect
+                if (snapshot.libraryVersion == observedLibraryVersion) return@collect
+                observedLibraryVersion = snapshot.libraryVersion
+                refresh(snapshot.library)
+            }
+        }
+}
+
+/** Closes the search bar, dropping its query. */
+private fun ScreenHost.closeLibrarySearch() {
+    libraryExtras.searchOpen = false
+    libraryScreenState.query = ""
+    showLibrary()
 }
 
 /**
- * Back clears an active search or tag filter before it leaves the app. [filterBarClear] is the
- * built filter bar's clear action; the empty library has none, only remembered state to drop.
+ * Back closes the search and clears active filters before it leaves the app.
  */
-
-private fun ScreenHost.libraryBackIntercept(filterBarClear: () -> (() -> Unit)?) =
+private fun ScreenHost.libraryBackIntercept() =
     BackIntercept(
-        isActive = { libraryScreenState.query.isNotEmpty() || libraryScreenState.selectedTags.isNotEmpty() },
+        isActive = {
+            libraryExtras.searchOpen || libraryScreenState.query.isNotEmpty() || libraryScreenState.selectedTags.isNotEmpty()
+        },
         clear = {
-            filterBarClear()?.invoke() ?: run {
-                libraryScreenState.query = ""
-                libraryScreenState.selectedTags = emptySet()
-            }
+            libraryExtras.searchOpen = false
+            libraryScreenState.query = ""
+            libraryScreenState.selectedTags = emptySet()
+            showLibrary()
         },
     )
 
 /** R22: pause between keystrokes before rebuilding every library page's grid. */
 private const val SEARCH_APPLY_DEBOUNCE_MS = 200L
-
-/** Persists the selected tab. Transactional read-modify-write on the latest value; a failed
- *  save is reported instead of silently dropped. */
-private fun ScreenHost.persistLibraryTab(id: String?) {
-    val encoded = LibraryTabSelection.encode(id)
-    runUiOperation("save library tab") {
-        repository.updateDisplayPreferences { latest ->
-            if (latest.libraryTabId == encoded) latest else latest.copy(libraryTabId = encoded)
-        }
-    }
-}
-
-/** Same transactional discipline as [persistLibraryTab]. */
-private fun ScreenHost.persistContinueListeningDismissal(dismissedThrough: Long) {
-    runUiOperation("dismiss continue listening") {
-        repository.updateDisplayPreferences { it.copy(continueListeningDismissedThrough = dismissedThrough) }
-    }
-}
-
-/** Persists the sort choice; same transactional discipline as [persistLibraryTab]. */
-private fun ScreenHost.persistLibrarySort(
-    option: String,
-    ascending: Boolean,
-) {
-    runUiOperation("save library sort") {
-        repository.updateDisplayPreferences { latest ->
-            if (latest.librarySortOption == option && latest.librarySortAscending == ascending) {
-                latest
-            } else {
-                latest.copy(librarySortOption = option, librarySortAscending = ascending)
-            }
-        }
-    }
-}
-
-/** The saved layout's columns and width cap for the live window. */
-private fun ScreenHost.currentLibraryGrid(): LibraryGridSpec {
-    val metrics = screenMetrics()
-    val viewMode = LibraryViewMode.fromStored(repository.getDisplayPreferences().libraryViewMode)
-    return LibraryViewModePlanning.gridSpec(viewMode, resolveScreenLayout(metrics).numColumns, metrics.widthDp)
-}
-
-/**
- * Saves the new layout, then re-renders. Scroll offsets are pixel distances in the old layout's
- * geometry, so every tab starts at the top of the new one.
- */
-internal fun ScreenHost.switchLibraryViewMode(next: LibraryViewMode) {
-    runUiOperation("save library view") {
-        repository.updateDisplayPreferences { latest -> latest.copy(libraryViewMode = next.stored) }
-        libraryScreenState.tabScrollPositions.clear()
-        showLibrary()
-    }
-}
 
 /** Empty-library body. The tab bar stays visible; hiding it makes tab creation look ineffective. */
 private fun ScreenHost.renderEmptyLibrary(
@@ -422,7 +329,7 @@ private fun ScreenHost.renderEmptyLibrary(
     container.addView(
         makeEmptyState(
             container.context,
-            message = "Import a story from $sourceNames to start building your library.",
+            message = "Paste a link from $sourceNames.",
             title = "Your library is empty",
             iconRes = R.drawable.wna_menu_book,
             actionLabel = "Add a story",

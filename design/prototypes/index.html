@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0d10">
+<title>Webnovel Archiver · UI prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0d0d10;--card:#16161b;--line:#26262e;--text:#f1f1f4;--muted:#9a9aa6;--accent:#e2c26b}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+  main{max-width:980px;margin:0 auto;padding:calc(24px + env(safe-area-inset-top)) 16px 48px}
+  h1{font-size:28px;letter-spacing:-.02em;margin:0 0 6px}
+  .lead{color:var(--muted);font-size:15px;line-height:1.5;margin:0 0 22px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  a.card{display:flex;gap:14px;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:12px;transition:transform .15s,border-color .15s}
+  a.card:active{transform:scale(.98)}
+  a.card:hover{border-color:#3a3a46}
+  .thumb{flex:0 0 96px;height:170px;border-radius:12px;background:#0a0a0c center top/cover no-repeat;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:#444;font-weight:800;font-size:28px}
+  .meta{display:flex;flex-direction:column;min-width:0}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .name{font-size:19px;font-weight:700;margin:4px 0 6px}
+  .blurb{font-size:13.5px;line-height:1.45;color:var(--muted)}
+  .bar{display:flex;gap:3px;margin-top:auto;padding-top:10px}
+  .bar i{height:4px;flex:1;border-radius:2px;background:#2a2a33}
+  .bar i.on{background:var(--accent)}
+  .counts{font-size:12px;color:var(--muted);margin-top:8px}
+  h2{font-size:18px;margin:34px 0 10px}
+  .tips{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;font-size:14px;line-height:1.55;color:#d6d6de}
+  .tips b{color:var(--text)}
+  .fb{display:flex;flex-direction:column;gap:8px}
+  .note{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px}
+  .note small{color:var(--muted);display:block;margin-top:4px}
+  .missing{opacity:.45;pointer-events:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Webnovel Archiver: UI prototypes</h1>
+  <p class="lead">Seven versions of the same app, built from your real library. <b>v0</b> is today’s app, and each later version is more of a departure. Every version has the same features, so compare the design, not what each one can do.</p>
+
+  <div class="tips">
+    <b>How to compare:</b> inside any prototype, tap the small <b>vN</b> tab on the left edge (drag it up or down if it’s in the way).
+    It opens the version switcher, which keeps you on the <b>same screen</b> in the other version, and the feedback form.
+    Notes save on the computer, tagged with the version and screen. Everything is simulated: playback, downloads, audio generation and AI generation animate, and nothing touches your real app.
+  </div>
+
+  <h2>Versions</h2>
+  <div class="grid" id="grid"></div>
+
+  <h2>Your feedback so far</h2>
+  <div class="fb" id="fb"><div class="note">Loading…</div></div>
+</main>
+<script src="shared/versions.js"></script>
+<script>
+(async function () {
+  const V = window.WNA_VERSIONS;
+  let notes = [];
+  try { notes = await (await fetch('api/feedback', { cache: 'no-store' })).json(); } catch (e) { /* server offline */ }
+  const exists = async (u) => { try { const r = await fetch(u, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch (e) { return false; } };
+  const grid = document.getElementById('grid');
+  for (const v of V) {
+    const has = await exists(`${v.id}/index.html`);
+    const thumb = (await exists(`${v.id}/_shots/library.png`)) ? `${v.id}/_shots/library.png` : '';
+    const n = notes.filter((x) => x.version === v.id).length;
+    const a = document.createElement('a');
+    a.className = 'card' + (has ? '' : ' missing');
+    a.href = `${v.id}/index.html`;
+    a.innerHTML = `<div class="thumb" style="${thumb ? `background-image:url('${thumb}')` : ''}">${thumb ? '' : v.short}</div>
+      <div class="meta"><span class="tag">${v.short}${has ? '' : ' · building…'}</span><span class="name">${v.name}</span>
+      <span class="blurb">${v.blurb}</span>
+      <div class="bar">${[0, 1, 2, 3, 4, 5, 6].map((i) => `<i class="${i <= v.level ? 'on' : ''}"></i>`).join('')}</div>
+      <span class="counts">${n ? n + (n === 1 ? ' note' : ' notes') : 'No notes yet'}</span></div>`;
+    grid.appendChild(a);
+  }
+  const fb = document.getElementById('fb');
+  const esc = (s) => String(s || '').replace(/[<&>]/g, (c) => ({ '<': '&lt;', '&': '&amp;', '>': '&gt;' }[c]));
+  fb.innerHTML = notes.length ? notes.slice().reverse().map((n) => `<div class="note"><b>${esc((V.find((v) => v.id === n.version) || {}).short || n.version)}</b> · ${esc(n.scope === 'version' ? 'whole version' : n.screen)}${n.rating ? ' · ' + esc(n.rating) : ''}<br>${esc(n.note)}<small>${new Date(n.at).toLocaleString()}</small></div>`).join('') : '<div class="note">No feedback yet. Open a version and use the left-edge tab.</div>';
+})();
+</script>
+</body>
+</html>

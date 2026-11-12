@@ -1,34 +1,23 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.View
-import android.view.ViewGroup
-import android.widget.Button
-import android.widget.LinearLayout
-import androidx.recyclerview.widget.ConcatAdapter
-import androidx.recyclerview.widget.RecyclerView
-import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
-import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
-import com.vinicius741.webnovelarchiver.feature.downloads.startSourceCheck
-import com.vinicius741.webnovelarchiver.feature.downloads.storySourceCheck
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.updateChapterCoverageSummary
 
-/** Screen-scoped Details references; collaborators never need to rediscover these views. */
-internal data class DetailsBindings(
+/** Screen-scoped story page references the live download loop patches; collaborators never rediscover views. */
+internal class DetailsBindings(
     val root: View,
-    val chapters: RecyclerView,
-    val headerProgressSummary: View?,
-    val bannerSlot: ViewGroup?,
-    val downloadActionSlot: LinearLayout?,
-    val generateEpubButton: Button,
+    /** The Chapters tab, when that tab is open. */
+    val chapters: ChaptersTab?,
+    /** The hero, when this render shows it (Overview, or any tab beside the inner-screen pane); swapped when the pane rebuilds. */
+    var hero: StoryHero?,
 )
 
-/** Applies one coherent download snapshot to every live Details surface. */
+/** Applies one coherent download snapshot to every live story page surface. */
+@Suppress("LongParameterList") // One snapshot's facts, always passed together.
 internal fun DetailsBindings.patchDownloadStatus(
     host: ScreenHost,
     story: Story,
@@ -38,53 +27,10 @@ internal fun DetailsBindings.patchDownloadStatus(
     pacingStatus: DownloadPacingUiStatus?,
     isBusy: Boolean,
 ) {
-    headerProgressSummary?.let {
-        updateChapterCoverageSummary(
-            it,
-            StoryBookmarkPlanning.downloadedFlags(story),
-            StoryBookmarkPlanning.bookmarkFraction(story),
-            story.downloadedChapters,
-            story.totalChapters,
-        )
+    hero?.let { hero ->
+        hero.coverage?.render(story)
+        host.renderDetailsCta(hero.ctaSlot, story, summary, isBusy)
+        host.renderHeroDownloadBanner(hero.bannerSlot, story, summary, pacingStatus)
     }
-    downloadActionSlot?.let { host.renderDetailsDownloadAction(it, story, summary, isBusy) }
-    generateEpubButton.isEnabled = story.downloadedChapters > 0 && !isBusy
-    generateEpubButton.alpha = if (generateEpubButton.isEnabled) 1f else 0.4f
-
-    val adapter =
-        when (val current = chapters.adapter) {
-            is ChapterListAdapter -> current
-            is ConcatAdapter -> current.adapters.filterIsInstance<ChapterListAdapter>().singleOrNull()
-            else -> null
-        }
-    adapter?.let {
-        val query = it.currentQuery()
-        val filter = it.currentFilter()
-        val filtered = filterDetailsChapters(story, query, filter)
-        val empty = filtered.isEmpty()
-        it.update(
-            if (empty) listOf(-1 to Chapter(title = "No chapters match this view.")) else filtered,
-            story,
-            empty,
-            query,
-            filter,
-            chapterStatuses,
-            waitingChapterIds,
-        )
-    }
-
-    bannerSlot?.let { slot ->
-        slot.removeAllViews()
-        if (shouldShowDetailsBanner(summary)) {
-            slot.addView(
-                makeDownloadProgressBanner(
-                    host.app,
-                    summary,
-                    pacingStatus,
-                    sourceCheck = host.storySourceCheck(story.id),
-                    onVerify = { host.startSourceCheck(it.providerId, it.sampleUrl) },
-                ) { host.showQueue() },
-            )
-        }
-    }
+    chapters?.refresh?.invoke(story, chapterStatuses, waitingChapterIds)
 }

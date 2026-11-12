@@ -14,8 +14,15 @@ sealed class AppRoute(
 
     data object AddStory : AppRoute("add_story")
 
+    /**
+     * The story page. Its tabs are routes of their own so Back and deep links address them: this
+     * route is the Overview tab, or the Chapters tab when [chapters] is set; [NarrationStory] is the
+     * Audio tab, [Trends] the Trends tab and [AiControls] the AI tab. Tab switches replace the
+     * current history entry, so Back leaves the story instead of walking its tabs.
+     */
     data class Details(
         val storyId: String,
+        val chapters: Boolean = false,
     ) : AppRoute("details")
 
     data class ChapterSelection(
@@ -57,6 +64,12 @@ sealed class AppRoute(
     ) : AppRoute("reader")
 
     data object Queue : AppRoute("queue")
+
+    /**
+     * The Updates destination: every novel's release forecast (may be out, expected soon, running
+     * late, recently synced) with per-novel and "sync all that may be out" actions.
+     */
+    data object Updates : AppRoute("updates")
 
     /** Podcast-style Now Playing screen (TTS transport, progress, speed). */
     data object Player : AppRoute("player")
@@ -106,7 +119,7 @@ sealed class AppRoute(
     val stableKey: String
         get() =
             when (this) {
-                is Details -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
+                is Details -> "$name:${AppRouteCodec.encodeArgument(storyId)}${if (chapters) ":$DETAILS_CHAPTERS_TAB" else ""}"
                 is Reader -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${AppRouteCodec.encodeArgument(chapterId)}"
                 is LegacyEpubs -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is AiControls -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
@@ -116,6 +129,20 @@ sealed class AppRoute(
                 is PatreonAccount -> "$name:${storyId?.let(AppRouteCodec::encodeArgument).orEmpty()}"
                 is NarrationStory -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 else -> name
+            }
+
+    /**
+     * The story whose page this route is a tab of (Overview, Chapters, Audio, Trends, AI), else null.
+     * All tabs of one story count as a single history entry.
+     */
+    val storyTabOf: String?
+        get() =
+            when (this) {
+                is Details -> storyId
+                is NarrationStory -> storyId
+                is Trends -> storyId
+                is AiControls -> storyId
+                else -> null
             }
 
     /**
@@ -129,15 +156,25 @@ sealed class AppRoute(
                 is Reader -> Details(storyId)
                 is ChapterSelection -> Details(storyId)
                 is LegacyEpubs -> Details(storyId)
-                is AiControls -> Details(storyId)
                 is AuthorNovels -> Details(storyId)
-                is Trends -> Details(storyId)
                 is PatreonAccount -> storyId?.let(::Details) ?: DataBackup
-                is NarrationStory -> Narration
                 Notifications, DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
                 else -> Library
             }
 }
+
+/** The [AppRoute.Details] argument that selects the Chapters tab. */
+private const val DETAILS_CHAPTERS_TAB = "chapters"
+
+/** Every tab route of one story page, for view-memory retention across tab switches. */
+internal fun storyTabRoutes(storyId: String): List<AppRoute> =
+    listOf(
+        AppRoute.Details(storyId),
+        AppRoute.Details(storyId, chapters = true),
+        AppRoute.NarrationStory(storyId),
+        AppRoute.Trends(storyId),
+        AppRoute.AiControls(storyId),
+    )
 
 /** Pure, version-tolerant route encoding used by Android saved state and unit tests. */
 object AppRouteCodec {
@@ -146,7 +183,7 @@ object AppRouteCodec {
     fun encode(route: AppRoute): String {
         val arguments =
             when (route) {
-                is AppRoute.Details -> listOf(route.storyId)
+                is AppRoute.Details -> listOfNotNull(route.storyId, DETAILS_CHAPTERS_TAB.takeIf { route.chapters })
                 is AppRoute.Reader -> listOf(route.storyId, route.chapterId)
                 is AppRoute.LegacyEpubs -> listOf(route.storyId)
                 is AppRoute.AiControls -> listOf(route.storyId)
@@ -167,6 +204,7 @@ object AppRouteCodec {
             "library" -> AppRoute.Library
             "add_story" -> AppRoute.AddStory
             "queue" -> AppRoute.Queue
+            "updates" -> AppRoute.Updates
             "player" -> AppRoute.Player
             "narration" -> AppRoute.Narration
             "settings" -> AppRoute.Settings
@@ -190,7 +228,12 @@ object AppRouteCodec {
         arguments: List<String>,
     ): AppRoute? =
         when (name) {
-            "details" -> arguments.singleOrNull()?.let(AppRoute::Details)
+            "details" ->
+                when {
+                    arguments.size == 1 -> AppRoute.Details(arguments[0])
+                    arguments.size == 2 && arguments[1] == DETAILS_CHAPTERS_TAB -> AppRoute.Details(arguments[0], chapters = true)
+                    else -> null
+                }
             "chapter_selection" -> arguments.firstOrNull()?.let { AppRoute.ChapterSelection(it, arguments.drop(1).toSet()) }
             "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)
             "ai_controls" -> arguments.singleOrNull()?.let(AppRoute::AiControls)

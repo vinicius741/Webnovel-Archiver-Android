@@ -48,7 +48,6 @@ internal fun ScreenHost.screen(
     title: String,
     subtitle: String? = null,
     actions: List<AppBarAction> = emptyList(),
-    fab: (() -> Unit)? = null,
     scrollable: Boolean = false,
     chrome: ScreenChrome = ScreenChrome.STANDARD,
     closeAction: (() -> Unit)? = null,
@@ -66,10 +65,18 @@ internal fun ScreenHost.screen(
     // hijack the screen the user navigated to. showReader re-registers on the next reader build.
     if (route !is AppRoute.Reader) detachReaderTtsListener()
     navigator.navigate(route)
+    shell.onRoute(navigator.history)
+    // A screen that did not set its own rerender inherits the previous screen's, which on a fold
+    // would re-open that screen. Default to re-rendering this route instead.
+    if (rerender === shell.rerenderAtLastScreen) {
+        val current = navigator.current
+        rerender = { renderRoute(current) }
+    }
+    shell.rerenderAtLastScreen = rerender
     val screenKey = navigator.current.stableKey
     captureScreenViewState()
     routeMemory.trackedList = null
-    routeMemory.retainOnly(navigator.stableKeys)
+    routeMemory.retainOnly(navigator.viewMemoryKeys)
     val savedScrollY = if (scrollable) routeMemory.scrollPositions[screenKey] ?: 0 else 0
     // Destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
     // activity references; without explicit destroy() they leak across navigation.
@@ -87,14 +94,18 @@ internal fun ScreenHost.screen(
         }
     screenBack = ScreenBack(close = closeAction, intercept = backIntercept, navigateUp = navigateUp)
     // The app-bar arrow navigates directly; only system Back clears in-screen state first.
-    val appBarBack = closeAction ?: navigateUp?.takeIf { route != AppRoute.Working }
+    // Destinations reached from the navigation bar show no back arrow; system Back still returns.
+    val appBarBack =
+        closeAction ?: navigateUp?.takeIf {
+            route != AppRoute.Working &&
+                !com.vinicius741.webnovelarchiver.navigation.ShellNavigationPlanning
+                    .isDestinationRoot(route)
+        }
     val column =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(ThemeManager.colors.background)
-            // Edge-to-edge window: reserve the gesture/navigation bar on the non-scrolling root so
-            // content stays clear of it whether the body scrolls or not.
-            setPadding(0, 0, 0, systemBarBottom())
+            // The app shell's bottom shelf below the frame owns the gesture-bar inset.
         }
     if (chrome ==
         ScreenChrome.STANDARD
@@ -123,6 +134,7 @@ internal fun ScreenHost.screen(
                 setPadding(side, dp(Spacing.MD), side, dp(Spacing.XL))
             }
             block()
+            dropUnusedBaselineAlignment()
         }
     val body: View =
         if (scrollable) {
@@ -131,8 +143,6 @@ internal fun ScreenHost.screen(
             ScrollView(app).apply {
                 isFillViewport = true
                 tag = SCROLL_BODY_VIEW_TAG
-                // The TTS mini-player pads this scroller while it floats over the screen; drawing
-                // into the padding keeps content visible behind the bar until scrolled clear.
                 clipToPadding = false
                 addView(content)
                 // Restore the scroll position captured before the re-render. `post` runs after this
@@ -146,18 +156,6 @@ internal fun ScreenHost.screen(
     frame.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     column.installKeyboardAwareBottomPadding(scrollable)
     frame.tag = screenKey
-    fab?.let { onClick ->
-        val fabView = makeFab(app) { onClick() }
-        val lp =
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM or Gravity.END,
-            )
-        lp.setMargins(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG) + systemBarBottom())
-        fabView.tag = FAB_VIEW_TAG
-        frame.addView(fabView, lp)
-    }
     onScreenBuilt?.invoke()
     if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) {
         com.vinicius741.webnovelarchiver.perf.PerfInstrumentation.recordScreenBuilt(
@@ -179,14 +177,14 @@ internal fun ScreenHost.setAppBarTitle(title: String) {
     frame.findViewWithTag<android.widget.TextView>(APP_BAR_TITLE_TAG)?.text = title
 }
 
+/** Tags the app-bar subtitle (when the screen has one) so a screen can update it in place. */
+internal const val APP_BAR_SUBTITLE_TAG = "wna_app_bar_subtitle"
+
 /** Tags a bottom action bar (e.g. Library selection) so the TTS mini-player can lift it clear. */
 internal const val BOTTOM_BAR_VIEW_TAG = "wna_screen_bottom_bar"
 
 /** Tags a scrollable screen body so the TTS mini-player can pad its end clear of the bar. */
 internal const val SCROLL_BODY_VIEW_TAG = "wna_screen_scroll_body"
-
-/** Tags the screen FAB so the TTS mini-player can lift it out of the bar's way. */
-internal const val FAB_VIEW_TAG = "wna_screen_fab"
 
 /** Locates the first [ScrollView] anywhere under [root], so a re-render can capture the outgoing
  *  scroll position before the view tree is torn down. */
@@ -248,6 +246,7 @@ private fun ScreenHost.appBar(
         subtitle?.let {
             titleCol.addView(
                 makeText(app, it, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                    tag = APP_BAR_SUBTITLE_TAG
                     includeFontPadding = false
                     setPadding(0, dp(2), 0, 0)
                 },
@@ -262,28 +261,6 @@ private fun ScreenHost.appBar(
             )
         }
     }
-
-private fun makeFab(
-    context: Context,
-    onClick: () -> Unit,
-): View {
-    val size = context.dp(56)
-    return ImageView(context).apply {
-        contentDescription = "Add"
-        setImageDrawable(context.tintedIcon(R.drawable.wna_add, ThemeManager.colors.onPrimary))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8))
-        background =
-            ripple(
-                roundedBg(ThemeManager.colors.primary, context.dp(Spacing.LG).toFloat()),
-                context.dp(Spacing.LG).toFloat(),
-                ThemeManager.colors.onPrimary,
-            )
-        elevate(6f)
-        setOnClickListener { onClick() }
-        layoutParams = FrameLayout.LayoutParams(size, size)
-    }
-}
 
 internal fun LinearLayout.centerLoading(message: String) {
     val col =

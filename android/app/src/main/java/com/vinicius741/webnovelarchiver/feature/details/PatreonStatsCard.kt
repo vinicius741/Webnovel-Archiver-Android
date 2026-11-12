@@ -58,10 +58,19 @@ internal fun ScreenHost.buildPatreonStatsCard(
     val colors = ThemeManager.colors
     val clickable = !patreonUrl.isNullOrBlank()
     return makeCard(app).apply {
+        // Copper: Patreon's color across the app, a warm wash fading into the card surface.
+        background =
+            android.graphics.drawable
+                .GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(colors.secondaryContainer and PATREON_WASH_MASK, colors.elevation1, colors.elevation1),
+                ).apply {
+                    cornerRadius = dp(ThemeManager.shapes.cardRadius).toFloat()
+                    setStroke(dp(1), colors.secondary and PATREON_STROKE_MASK)
+                }
         layoutParams =
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(Space.MD)
-                bottomMargin = dp(Space.MD)
+                topMargin = dp(Space.LG)
             }
         // ---- Header: tinted icon disc + "Patreon" title, trailing open affordance when tappable ----
         addView(
@@ -71,16 +80,16 @@ internal fun ScreenHost.buildPatreonStatsCard(
                 addView(
                     LinearLayout(app).apply {
                         gravity = Gravity.CENTER
-                        background = roundedBg(colors.primaryContainer, dp(14).toFloat())
+                        background = roundedBg(colors.secondaryContainer, dp(10).toFloat())
                         addView(
                             ImageView(app).apply {
-                                setImageDrawable(app.tintedIcon(R.drawable.wna_star, colors.onPrimaryContainer))
+                                setImageDrawable(app.tintedIcon(R.drawable.wna_star, colors.secondary))
                                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                             },
                             LinearLayout.LayoutParams(dp(18), dp(18)),
                         )
                     },
-                    LinearLayout.LayoutParams(dp(28), dp(28)),
+                    LinearLayout.LayoutParams(dp(30), dp(30)),
                 )
                 addView(
                     makeText(app, "Patreon", Type.TITLE_SMALL, colors.onSurface).apply {
@@ -284,3 +293,6 @@ private fun formatPatreonDate(timestamp: Long): String =
         .format(Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()))
 
 private fun statLayoutParams() = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+
+private const val PATREON_WASH_MASK = 0xE6FFFFFF.toInt()
+private const val PATREON_STROKE_MASK = 0x33FFFFFF

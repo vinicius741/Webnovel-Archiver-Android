@@ -1,170 +1,132 @@
 package com.vinicius741.webnovelarchiver.ui
 
-import android.app.AlertDialog
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
-import android.view.Gravity
-import android.view.View
+import android.content.res.ColorStateList
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import androidx.appcompat.widget.SwitchCompat
+import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import kotlin.math.roundToInt
 
 /**
- * Styled panel surface matching [showStyledOptionsDialog]: rounded surface, transparent window
- * background, title, and a Cancel button.
- *
- * [block] receives a [dismiss] callback so rows that navigate away (e.g. Voice settings) can close
- * the dialog first — otherwise the destination screen renders behind the still-visible panel.
+ * The v3 reader settings sheet: text size on a stepper (applied live), "Pure black" (the stored
+ * dark-reader preference), voice settings, and Copy chapter text. Changes persist immediately;
+ * rows that leave the reader close the sheet first so the next screen is not buried under it.
  */
-private fun ScreenHost.styledPanelSurface(
-    title: String,
-    block: LinearLayout.(dismiss: () -> Unit) -> Unit,
-) {
-    val colors = ThemeManager.colors
-    val radiusPx = app.dp(ThemeManager.shapes.dialogRadius).toFloat()
-
-    val dialogView =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(app.dp(24), app.dp(20), app.dp(24), app.dp(12))
-            background = roundedBg(colors.surface, radiusPx)
-            roundCorners(ThemeManager.shapes.dialogRadius.toFloat())
-        }
-
-    dialogView.addView(makeText(app, title, Type.TITLE_LARGE, colors.onSurface))
-    dialogView.addView(
-        View(app).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(16))
-        },
-    )
-
-    var dialogRef: AlertDialog? = null
-    val dismiss: () -> Unit = { dialogRef?.dismiss() }
-    dialogView.block(dismiss)
-
-    val cancelButton = makeButton(app, "Cancel", Btn.TEXT) { dismiss() }
-    dialogView.addView(
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-            setPadding(0, app.dp(8), 0, 0)
-            addView(cancelButton)
-        },
-    )
-
-    val dialog = AlertDialog.Builder(app).setView(dialogView).create()
-    dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-    dialogRef = dialog
-    dialog.show()
-}
-
-/**
- * A ripple-tappable row inside a panel. Mirrors the option rows in [showStyledOptionsDialog] but
- * lets callers add a trailing element (e.g. a state label) for richer controls.
- */
-private fun LinearLayout.panelRow(
-    label: String,
-    host: ScreenHost,
-    trailing: View? = null,
-    onClick: () -> Unit,
-) {
-    val colors = ThemeManager.colors
-    val row =
-        LinearLayout(host.app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, host.dp(12), 0, host.dp(12))
-            isClickable = true
-            isFocusable = true
-            background = selectableRipple(colors.onSurface)
-        }
-    row.addView(
-        makeText(host.app, label, Type.BODY_LARGE, colors.onSurface),
-        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-    )
-    trailing?.let { row.addView(it) }
-    row.setOnClickListener { onClick() }
-    addView(row)
-}
-
-// Reader settings panel: font-size stepper, dark-reader toggle, voice settings, and Copy chapter.
-// Display controls mutate [display], persist it, and re-render the WebView via [onRerender] so
-// changes preview live behind the dialog. [onOpenVoiceSettings] is invoked after the panel
-// dismisses so the Voice & Speech screen is not buried under the dialog.
-
+@Suppress("LongParameterList") // Named callbacks from the Reader; call sites use named arguments.
 internal fun ScreenHost.showReaderSettingsPanel(
     display: DisplayPreferences,
+    voiceSummary: String?,
+    // Applies a new text size to the reader page shown now, without reloading it.
+    onFontScale: (Float) -> Unit,
+    // Re-renders the reader shown now after a change the page cannot apply live (its colors).
     onRerender: () -> Unit,
     onCopy: () -> Unit,
     onOpenVoiceSettings: () -> Unit,
 ) {
     val colors = ThemeManager.colors
-    styledPanelSurface("Reader Settings") { dismiss ->
-        // Font size: A− / label / A+ in a single row. The label updates in place so the stepper
-        // reflects the new size without dismissing the panel.
-        val fontRow =
-            LinearLayout(app).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(12), 0, dp(12))
-            }
-        val sizeLabel =
-            makeText(app, "${(display.readerFontScale * 100).roundToInt()}%", Type.BODY_LARGE, colors.onSurface).apply {
-                gravity = Gravity.CENTER
-                textAlignment = View.TEXT_ALIGNMENT_CENTER
-            }
+    val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+    lateinit var sheet: BottomSheetHandle
 
-        fun applyFont(delta: Float) {
-            display.readerFontScale =
-                (display.readerFontScale + delta).coerceIn(
-                    PreferenceNormalization.READER_FONT_SCALE_MIN,
-                    PreferenceNormalization.READER_FONT_SCALE_MAX,
-                )
-            scope.launch { repository.saveDisplayPreferences(display.copy()) }
-            onRerender()
-            sizeLabel.text = "${(display.readerFontScale * 100).roundToInt()}%"
-        }
-        fontRow.addView(
-            makeButton(app, "A−", Btn.TEXT) { applyFont(-0.1f) },
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-        )
-        fontRow.addView(
-            sizeLabel,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                gravity = Gravity.CENTER
-            },
-        )
-        fontRow.addView(
-            makeButton(app, "A+", Btn.TEXT) { applyFont(0.1f) },
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-        )
-        addView(fontRow)
+    // A held stepper ticks many times a second: writes run one after another, only the latest
+    // value is stored, and each stores just this sheet's fields over the latest saved preferences.
+    var latest = 0
+    var writes: Job? = null
 
-        // Dark reader toggle row with a trailing state label.
-        val darkState = makeText(app, if (display.readerDark) "On" else "Off", Type.LABEL_LARGE, colors.onSurfaceVariant)
-        panelRow("Dark reader", this@showReaderSettingsPanel, darkState) {
-            display.readerDark = !display.readerDark
-            scope.launch { repository.saveDisplayPreferences(display.copy()) }
-            onRerender()
-            darkState.text = if (display.readerDark) "On" else "Off"
-        }
+    fun save(): Job {
+        val ticket = ++latest
+        val previous = writes
+        return scope
+            .launch {
+                previous?.join()
+                if (ticket != latest) return@launch
+                val fontScale = display.readerFontScale
+                val dark = display.readerDark
+                runCatching { repository.updateDisplayPreferences { it.copy(readerFontScale = fontScale, readerDark = dark) } }
+                    .onFailure {
+                        Timber.e(it, "Reader settings save failed")
+                        toast("Could not save reader settings")
+                    }
+            }.also { writes = it }
+    }
 
-        addView(
-            View(app).apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(8))
-            },
-        )
-        panelRow("Voice settings", this@showReaderSettingsPanel) {
-            dismiss()
-            onOpenVoiceSettings()
-        }
-        panelRow("Copy chapter text", this@showReaderSettingsPanel) {
-            dismiss()
-            onCopy()
+    suspend fun saved() {
+        while (true) {
+            val write = writes ?: return
+            write.join()
+            if (write === writes) return
         }
     }
+
+    val sizeHolder = LinearLayout(app).apply { setPadding(dp(Spacing.SM), 0, 0, 0) }
+    sizeHolder.stepperRow(
+        "Text size",
+        null,
+        (display.readerFontScale * PERCENT).roundToInt().toDouble(),
+        StepperSpec(
+            step = FONT_STEP_PERCENT,
+            min = (PreferenceNormalization.READER_FONT_SCALE_MIN * PERCENT).toDouble(),
+            max = (PreferenceNormalization.READER_FONT_SCALE_MAX * PERCENT).toDouble(),
+            unit = "%",
+            label = "Text size",
+        ),
+    ) { value ->
+        display.readerFontScale = (value / PERCENT).toFloat()
+        save()
+        onFontScale(display.readerFontScale)
+        null
+    }
+    body.addView(sizeHolder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+    val blackSwitch =
+        SwitchCompat(app).apply {
+            isChecked = display.readerDark
+            thumbTintList =
+                ColorStateList(
+                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                    intArrayOf(colors.onPrimary, colors.onSurfaceVariant),
+                )
+            trackTintList =
+                ColorStateList(
+                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                    intArrayOf(colors.primary, colors.elevation5),
+                )
+            isClickable = false
+            isFocusable = false
+        }
+    val blackRow =
+        makeSheetRow(app, "Pure black", supporting = "Saves battery on OLED screens", iconRes = R.drawable.wna_dark_mode) {
+            display.readerDark = !display.readerDark
+            blackSwitch.isChecked = display.readerDark
+            // The re-rendered page reads the stored preference, so it waits for the write.
+            save()
+            scope.launch {
+                saved()
+                onRerender()
+            }
+        }
+    (blackRow as LinearLayout).addView(blackSwitch)
+    blackRow.contentDescription = "Pure black"
+    body.addView(blackRow)
+    body.addView(
+        makeSheetRow(app, "Voice settings", supporting = voiceSummary, iconRes = R.drawable.wna_record_voice) {
+            sheet.dismiss()
+            onOpenVoiceSettings()
+        },
+    )
+    body.addView(
+        makeSheetRow(app, "Copy chapter text", iconRes = R.drawable.wna_copy) {
+            sheet.dismiss()
+            onCopy()
+        },
+    )
+    sheet = showBottomSheet(app, title = "Reader settings", body = body)
 }
+
+private const val PERCENT = 100f
+private const val FONT_STEP_PERCENT = 10.0

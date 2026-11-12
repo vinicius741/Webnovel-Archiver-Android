@@ -27,6 +27,15 @@ object LibraryFiltersPlanning {
             else -> option
         }
 
+    /** The line above the cards: "45 novels", or "3 novels matching “dragon”" while searching. */
+    fun countLine(
+        count: Int,
+        query: String,
+    ): String {
+        val novels = if (count == 1) "1 novel" else "$count novels"
+        return if (query.isBlank()) novels else "$novels matching “${query.trim()}”"
+    }
+
     /** Short human label for a sort option key, shown on the Library sort chip. */
     fun sortOptionLabel(option: String): String =
         when (normalizeSortOption(option)) {

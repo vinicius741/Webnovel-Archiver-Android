@@ -1,219 +1,70 @@
 package com.vinicius741.webnovelarchiver.feature.player
 
-import android.content.Context
-import android.content.res.ColorStateList
-import android.os.SystemClock
-import android.text.format.DateUtils
 import android.view.Gravity
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.SeekBar
+import android.widget.ScrollView
 import android.widget.TextView
+import coil3.load
+import coil3.request.crossfade
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
+import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPositions
+import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.narration.narration
+import com.vinicius741.webnovelarchiver.feature.narration.playIfGenerated
 import com.vinicius741.webnovelarchiver.feature.narration.showNarration
 import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
-import com.vinicius741.webnovelarchiver.tts.TtsTimeFormat
-import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.ScreenChrome
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.WrapLayout
+import com.vinicius741.webnovelarchiver.ui.activeCoverSource
 import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.elevate
 import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
+import com.vinicius741.webnovelarchiver.ui.selectableRipple
+import com.vinicius741.webnovelarchiver.ui.strokeBg
+import com.vinicius741.webnovelarchiver.ui.systemBarTop
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TIME_TICK_MS = 1_000L
 
-/** Speed presets cycled by the player's speed chip. */
-internal val RATE_PRESETS = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 1.8f, 2.0f)
-
-internal fun nextRatePreset(current: Float): Float = RATE_PRESETS.firstOrNull { it > current + 0.01f } ?: RATE_PRESETS.first()
-
-internal fun rateLabel(rate: Float): String {
-    val text = if (rate == rate.toInt().toFloat()) rate.toInt().toString() else rate.toString()
-    return "${text}x"
-}
-
-internal fun sleepTimerLabel(
-    targetEpochMs: Long?,
-    endOfChapter: Boolean,
-): String =
-    when {
-        targetEpochMs != null -> {
-            val remMin = maxOf(1, ((targetEpochMs - System.currentTimeMillis() + 59_999) / 60_000).toInt())
-            "Timer: ${remMin}m"
-        }
-        endOfChapter -> "Timer: Ch. End"
-        else -> "Timer: Off"
-    }
-
-private class PlayerTimeRow(
-    val elapsed: TextView,
-    val remaining: TextView,
-)
-
-/** Live-patched views inside the player screen (transport icon, time, speed label, sleep timer). */
-private class PlayerLiveViews(
-    private val context: Context,
-    private val playPauseButton: ImageView,
-    private val times: PlayerTimeRow,
-    private val seekBar: SeekBar,
-    private val rateChip: LinearLayout,
-    private val sleepTimerChip: LinearLayout,
-    private val historyChip: LinearLayout,
-) {
-    private var currentRate: Float = 1f
-    private var isUserSeeking: Boolean = false
-    private var state: TtsPlaybackSnapshot? = null
-
-    init {
-        rateChip.setOnClickListener {
-            TtsForegroundService.setRate(context, nextRatePreset(currentRate))
-        }
-        sleepTimerChip.setOnClickListener {
-            val options = arrayOf("Off", "15 minutes", "30 minutes", "45 minutes", "60 minutes", "End of chapter")
-            val values = intArrayOf(0, 15, 30, 45, 60, -1)
-            android.app.AlertDialog
-                .Builder(context)
-                .setTitle("Sleep Timer")
-                .setItems(options) { _, which ->
-                    TtsForegroundService.setSleepTimer(context, values[which])
-                }.setNegativeButton("Cancel", null)
-                .show()
-        }
-        historyChip.setOnClickListener { showHistory() }
-        seekBar.setOnSeekBarChangeListener(
-            object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(
-                    sb: SeekBar?,
-                    progress: Int,
-                    fromUser: Boolean,
-                ) {
-                    if (fromUser) renderTime(progress * SEEK_STEP_MS)
-                }
-
-                override fun onStartTrackingTouch(sb: SeekBar?) {
-                    isUserSeeking = true
-                }
-
-                override fun onStopTrackingTouch(sb: SeekBar?) {
-                    isUserSeeking = false
-                    TtsForegroundService.seekTo(context, (sb?.progress ?: 0) * SEEK_STEP_MS)
-                }
-            },
-        )
-    }
-
-    fun apply(next: TtsPlaybackSnapshot?) {
-        state = next
-        currentRate = next?.rate ?: 1f
-        val isPaused = next?.isPaused != false
-        playPauseButton.setImageDrawable(
-            context.tintedIcon(if (isPaused) R.drawable.wna_play else R.drawable.wna_pause, ThemeManager.colors.onPrimary),
-        )
-        playPauseButton.contentDescription = if (isPaused) "Play" else "Pause"
-        tick()
-        rateChip.removeAllViews()
-        rateChip.addView(makeText(context, rateLabel(currentRate), Type.LABEL_LARGE, ThemeManager.colors.primary))
-        sleepTimerChip.removeAllViews()
-        val timerText = sleepTimerLabel(next?.sleepTimerTargetEpochMs, next?.sleepTimerEndOfChapter == true)
-        val timerColor =
-            if (next?.sleepTimerTargetEpochMs != null || next?.sleepTimerEndOfChapter == true) {
-                ThemeManager.colors.primary
-            } else {
-                ThemeManager.colors.onSurfaceVariant
-            }
-        sleepTimerChip.addView(makeText(context, timerText, Type.LABEL_LARGE, timerColor))
-        historyChip.visibility = if (next?.history.isNullOrEmpty()) View.GONE else View.VISIBLE
-    }
-
-    /** Advances the time labels between engine updates, which only come per sentence. */
-    fun tick() {
-        if (isUserSeeking) return
-        val current = state
-        if (current == null || current.durationMs <= 0L) {
-            times.elapsed.text = "Buffering"
-            times.remaining.text = ""
-            seekBar.max = 0
-            return
-        }
-        val position = current.positionAt(SystemClock.elapsedRealtime())
-        seekBar.max = (current.durationMs / SEEK_STEP_MS).toInt()
-        seekBar.progress = (position / SEEK_STEP_MS).toInt()
-        renderTime(position)
-    }
-
-    private fun renderTime(positionMs: Long) {
-        val current = state ?: return
-        val estimate = if (current.timingExact) "" else "~"
-        times.elapsed.text = TtsTimeFormat.clock(positionMs)
-        times.remaining.text =
-            "$estimate-${TtsTimeFormat.clock(TtsTimeFormat.remainingAtRate(positionMs, current.durationMs, current.rate))}"
-    }
-
-    private fun showHistory() {
-        val entries = state?.history.orEmpty()
-        if (entries.isEmpty()) return
-        val now = System.currentTimeMillis()
-        val labels =
-            entries
-                .map { entry ->
-                    val age = DateUtils.getRelativeTimeSpanString(entry.recordedAt, now, DateUtils.MINUTE_IN_MILLIS)
-                    val excerpt = entry.anchorText?.let { " · \"$it…\"" }.orEmpty()
-                    "${entry.chapterTitle} · $age$excerpt"
-                }.toTypedArray()
-        android.app.AlertDialog
-            .Builder(context)
-            .setTitle("Go back to")
-            .setItems(labels) { _, which -> TtsForegroundService.jumpToHistory(context, entries[which]) }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private companion object {
-        const val SEEK_STEP_MS = 1_000L
-    }
-}
-
 /**
- * Podcast-style Now Playing screen. Rebuilds when playback moves to another chapter; patches the
- * transport controls in place for chunk/rate/play-state changes. Closes itself when playback ends.
+ * Podcast-style Now Playing (v3): blurred cover backdrop, collapse button, big cover, chapter and
+ * story, the "Now reading" card with the sentence being spoken, seek bar, transport, chips (speed,
+ * sleep timer, history, stop) and Read along. Rebuilds when playback moves to another chapter;
+ * patches the controls in place otherwise. Closes itself when playback ends.
  */
 internal fun ScreenHost.showPlayer() {
     rerender = { showPlayer() }
     val initial = ttsEngine.playbackState.value.snapshot
-    var liveViews: PlayerLiveViews? = null
+    var liveViews: NowPlayingViews? = null
 
-    screen(
-        route = AppRoute.Player,
-        title = "Now Playing",
-        subtitle = initial?.let { narration.store.pack(it.storyId, it.chapterId) }?.let { "Voice: ${it.recipe.voice.label}" },
-        actions =
-            listOf(
-                AppBarAction(R.drawable.wna_headphones, "Chapter audio") {
-                    val snapshot = ttsEngine.playbackState.value.snapshot
-                    if (snapshot != null) showNarrationStory(snapshot.storyId, snapshot.chapterId) else showNarration()
-                },
-            ),
-    ) {
-        liveViews = buildPlayerBody(this, initial)
+    screen(route = AppRoute.Player, title = "Now Playing", chrome = ScreenChrome.IMMERSIVE) {
+        liveViews = buildNowPlaying(this, initial)
     }
 
     screenObserver =
@@ -224,10 +75,16 @@ internal fun ScreenHost.showPlayer() {
                     liveViews?.tick()
                 }
             }
+            if (initial != null) {
+                launch {
+                    val sentences = chapterSentences(initial.storyId, initial.chapterId)
+                    liveViews?.sentences = sentences
+                }
+            }
             ttsEngine.playbackState.collect { update ->
                 val state = update.snapshot
                 if (state == null) {
-                    if (update.isAuthoritative && navigator.current == AppRoute.Player) navigateBack()
+                    if (update.isAuthoritative && initial != null && navigator.current == AppRoute.Player) navigateBack()
                     return@collect
                 }
                 if (initial == null || initial.storyId != state.storyId || initial.chapterId != state.chapterId) {
@@ -239,185 +96,276 @@ internal fun ScreenHost.showPlayer() {
         }
 }
 
-/** Builds the player body for [state]; returns the views that are patched live afterwards. */
-private fun ScreenHost.buildPlayerBody(
+/** The chapter's spoken sentences, numbered exactly as the engine numbers its chunks. */
+private suspend fun ScreenHost.chapterSentences(
+    storyId: String,
+    chapterId: String,
+): List<String> {
+    val story = repository.story(storyId) ?: return emptyList()
+    val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return emptyList()
+    val html = withContext(Dispatchers.IO) { runCatching { repository.readChapter(chapter) }.getOrNull() } ?: chapter.content
+    if (html.isNullOrBlank()) return emptyList()
+    val rules = repository.regexRules.get()
+    return withContext(Dispatchers.Default) { runCatching { TtsTextPreparation.prepareTtsChunks(html, rules) }.getOrDefault(emptyList()) }
+}
+
+private fun ScreenHost.buildNowPlaying(
     content: LinearLayout,
     state: TtsPlaybackSnapshot?,
-): PlayerLiveViews? {
+): NowPlayingViews? {
+    val story = state?.let { repository.story(it.storyId) }
+    val backdrop = PlayerBackdrop(app)
+    story?.let { s -> activeCoverSource(s)?.let { backdrop.load(it) { crossfade(false) } } }
+    val column =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(Spacing.LG), systemBarTop(), dp(Spacing.LG), dp(Spacing.XL))
+        }
+    column.addView(playerHeader(state))
+    var views: NowPlayingViews? = null
     if (state == null) {
-        content.addView(
-            makeText(app, "Nothing playing", Type.BODY_LARGE, ThemeManager.colors.onSurfaceVariant).apply {
+        column.addView(nothingPlaying(), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+    } else {
+        val wide = app.resources.configuration.screenWidthDp >= WIDE_MIN_DP
+        val body =
+            LinearLayout(app).apply {
+                orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(0, dp(Spacing.XL), 0, dp(Spacing.XL))
+            }
+        story?.let { body.addView(playerArt(it, wide)) }
+        val controls = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+        views = buildPlayerControls(controls, state, story, wide)
+        body.addView(
+            controls,
+            if (wide) {
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            } else {
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
         )
-        return null
+        val bodyWidth = if (wide) dp(WIDE_BODY_MAX_DP) else LinearLayout.LayoutParams.MATCH_PARENT
+        column.addView(
+            body,
+            LinearLayout.LayoutParams(bodyWidth, 0, 1f).apply { gravity = Gravity.CENTER_HORIZONTAL },
+        )
     }
+    val scroller =
+        ScrollView(app).apply {
+            isFillViewport = true
+            addView(column)
+        }
+    val root =
+        FrameLayout(app).apply {
+            addView(backdrop, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            addView(scroller, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        }
+    content.addView(root, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+    views?.apply(state)
+    return views
+}
+
+private fun ScreenHost.playerHeader(state: TtsPlaybackSnapshot?): View {
     val colors = ThemeManager.colors
-    val story = repository.story(state.storyId)
+    val voice =
+        state
+            ?.let { narration.store.pack(it.storyId, it.chapterId) }
+            ?.recipe
+            ?.voice
+            ?.label
+    return LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(HEADER_HEIGHT_DP)
+        addView(app.iconButton(R.drawable.wna_chevron_down, "Collapse", colors.onSurface) { navigateBack() })
+        val titles =
+            LinearLayout(app).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                addView(makeText(app, "Now Playing", Type.TITLE_SMALL, colors.onSurface))
+                voice?.let { addView(makeText(app, "Voice: $it", Type.BODY_SMALL, colors.onSurfaceVariant)) }
+            }
+        addView(titles, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        addView(
+            app.iconButton(R.drawable.wna_graphic_eq, "Chapter audio", colors.onSurface) {
+                val snapshot = ttsEngine.playbackState.value.snapshot
+                if (snapshot != null) showNarrationStory(snapshot.storyId, snapshot.chapterId) else showNarration()
+            },
+        )
+    }
+}
+
+private fun ScreenHost.playerArt(
+    story: Story,
+    wide: Boolean,
+): View {
+    val config = app.resources.configuration
+    val widthDp =
+        when {
+            wide -> WIDE_COVER_DP
+            config.screenHeightDp < SHORT_SCREEN_DP -> minOf(config.screenWidthDp * 42 / 100, SHORT_COVER_DP)
+            else -> minOf(config.screenWidthDp * 56 / 100, COVER_MAX_DP)
+        }
+    val cover =
+        coverImage(story, widthDp, widthDp * 3 / 2, tapToOpen = false).apply {
+            contentDescription = "Open ${story.title}"
+            setOnClickListener { showDetails(story.id) }
+            elevation = dp(Spacing.LG).toFloat()
+        }
+    return FrameLayout(app).apply {
+        setPadding(0, dp(Spacing.XS), 0, dp(Spacing.LG + 2))
+        if (wide) setPadding(0, 0, dp(WIDE_GAP_DP), 0)
+        clipToPadding = false
+        addView(cover, FrameLayout.LayoutParams(dp(widthDp), dp(widthDp * 3 / 2), Gravity.CENTER))
+    }
+}
+
+@Suppress("LongMethod") // One linear layout pass over the player's controls.
+private fun ScreenHost.buildPlayerControls(
+    controls: LinearLayout,
+    state: TtsPlaybackSnapshot,
+    story: Story?,
+    wide: Boolean,
+): NowPlayingViews {
+    val colors = ThemeManager.colors
+    val align = if (wide) Gravity.START else Gravity.CENTER_HORIZONTAL
     val chapterIndex = story?.chapters?.indexOfFirst { it.id == state.chapterId } ?: -1
-
-    val coverHolder =
-        LinearLayout(app).apply { gravity = Gravity.CENTER_HORIZONTAL }
-    story?.let { coverHolder.addView(coverImage(it, 150, 225, tapToOpen = false)) }
-    content.addView(coverHolder)
-
-    content.addView(
-        makeText(app, state.storyTitle.ifBlank { story?.title ?: "" }, Type.TITLE_MEDIUM, colors.onSurface).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(Spacing.MD), 0, 0)
+    controls.addView(
+        makeText(app, state.title, Type.TITLE_LARGE, colors.onSurface).apply {
+            gravity = align
+            textSize = CHAPTER_TITLE_SP
         },
     )
-    content.addView(
-        makeText(app, state.title, Type.BODY_LARGE, colors.onSurfaceVariant).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(Spacing.XS), 0, 0)
+    val storyTitle = state.storyTitle.ifBlank { story?.title.orEmpty() }
+    controls.addView(
+        makeText(app, storyTitle, Type.TITLE_SMALL, colors.primary).apply {
+            gravity = align
+            setPadding(0, dp(Spacing.XS), 0, dp(2))
+            if (story != null) {
+                background = selectableRipple(colors.primary)
+                setOnClickListener { showDetails(story.id) }
+            }
         },
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { gravity = align },
     )
     if (chapterIndex >= 0 && story != null) {
-        content.addView(
+        controls.addView(
             makeText(app, "Chapter ${chapterIndex + 1} / ${story.chapters.size}", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
-                gravity = Gravity.CENTER
-                setPadding(0, dp(Spacing.XS), 0, 0)
+                gravity =
+                    align
             },
         )
     }
+    val canReadAlong = chapterIndex >= 0 && story != null
+    val caption = makeText(app, "", Type.BODY_LARGE, colors.onSurface).apply { maxLines = 3 }
+    val captionCard = nowReadingCard(caption) { if (canReadAlong) openReadAlong(state) }
+    controls.addView(captionCard)
 
-    val seekBar =
-        SeekBar(app).apply {
-            progressTintList = ColorStateList.valueOf(colors.primary)
-            thumbTintList = ColorStateList.valueOf(colors.primary)
-            setPadding(dp(Spacing.MD), dp(Spacing.MD), dp(Spacing.MD), 0)
-        }
-    content.addView(seekBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-    val timeRow =
+    val seekBar = makePlayerSeekBar(app)
+    controls.addView(seekBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+    val elapsed = makeTimeLabel(app, Gravity.START)
+    val remaining = makeTimeLabel(app, Gravity.END)
+    controls.addView(
         LinearLayout(app).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(Spacing.MD), 0, dp(Spacing.MD), 0)
-        }
-    val elapsedLabel = makeText(app, "", Type.BODY_SMALL, colors.onSurfaceVariant)
-    val remainingLabel = makeText(app, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply { gravity = Gravity.END }
-    timeRow.addView(elapsedLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-    timeRow.addView(remainingLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-    content.addView(timeRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
-    val playPause = buildPlayPauseButton()
-    content.addView(
-        buildPlayerTransport(playPause),
-        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+            setPadding(dp(Spacing.LG), 0, dp(Spacing.LG), 0)
+            addView(elapsed, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(remaining, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        },
     )
 
-    val chipsRow =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(Spacing.MD), 0, 0)
+    val playPause = playButton()
+    controls.addView(transportRow(playPause))
+
+    lateinit var views: NowPlayingViews
+    val rateChip =
+        PlayerChip(app, R.drawable.wna_speed, rateLabel(state.rate)) {
+            val rate =
+                ttsEngine.playbackState.value.snapshot
+                    ?.rate ?: state.rate
+            TtsForegroundService.setRate(app, nextRatePreset(rate))
         }
-
-    fun makeChip(): LinearLayout =
-        LinearLayout(app).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            isClickable = true
-            isFocusable = true
-            val radius = dp(Spacing.LG).toFloat()
-            background = ripple(roundedBg(android.graphics.Color.TRANSPARENT, radius), radius, colors.onSurface)
-            setPadding(dp(Spacing.MD), dp(Spacing.XS + 2), dp(Spacing.MD), dp(Spacing.XS + 2))
+    val sleepChip = PlayerChip(app, R.drawable.wna_bedtime, "Timer: Off") { views.showSleepTimerSheet() }
+    val historyChip = PlayerChip(app, R.drawable.wna_history, "History") { views.showHistorySheet() }
+    val stopChip = PlayerChip(app, R.drawable.wna_stop, "Stop") { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) }
+    val chips =
+        WrapLayout(app).apply {
+            horizontalSpacingDp = Spacing.SM
+            verticalSpacingDp = Spacing.SM
+            listOf(rateChip, sleepChip, historyChip, stopChip).forEach { addView(it.view) }
         }
-
-    val rateChip = makeChip()
-    val sleepTimerChip = makeChip()
-    val historyChip = makeChip().apply { addView(makeText(app, "History", Type.LABEL_LARGE, colors.onSurfaceVariant)) }
-    val stopChip =
-        makeChip().apply {
-            setOnClickListener { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) }
-            addView(makeText(app, "Stop", Type.LABEL_LARGE, colors.onSurfaceVariant))
-        }
-
-    chipsRow.addView(rateChip)
-    chipsRow.addView(View(app), LinearLayout.LayoutParams(dp(Spacing.MD), 1))
-    chipsRow.addView(sleepTimerChip)
-    chipsRow.addView(View(app), LinearLayout.LayoutParams(dp(Spacing.MD), 1))
-    chipsRow.addView(historyChip)
-    chipsRow.addView(View(app), LinearLayout.LayoutParams(dp(Spacing.MD), 1))
-    chipsRow.addView(stopChip)
-
-    content.addView(
-        chipsRow,
-        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+    controls.addView(
+        chips,
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { gravity = align },
     )
-
-    if (chapterIndex >= 0 && story != null) addReadAlongButton(content, state)
-
-    return PlayerLiveViews(
-        app,
-        playPause,
-        PlayerTimeRow(elapsedLabel, remainingLabel),
-        seekBar,
-        rateChip,
-        sleepTimerChip,
-        historyChip,
-    ).apply { apply(state) }
+    if (canReadAlong) {
+        controls.addView(
+            makeButton(app, "Read along", Btn.TONAL, R.drawable.wna_menu_book) { openReadAlong(state) }.apply { gravity = Gravity.CENTER },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(Spacing.LG)
+            },
+        )
+    }
+    views =
+        NowPlayingViews(
+            app,
+            playPause,
+            PlayerTimes(elapsed, remaining),
+            seekBar,
+            NowReadingCaption(caption, captionCard),
+            rateChip,
+            sleepChip,
+        )
+    return views
 }
 
 /** Opens the playing chapter in the reader, which highlights and follows the spoken sentence. */
-private fun ScreenHost.addReadAlongButton(
-    content: LinearLayout,
-    state: TtsPlaybackSnapshot,
-) {
-    content.addView(
-        makeButton(app, "Read along", Btn.TONAL, R.drawable.wna_menu_book) {
-            val live = ttsEngine.playbackState.value.snapshot ?: state
-            // Readers of this story below Now Playing are dropped rather than returned to, so Back
-            // from the reader lands here (an older one would also auto-jump to the playing chapter
-            // as soon as it reopened, swallowing a Back press).
-            navigator.bringToTop(AppRoute.Reader(live.storyId, live.chapterId)) {
-                it is AppRoute.Reader && it.storyId == live.storyId
-            }
-            showReader(live.storyId, live.chapterId)
-        },
-        LinearLayout
-            .LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            .apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                topMargin = dp(Spacing.LG)
-            },
+private fun ScreenHost.openReadAlong(state: TtsPlaybackSnapshot) {
+    val live = ttsEngine.playbackState.value.snapshot ?: state
+    // Readers of this story below Now Playing are dropped rather than returned to, so Back from the
+    // reader lands here (an older one would also auto-jump to the playing chapter as soon as it
+    // reopened, swallowing a Back press).
+    navigator.bringToTop(AppRoute.Reader(live.storyId, live.chapterId)) {
+        it is AppRoute.Reader && it.storyId == live.storyId
+    }
+    showReader(live.storyId, live.chapterId)
+}
+
+/** Nothing loaded: say so, and offer the saved place when there is one. */
+private fun ScreenHost.nothingPlaying(): View {
+    val box =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+    box.addView(
+        makeEmptyState(
+            app,
+            message = "Open a chapter and tap the headphones to listen.",
+            iconRes = R.drawable.wna_headphones,
+            title = "Nothing playing",
+        ),
     )
-}
-
-private fun ScreenHost.buildPlayPauseButton(): ImageView {
-    val colors = ThemeManager.colors
-    return ImageView(app).apply {
-        contentDescription = "Play"
-        val size = dp(68)
-        layoutParams =
-            LinearLayout.LayoutParams(size, size).apply {
-                marginStart = dp(Spacing.SM)
-                marginEnd = dp(Spacing.SM)
-            }
-        val corner = (size / 2).toFloat()
-        background = ripple(roundedBg(colors.primary, corner), corner, colors.onPrimary)
-        setPadding(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG))
-        elevate(4f)
-        setOnClickListener { TtsForegroundService.command(app, TtsForegroundService.ACTION_PLAY_PAUSE) }
+    scope.launch {
+        val positions = runCatching { repository.getTtsStoryPositions() }.getOrDefault(emptyList())
+        val target = TtsContinueListening.target(positions) { repository.story(it) } ?: return@launch
+        box.addView(
+            makeButton(app, "Continue · ${target.chapter.title}", Btn.FILLED, R.drawable.wna_play) {
+                playIfGenerated(target.story.id, target.chapter.id) { TtsForegroundService.start(app, target.story.id, target.chapter.id) }
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            },
+        )
     }
+    return box
 }
 
-private fun ScreenHost.buildPlayerTransport(playPause: ImageView): LinearLayout {
-    fun transportIcon(
-        desc: String,
-        icon: Int,
-        action: String,
-    ) = app.iconButton(icon, desc, ThemeManager.colors.primary) { TtsForegroundService.command(app, action) }
-
-    return LinearLayout(app).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL or Gravity.CENTER_HORIZONTAL
-        setPadding(0, dp(Spacing.MD), 0, 0)
-        addView(transportIcon("Previous chapter", R.drawable.wna_skip_prev, TtsForegroundService.ACTION_PREVIOUS_CHAPTER))
-        addView(transportIcon("Back 15 seconds", R.drawable.wna_replay, TtsForegroundService.ACTION_SKIP_BACK))
-        addView(playPause)
-        addView(transportIcon("Forward 30 seconds", R.drawable.wna_forward_skip, TtsForegroundService.ACTION_SKIP_FORWARD))
-        addView(transportIcon("Next chapter", R.drawable.wna_skip_next, TtsForegroundService.ACTION_NEXT_CHAPTER))
-    }
-}
+private const val WIDE_MIN_DP = 720
+private const val WIDE_BODY_MAX_DP = 860
+private const val WIDE_COVER_DP = 300
+private const val WIDE_GAP_DP = 48
+private const val COVER_MAX_DP = 230
+private const val SHORT_COVER_DP = 170
+private const val SHORT_SCREEN_DP = 760
+private const val HEADER_HEIGHT_DP = 64
+private const val CHAPTER_TITLE_SP = 21f

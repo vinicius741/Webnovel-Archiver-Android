@@ -9,14 +9,18 @@ import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.data.repository.markAiCoverResultSeen
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.details.refreshStoryHero
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.details.storyScreen
+import com.vinicius741.webnovelarchiver.feature.details.storyTabShowing
 import com.vinicius741.webnovelarchiver.feature.settings.showAiSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.SegmentedControl.Segment
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -27,6 +31,7 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.makeChip
+import com.vinicius741.webnovelarchiver.ui.makeSegmentedControl
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
@@ -57,7 +62,7 @@ internal fun ScreenHost.showAiControls(
     val generatingCover = aiCoverOperationFor(story.id)
     hydrateAiCoverDraftFromStorage(story.id)
     markAiResultsSeen(story.id, shownTab)
-    screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, scrollable = true) {
+    storyScreen(route = AppRoute.AiControls(story.id), story = story, scrollable = true) {
         val binding = AiControlsBinding(story.id, this, aiOperation?.takeIf { it.storyId == story.id }?.kind)
         aiControlsScreenState.binding = binding
         addAiTabBar(this, story.id, shownTab)
@@ -87,31 +92,30 @@ private fun ScreenHost.markAiResultsSeen(
     }
 }
 
+/** Cover | Description, with a dot on the one whose finished result is still waiting. */
 private fun ScreenHost.addAiTabBar(
     container: LinearLayout,
     storyId: String,
     selected: AiControlsTab,
 ) {
-    container.row {
-        AiControlsTab.entries.forEach { tab ->
-            // A finished result waiting on the other tab gets a dot so it is not missed.
+    val tabs = AiControlsTab.entries
+    val segments =
+        tabs.map { tab ->
             val waiting =
                 tab != selected &&
                     when (tab) {
                         AiControlsTab.COVER -> aiControlsScreenState.coverDrafts[storyId] != null
                         AiControlsTab.DESCRIPTION -> aiControlsScreenState.drafts[storyId] != null
                     }
-            addView(
-                makeChip(context, if (waiting) "${tab.label} •" else tab.label, tab == selected) {
-                    if (tab != selected) showAiControls(storyId, tab)
-                },
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    marginEnd = dp(Space.SM)
-                },
-            )
+            Segment(tab.label, if (tab == AiControlsTab.COVER) R.drawable.wna_image else R.drawable.wna_notes, dot = waiting)
         }
-    }
-    container.spacer(Space.SM)
+    container.addView(
+        makeSegmentedControl(app, segments, tabs.indexOf(selected)) { index -> showAiControls(storyId, tabs[index]) },
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(Space.XS)
+            bottomMargin = dp(Space.SM)
+        },
+    )
 }
 
 /** One quiet line naming the models a tab uses; tapping it opens AI Settings, where models are chosen. */
@@ -120,8 +124,8 @@ internal fun ScreenHost.addAiModelFooter(
     vararg models: Pair<String, String>,
 ) {
     val names = models.joinToString(" · ") { (label, id) -> "$label: $id" }
-    container.text("$names · Change in AI Settings", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-        setPadding(0, dp(Space.XS), 0, dp(Space.SM))
+    container.text("$names · Change in AI Settings", Type.BODY_SMALL, ThemeManager.colors.faint).apply {
+        setPadding(dp(Space.XS), dp(Space.MD), dp(Space.XS), dp(Space.SM))
         background = ripple(roundedBg(Color.TRANSPARENT, dp(Space.SM).toFloat()), dp(Space.SM).toFloat(), ThemeManager.colors.onSurface)
         isClickable = true
         setOnClickListener { showAiSettings() }
@@ -359,6 +363,11 @@ internal fun ScreenHost.discardAiDescriptionDraft(story: Story) {
 
 internal fun ScreenHost.frameIsAiControls(storyId: String): Boolean = frame.tag == AppRoute.AiControls(storyId).stableKey
 
+/** Re-renders the story page when it shows AI results: its Overview or Chapters tab, or any tab beside the hero pane. */
 internal fun ScreenHost.rerenderDetailsIfVisible(storyId: String) {
-    if (frame.tag == AppRoute.Details(storyId).stableKey) showDetails(storyId)
+    if (navigator.current is AppRoute.Details) {
+        if (storyTabShowing(storyId)) renderRoute(navigator.current)
+    } else {
+        refreshStoryHero(storyId)
+    }
 }

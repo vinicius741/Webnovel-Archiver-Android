@@ -2,17 +2,21 @@ package com.vinicius741.webnovelarchiver.feature.settings
 
 import android.os.Build
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
+import com.vinicius741.webnovelarchiver.notification.NotificationCategoryStatus
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.card
+import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.fullButton
+import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.settingRow
@@ -42,64 +46,68 @@ internal fun ScreenHost.showNotifications() {
             else -> "Android is allowing this app to show notifications."
         }
 
+    val colors = ThemeManager.colors
+    val allowed = permissionGranted && appNotificationsEnabled
     screen(route = AppRoute.Notifications, title = "Notifications", scrollable = true) {
-        section("App Permission")
-        addView(
-            card {
-                text(permissionStatus, Type.TITLE_SMALL)
-                spacer(Space.XS)
-                text(permissionDescription, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
-                fullButton(
-                    label = notificationPermissionActionLabel(),
-                    variant = Btn.TONAL,
-                    bottomMarginDp = 0,
-                ) {
+        capSettingsWidth(this)
+        tintedCard(if (allowed) colors.tertiary else colors.error) {
+            iconColumnRow(R.drawable.wna_notifications, if (allowed) colors.tertiary else colors.error).apply {
+                addView(makeEyebrow(context, "App permission", if (allowed) colors.tertiary else colors.error))
+                addView(makeText(context, permissionStatus, Type.TITLE_SMALL, colors.onSurface).apply { textSize = TITLE_SP })
+                addView(
+                    makeText(context, permissionDescription, Type.BODY_SMALL, colors.onSurfaceVariant).apply { setPadding(0, dp(2), 0, 0) },
+                )
+            }
+            addView(
+                makeButton(context, notificationPermissionActionLabel(), if (allowed) Btn.SURFACE else Btn.FILLED) {
                     performNotificationPermissionAction()
-                }
-            },
-        )
+                },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin =
+                        dp(Space.MD)
+                },
+            )
+        }
 
         section("Categories")
-        notificationCategoryRow(
-            host = host,
-            category = AppNotificationCategory.DOWNLOADS,
-            icon = R.drawable.wna_download,
-            title = "Downloads",
-            description = "Progress and queue controls while chapters are downloading.",
-        )
-        notificationCategoryRow(
-            host = host,
-            category = AppNotificationCategory.TEXT_TO_SPEECH,
-            icon = R.drawable.wna_speaker,
-            title = "Text to Speech",
-            description = "Playback controls while the app reads a chapter aloud.",
-        )
-        notificationCategoryRow(
-            host = host,
-            category = AppNotificationCategory.NARRATION,
-            icon = R.drawable.wna_headphones,
-            title = "Narration audio",
-            description = "Progress while chapter audio is generated in the background.",
-        )
-        notificationCategoryRow(
-            host = host,
-            category = AppNotificationCategory.AI_GENERATION,
-            icon = R.drawable.wna_auto_awesome,
-            title = "AI Generation",
-            description = "Progress and results while AI covers are generated in the background.",
-        )
-
-        spacer(Space.SM)
-        text(
-            "Turning off a category hides its notification; it does not disable downloads, text-to-speech, or AI generation. " +
-                "Android may still show foreground work in its running-apps panel.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
+        settingsGroup {
+            notificationCategoryRow(
+                host,
+                AppNotificationCategory.DOWNLOADS,
+                R.drawable.wna_download,
+                "Downloads",
+                "Progress and queue controls",
+            )
+            notificationCategoryRow(
+                host,
+                AppNotificationCategory.TEXT_TO_SPEECH,
+                R.drawable.wna_record_voice,
+                "Text to Speech",
+                "Playback controls",
+            )
+            notificationCategoryRow(
+                host,
+                AppNotificationCategory.NARRATION,
+                R.drawable.wna_graphic_eq,
+                "Narration audio",
+                "Generation progress",
+            )
+            notificationCategoryRow(
+                host,
+                AppNotificationCategory.AI_GENERATION,
+                R.drawable.wna_auto_awesome,
+                "AI Generation",
+                "Covers in the background",
+            )
+        }
+        settingsNote(
+            "Turning off a category hides its notification; it does not stop downloads, speech or AI generation. " +
+                "Each category opens its Android settings.",
         )
     }
 }
 
-private fun ViewGroup.notificationCategoryRow(
+private fun LinearLayout.notificationCategoryRow(
     host: ScreenHost,
     category: AppNotificationCategory,
     icon: Int,
@@ -107,11 +115,10 @@ private fun ViewGroup.notificationCategoryRow(
     description: String,
 ) {
     val status = AppNotificationChannels.status(host.app, category)
-    settingRow(
-        iconRes = icon,
-        title = "$title · ${status.label}",
-        description = description,
-    ) {
+    val tint = if (status == NotificationCategoryStatus.ENABLED) ThemeManager.colors.primary else ThemeManager.colors.faint
+    navRow(icon, title, "${status.label} · $description", tint = tint) {
         host.app.startActivity(AppNotificationChannels.channelSettingsIntent(host.app, category))
     }
 }
+
+private const val TITLE_SP = 15f

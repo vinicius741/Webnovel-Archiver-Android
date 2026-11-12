@@ -84,6 +84,7 @@ scripts/dev_library.sh open 5 --chapter 1 --rebuild
 | Token          | Lands on            | Needs library data? |
 |----------------|---------------------|---------------------|
 | `library`      | Library (home)      | no                  |
+| `updates`      | Updates (release forecasts) | no          |
 | `queue`        | Download manager    | no                  |
 | `settings`     | Settings            | no                  |
 | `notifications`| Notifications       | no                  |
@@ -105,6 +106,7 @@ A quick lookup so you don't have to reason about where a change surfaces:
 | TTS playback, reader transport bar, in-reader controls, highlight | `reader`   |
 | Reading/typography (font, theme, cleanup)                         | `reader`   |
 | Library list, story cards, filters/sort, progress                 | `library`  |
+| Updates: release forecasts, per-novel and "Sync all" sync         | `updates`  |
 | Story details (download banner, EPUB actions, per-story)          | `details`  |
 | Trends charts and filters (score/Patreon/engagement history)      | `trends`   |
 | Download manager / queue screen                                   | `queue`    |
@@ -194,7 +196,7 @@ ACTIVITY=com.vinicius741.webnovelarchiver.app.MainActivity
 
 adb -s "$SERIAL" shell am force-stop "$PKG"
 adb -s "$SERIAL" shell am start -n "$PKG/$ACTIVITY" --es dev_start_screen reader
-# other tokens: queue, settings, notifications, details, addstory, library
+# other tokens: queue, settings, notifications, details, addstory, library, updates
 # then settle (see table above) before screenshot / interaction
 ```
 

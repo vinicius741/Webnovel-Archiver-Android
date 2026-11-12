@@ -2,20 +2,25 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.graphics.Typeface
 import android.text.TextUtils
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.TrendFilterPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.TrendGroup
 import com.vinicius741.webnovelarchiver.domain.metrics.TrendRange
 import com.vinicius741.webnovelarchiver.domain.metrics.TrendWindow
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
+import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.SegmentedControl.Segment
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -25,8 +30,10 @@ import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
+import com.vinicius741.webnovelarchiver.ui.makeSegmentedControl
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.screen
+import com.vinicius741.webnovelarchiver.ui.strokeBg
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,7 +55,7 @@ internal fun ScreenHost.showTrends(
     rerender = { showTrends(storyId, focus) }
     // Not scrollable: a scrolling placeholder would record its own zero offset over the remembered
     // one when the populated screen replaces it, so fold/unfold and Back would land at the top.
-    screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title) {
+    storyScreen(route = AppRoute.Trends(story.id, focus), story = story, scrollable = false) {
         addView(
             makeEmptyState(
                 app,
@@ -86,21 +93,23 @@ private fun ScreenHost.renderTrends(
     focus: String?,
 ) {
     var scrollTarget: String? = null
-    screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title, scrollable = true) {
-        addTrendsHeader(this, story, model)
+    storyScreen(route = AppRoute.Trends(story.id, focus), story = story, scrollable = true) {
+        addTrendsHeader(this, model)
         if (model.snapshotCount == 0 && model.series.isEmpty()) {
             addView(
                 makeEmptyState(
                     app,
                     title = "No trend data yet",
-                    message = "Sync this novel to start recording its score, engagement metrics, and Patreon figures over time.",
+                    message = "Trends build up each time this novel syncs.",
                     iconRes = R.drawable.wna_chart,
+                    actionLabel = "Sync now".takeIf { StoryActionGuards.canSync(story) },
+                    onAction = { repository.story(story.id)?.let { syncStory(it) } },
                 ),
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                     topMargin = dp(Space.XL)
                 },
             )
-            return@screen
+            return@storyScreen
         }
         if (model.series.isEmpty()) {
             addView(
@@ -115,7 +124,7 @@ private fun ScreenHost.renderTrends(
                     topMargin = dp(Space.MD)
                 },
             )
-            return@screen
+            return@storyScreen
         }
         val memoryKey = navigator.current.stableKey
         val saved = routeMemory.queries[memoryKey]
@@ -178,47 +187,33 @@ private class TrendsBody(
         // Keep each row's horizontal scroll across the rebuild so the tapped chip stays put.
         val previousScroll = (0 until filters.childCount).map { (filters.getChildAt(it) as? HorizontalScrollView)?.scrollX ?: 0 }
         filters.removeAllViews()
-        val rows = mutableListOf<HorizontalScrollView>()
+        val rows = mutableListOf<View>()
         if (ranges.size > 1) {
             rows +=
-                chipRow(
-                    ranges.map {
-                        (
-                            if (it ==
-                                TrendRange.ALL
-                            ) {
-                                "All time"
-                            } else {
-                                it.label
-                            }
-                        ) to (it == range)
-                    },
+                makeSegmentedControl(
+                    host.app,
+                    ranges.map { Segment(if (it == TrendRange.ALL) "All time" else it.label) },
+                    ranges.indexOf(range),
                 ) { select(newRange = ranges[it]) }
         }
         if (groups.size > 1) {
             rows +=
                 chipRow(
-                    groups.map {
-                        (
-                            if (it ==
-                                TrendGroup.ALL
-                            ) {
-                                "All metrics"
-                            } else {
-                                it.label
-                            }
-                        ) to (it == group)
-                    },
+                    groups.map { (if (it == TrendGroup.ALL) "All metrics" else it.label) to (it == group) },
                 ) { select(newGroup = groups[it]) }
         }
         rows.forEachIndexed { index, row ->
             filters.addView(
                 row,
                 matchWrap().apply {
-                    bottomMargin = host.app.dp(if (index == rows.lastIndex) Space.MD else Space.SM)
+                    bottomMargin = host.app.dp(if (index == rows.lastIndex) Space.MD + 2 else Space.SM + 2)
                 },
             )
-            previousScroll.getOrNull(index)?.takeIf { it > 0 }?.let { x -> row.post { row.scrollTo(x, 0) } }
+            if (row is HorizontalScrollView) {
+                previousScroll.getOrNull(index)?.takeIf { it > 0 }?.let { x ->
+                    row.post { row.scrollTo(x, 0) }
+                }
+            }
         }
     }
 
@@ -291,16 +286,13 @@ private class TrendsBody(
         val card =
             makeCard(app).apply {
                 tag = series.focusTag
-                addView(
-                    makeText(app, series.title, Type.TITLE_SMALL, if (emphasize) colors.primary else colors.onSurface).apply {
-                        setTypeface(typeface, Typeface.BOLD)
-                        letterSpacing = 0.04f
-                    },
-                )
-                addView(
-                    makeText(app, currentSummary(series), Type.BODY_MEDIUM, colors.onSurfaceVariant),
-                    matchWrap().apply { topMargin = app.dp(Space.XS) },
-                )
+                setPadding(app.dp(Space.LG), app.dp(Space.MD + 2), app.dp(Space.LG), app.dp(Space.MD))
+                if (emphasize) {
+                    background =
+                        strokeBg(colors.elevation1, app.dp(ThemeManager.shapes.cardRadius).toFloat(), colors.primary, app.dp(1))
+                }
+                addView(makeText(app, series.title, Type.LABEL_LARGE, if (emphasize) colors.primary else colors.onSurfaceVariant))
+                addView(valueLine(series), matchWrap().apply { topMargin = app.dp(2) })
                 if (window.isChartable) {
                     windowSummary(series, window, range)?.let { line ->
                         addView(makeText(app, line, Type.BODY_SMALL, colors.onSurfaceVariant), matchWrap().apply { topMargin = app.dp(2) })
@@ -321,7 +313,6 @@ private class TrendsBody(
             )
             return null
         }
-        card.addView(makeDivider(app))
         // WRAP_CONTENT gives a LineChart in a ScrollView almost no height; fixed height avoids a squished plot.
         val slot = FrameLayout(app)
         card.addView(
@@ -343,28 +334,50 @@ private class TrendsBody(
             else -> "No values recorded in the last ${range.days} days."
         }
 
+    /** The current value, large, with its change since the last sync in sage (up) or red (down). */
+    private fun valueLine(series: TrendSeries): View {
+        val app = host.app
+        val colors = ThemeManager.colors
+        val last = series.points.lastOrNull()?.second
+        val delta = MetricSnapshotPlanning.delta(series.points)
+        return LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
+            addView(
+                makeText(
+                    app,
+                    last?.let { formatTrendValue(series.kind, it) + series.suffix } ?: "—",
+                    Type.HEADLINE,
+                    colors.onSurface,
+                ).apply {
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    includeFontPadding = false
+                },
+            )
+            delta?.let {
+                val color =
+                    when {
+                        it > 0 -> colors.tertiary
+                        it < 0 -> colors.error
+                        else -> colors.onSurfaceVariant
+                    }
+                addView(
+                    makeText(app, "${formatTrendDelta(series.kind, it)} since last sync", Type.LABEL_MEDIUM, color).apply {
+                        setPadding(app.dp(Space.SM), 0, 0, app.dp(2))
+                    },
+                )
+            }
+        }
+    }
+
     private fun matchWrap() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 }
 
+/** "16 snapshots · since Jul 17, 2026 · updated Nov 12, 2026". */
 private fun ScreenHost.addTrendsHeader(
     content: LinearLayout,
-    story: Story,
     model: TrendsModel,
 ) {
-    val colors = ThemeManager.colors
-    content.addView(
-        makeText(app, story.title, Type.TITLE_LARGE, colors.onSurface).apply {
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-        },
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
-    )
-    content.addView(
-        makeText(app, "by ${story.author}", Type.BODY_MEDIUM, colors.onSurfaceVariant),
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(2)
-        },
-    )
     val count = model.snapshotCount
     val noun = if (count == 1) "snapshot" else "snapshots"
     val firstAt = model.firstSnapshotAt
@@ -376,7 +389,7 @@ private fun ScreenHost.addTrendsHeader(
             "$count $noun"
         }
     content.addView(
-        makeText(app, range, Type.BODY_SMALL, colors.onSurfaceVariant),
+        makeText(app, range, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant),
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(Space.XS)
             bottomMargin = dp(Space.MD)
@@ -406,4 +419,4 @@ private fun ScreenHost.scrollToFocus(focus: String) {
 }
 
 /** Fixed chart height (dp) inside a trend card. */
-private const val TREND_CHART_HEIGHT_DP = 180
+private const val TREND_CHART_HEIGHT_DP = 160

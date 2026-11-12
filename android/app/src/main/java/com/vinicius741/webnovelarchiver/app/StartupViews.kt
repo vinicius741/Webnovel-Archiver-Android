@@ -24,7 +24,6 @@ import com.vinicius741.webnovelarchiver.ui.layout.resolveScreenLayout
 import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
-import com.vinicius741.webnovelarchiver.ui.systemBarBottom
 import com.vinicius741.webnovelarchiver.ui.systemBarTop
 import timber.log.Timber
 
@@ -79,7 +78,7 @@ internal fun MainActivity.showStartupLoading() {
         LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(colors.background)
-            setPadding(ctx.dp(Space.XL), systemBarTop() + ctx.dp(Space.LG), ctx.dp(Space.XL), systemBarBottom())
+            setPadding(ctx.dp(Space.XL), systemBarTop() + ctx.dp(Space.LG), ctx.dp(Space.XL), 0)
         }
     root.addView(
         makeStartupBranding(),
@@ -247,7 +246,7 @@ internal fun MainActivity.showStartupFailure(error: Throwable) {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(colors.background)
-            setPadding(ctx.dp(Space.XL), systemBarTop(), ctx.dp(Space.XL), systemBarBottom())
+            setPadding(ctx.dp(Space.XL), systemBarTop(), ctx.dp(Space.XL), 0)
             addView(
                 makeText(ctx, ctx.getString(R.string.startup_failed_title), Type.TITLE_MEDIUM, colors.error).apply {
                     gravity = Gravity.CENTER_HORIZONTAL

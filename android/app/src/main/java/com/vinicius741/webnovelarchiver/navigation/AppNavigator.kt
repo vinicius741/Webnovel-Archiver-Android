@@ -22,9 +22,24 @@ class AppNavigator(
     val stableKeys: Set<String>
         get() = routes.mapTo(mutableSetOf()) { it.stableKey }
 
+    /**
+     * Keys whose view memory (scroll, list state, search) stays alive: every route in the history,
+     * plus every tab of a story page in it, so switching tabs and back keeps each tab's place.
+     */
+    val viewMemoryKeys: Set<String>
+        get() =
+            stableKeys +
+                routes
+                    .mapNotNull { it.storyTabOf }
+                    .distinct()
+                    .flatMap { storyTabRoutes(it) }
+                    .map { it.stableKey }
+
     fun navigate(route: AppRoute) {
         if (route == current) return
-        val existing = routes.indexOfLast { it.stableKey == route.stableKey }
+        // Another tab of a story page already in the history counts as the same entry.
+        val tabOf = route.storyTabOf
+        val existing = routes.indexOfLast { it.stableKey == route.stableKey || (tabOf != null && it.storyTabOf == tabOf) }
         when {
             existing >= 0 -> {
                 while (routes.lastIndex > existing) routes.removeAt(routes.lastIndex)
@@ -65,6 +80,9 @@ class AppNavigator(
         }
         return current
     }
+
+    /** The history, oldest first (a copy). */
+    val history: List<AppRoute> get() = routes.toList()
 
     fun encodedStack(): List<String> = routes.map(AppRouteCodec::encode)
 

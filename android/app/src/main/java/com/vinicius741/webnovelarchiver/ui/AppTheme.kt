@@ -33,6 +33,14 @@ data class ThemeColors(
     val elevation3: Int,
     val elevation4: Int,
     val elevation5: Int,
+    /** Tertiary text: timestamps, counts, disabled hints. */
+    val faint: Int,
+    /** The reading bookmark (ivory): reads on the gold progress bar without looking like an error. */
+    val bookmark: Int,
+    /** Hairline borders between list rows and around cards. */
+    val line: Int,
+    /** Bottom navigation / rail surface. */
+    val navSurface: Int,
 )
 
 /** Shape / corner-radius tokens (dp). */
@@ -52,40 +60,47 @@ data class ThemeShapes(
 object ThemeManager {
     private fun c(hex: String): Int = Color.parseColor(hex)
 
+    // v3 "Restructured" palette (2026-11 redesign): warm obsidian surfaces, gold primary,
+    // copper secondary (Patreon, generation, late), sage tertiary (done / completed).
     val colors: ThemeColors =
         ThemeColors(
-            primary = c("#C9A84C"),
-            onPrimary = c("#3D2E00"),
-            primaryContainer = c("#574400"),
-            onPrimaryContainer = c("#E8D597"),
-            secondary = c("#D4A88C"),
-            onSecondary = c("#4D280F"),
-            secondaryContainer = c("#663C21"),
-            onSecondaryContainer = c("#F5DED3"),
-            tertiary = c("#D4B85C"),
-            onTertiary = c("#3D3000"),
-            tertiaryContainer = c("#574800"),
-            onTertiaryContainer = c("#F2E4C4"),
-            error = c("#FFB4AB"),
-            onError = c("#690005"),
-            errorContainer = c("#93000A"),
-            onErrorContainer = c("#FFDAD6"),
-            background = c("#12110F"),
-            onBackground = c("#E8E2DA"),
-            surface = c("#1C1A17"),
-            onSurface = c("#E8E2DA"),
-            surfaceVariant = c("#252320"),
-            onSurfaceVariant = c("#B0A99A"),
-            outline = c("#3D3A36"),
-            outlineVariant = c("#4D4944"),
-            elevation1 = c("#1C1A17"),
-            elevation2 = c("#201E1B"),
-            elevation3 = c("#252320"),
-            elevation4 = c("#2A2725"),
-            elevation5 = c("#302D2A"),
+            primary = c("#D8B65A"),
+            onPrimary = c("#2B2000"),
+            primaryContainer = c("#47380C"),
+            onPrimaryContainer = c("#F1E0A8"),
+            secondary = c("#DCA582"),
+            onSecondary = c("#3A1F0E"),
+            secondaryContainer = c("#4B2E1D"),
+            onSecondaryContainer = c("#F6DCCD"),
+            tertiary = c("#B3C98D"),
+            onTertiary = c("#1F2A0E"),
+            tertiaryContainer = c("#2F3A20"),
+            onTertiaryContainer = c("#D4E6B2"),
+            error = c("#FF9A8F"),
+            onError = c("#5A1B16"),
+            errorContainer = c("#5A1B16"),
+            onErrorContainer = c("#FFD9D4"),
+            background = c("#110F0C"),
+            onBackground = c("#EDE6DA"),
+            surface = c("#191712"),
+            onSurface = c("#EDE6DA"),
+            surfaceVariant = c("#28241E"),
+            onSurfaceVariant = c("#AAA190"),
+            outline = c("#3A352D"),
+            outlineVariant = c("#2A261F"),
+            elevation1 = c("#191712"),
+            elevation2 = c("#201D18"),
+            elevation3 = c("#28241E"),
+            elevation4 = c("#312C25"),
+            elevation5 = c("#3A342B"),
+            faint = c("#776F61"),
+            bookmark = c("#F6EEDD"),
+            line = c("#221F1A"),
+            navSurface = c("#17150F"),
         )
 
-    val shapes: ThemeShapes = ThemeShapes(cardRadius = 12, buttonRadius = 8, dialogRadius = 16, chipRadius = 8, searchRadius = 8)
+    // Cards 18, pill buttons/chips/search, 28 sheets and dialogs.
+    val shapes: ThemeShapes = ThemeShapes(cardRadius = 18, buttonRadius = 24, dialogRadius = 28, chipRadius = 18, searchRadius = 24)
 
     /** Tint used for window scrims and elevation shadows. */
     val shadowColor: Int = Color.argb(120, 0, 0, 0)

@@ -21,6 +21,7 @@ object DevLaunchPlanning {
         val token: String,
     ) {
         LIBRARY("library"),
+        UPDATES("updates"),
         QUEUE("queue"),
         SETTINGS("settings"),
         NOTIFICATIONS("notifications"),
@@ -52,6 +53,7 @@ object DevLaunchPlanning {
         when (DevStartScreen.fromToken(screenName)) {
             null -> null
             DevStartScreen.LIBRARY -> AppRoute.Library
+            DevStartScreen.UPDATES -> AppRoute.Updates
             DevStartScreen.QUEUE -> AppRoute.Queue
             DevStartScreen.SETTINGS -> AppRoute.Settings
             DevStartScreen.AI_SETTINGS -> AppRoute.AiSettings

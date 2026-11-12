@@ -17,7 +17,7 @@ import com.vinicius741.webnovelarchiver.R
 // Buttons
 // ------------------------------------------------------------------
 
-enum class Btn { THEME_DEFAULT, FILLED, TONAL, OUTLINED, TEXT, ELEVATED, ERROR }
+enum class Btn { THEME_DEFAULT, FILLED, TONAL, SURFACE, OUTLINED, TEXT, ELEVATED, ERROR }
 
 /** Shared icon-button geometry for app chrome and compact inline actions. */
 enum class IconButtonStyle(
@@ -68,7 +68,7 @@ fun makeButton(
     val colors = ThemeManager.colors
     val radiusPx = context.dp(ThemeManager.shapes.buttonRadius).toFloat()
     val v = resolvedVariant(variant)
-    val padH = context.dp(Space.LG)
+    val padH = context.dp(Space.LG + 4)
     val padV = context.dp(Space.SM + 2)
 
     fun bgWithRipple(
@@ -86,9 +86,15 @@ fun makeButton(
                 )
             Btn.TONAL ->
                 Triple(
-                    roundedBg(colors.secondaryContainer, radiusPx),
-                    colors.onSecondaryContainer,
-                    colors.onSecondaryContainer,
+                    roundedBg(colors.primaryContainer, radiusPx),
+                    colors.onPrimaryContainer,
+                    colors.onPrimaryContainer,
+                )
+            Btn.SURFACE ->
+                Triple(
+                    roundedBg(colors.elevation3, radiusPx),
+                    colors.onSurface,
+                    colors.onSurface,
                 )
             Btn.ELEVATED -> {
                 val d = roundedBg(colors.elevation2, radiusPx)
@@ -97,8 +103,8 @@ fun makeButton(
             Btn.OUTLINED ->
                 Triple(
                     strokeBg(Color.TRANSPARENT, radiusPx, colors.outline, context.dp(1)),
-                    colors.primary,
-                    colors.primary,
+                    colors.onSurface,
+                    colors.onSurface,
                 )
             Btn.TEXT ->
                 Triple(
@@ -125,9 +131,9 @@ fun makeButton(
         transformationMethod = null
         includeFontPadding = false
         setPadding(padH, padV, padH, padV)
-        minHeight = context.dp(44)
+        minHeight = context.dp(48)
         minWidth = 0
-        minimumHeight = context.dp(44)
+        minimumHeight = context.dp(48)
         stateListAnimator = null
         background = bgWithRipple(bgDrawable, 0x33000000)
         if (v == Btn.ELEVATED) elevate(2f)
@@ -154,8 +160,8 @@ fun makeChip(
     val colors = ThemeManager.colors
     val radiusPx = context.dp(ThemeManager.shapes.chipRadius).toFloat()
     val padH = context.dp(Space.MD + 2)
-    val padV = context.dp(Space.XS + 1)
-    val fg = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
+    val padV = context.dp(Space.SM)
+    val fg = if (selected) colors.onPrimaryContainer else colors.onSurface
 
     // Selected chips get a leading check so the active filter reads at a glance even when the
     // container fill alone would be too subtle (e.g. surfaceVariant vs secondaryContainer in light
@@ -179,7 +185,7 @@ fun makeChip(
             ripple(
                 if (selected) {
                     roundedBg(
-                        colors.secondaryContainer,
+                        colors.primaryContainer,
                         radiusPx,
                     )
                 } else {
@@ -221,8 +227,8 @@ fun makeSourceChip(
     val radiusPx = context.dp(ThemeManager.shapes.chipRadius).toFloat()
     val padH = context.dp(Space.SM + 2)
     val padV = context.dp(Space.XS + 1)
-    val containerColor = if (selected) colors.secondaryContainer else colors.surfaceVariant
-    val contentColor = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
+    val containerColor = if (selected) colors.primaryContainer else colors.surfaceVariant
+    val contentColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant
     val icon =
         android.widget.ImageView(context).apply {
             setImageDrawable(context.tintedIcon(com.vinicius741.webnovelarchiver.R.drawable.wna_globe, contentColor))

@@ -162,10 +162,41 @@ class AppNavigatorTest {
     @Test
     fun `every screen has a parent that leads to the library`() {
         assertNull(AppRoute.Library.parent)
-        assertEquals(AppRoute.Details("story"), AppRoute.Trends("story", "score").parent)
+        assertEquals(AppRoute.Library, AppRoute.Trends("story", "score").parent)
         assertEquals(AppRoute.Details("story"), AppRoute.PatreonAccount("story").parent)
         assertEquals(AppRoute.DataBackup, AppRoute.PatreonAccount().parent)
         assertEquals(AppRoute.Settings, AppRoute.CleanupRules.parent)
         assertEquals(AppRoute.Library, AppRoute.Player.parent)
+    }
+
+    @Test
+    fun `opening another tab of a story in the history returns to that entry`() {
+        val navigator = AppNavigator()
+        navigator.navigate(AppRoute.Details("story", chapters = true))
+        navigator.navigate(AppRoute.Player)
+        // Now Playing's story link opens the Overview tab of the story already in the history.
+        navigator.navigate(AppRoute.Details("story"))
+
+        assertEquals(AppRoute.Details("story"), navigator.current)
+        assertEquals(AppRoute.Library, navigator.back())
+    }
+
+    @Test
+    fun `a story tab opened cold goes back to the library`() {
+        val navigator = AppNavigator()
+        navigator.resetTo(AppRoute.AiControls("story"))
+
+        assertEquals(AppRoute.Library, navigator.back())
+    }
+
+    @Test
+    fun `view memory survives for every tab of a story in the history`() {
+        val navigator = AppNavigator()
+        navigator.navigate(AppRoute.Details("story", chapters = true))
+        navigator.replace(AppRoute.NarrationStory("story"))
+
+        assertTrue(AppRoute.Details("story", chapters = true).stableKey in navigator.viewMemoryKeys)
+        assertTrue(AppRoute.Trends("story").stableKey in navigator.viewMemoryKeys)
+        assertFalse(AppRoute.Details("other").stableKey in navigator.viewMemoryKeys)
     }
 }

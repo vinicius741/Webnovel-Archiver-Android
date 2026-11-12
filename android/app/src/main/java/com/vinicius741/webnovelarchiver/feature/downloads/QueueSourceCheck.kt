@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.feature.downloads
 
+import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
 import com.vinicius741.webnovelarchiver.download.DownloadQueueSectionPlanning
 import com.vinicius741.webnovelarchiver.download.SourceCheckCard
 import com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity
@@ -8,11 +10,10 @@ import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordin
 import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
 import com.vinicius741.webnovelarchiver.feature.browser.showBrowser
 import com.vinicius741.webnovelarchiver.feature.settings.resetSourceWebSessions
+import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.confirm
-import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 
 /**
  * Opens the site check straight from a card. The solver resumes the site's chapters itself once it
@@ -52,22 +53,30 @@ internal fun ScreenHost.showSourceCheckTrouble(card: SourceCheckCard) {
     val url = card.sampleUrl ?: provider?.baseUrl
     val items =
         buildList {
-            url?.let { add(OptionsDialogItem.Option("Open $name in your browser") { showBrowser(it) }) }
+            url?.let { add(QueueMenuEntry("Open $name in your browser", R.drawable.wna_open_external) { showBrowser(it) }) }
             provider?.let {
                 add(
-                    OptionsDialogItem.Option("Reset $name web session") {
+                    QueueMenuEntry("Reset $name web session", R.drawable.wna_restore) {
                         confirm("Reset the $name web session? You'll need to verify again afterwards.", confirmLabel = "Reset") {
                             resetSourceWebSessions(listOf(it))
                         }
                     },
                 )
             }
-            add(OptionsDialogItem.Divider)
             add(
-                OptionsDialogItem.Option("Pause $name downloads") {
+                QueueMenuEntry("Share source access logs", R.drawable.wna_bug_report) {
+                    val network = app.appContainer.network
+                    exportAndShare(
+                        { BypassLogExporter.export(app.appContainer.repository.storage.backupRoot, network, repository.queue()) },
+                    )
+                },
+            )
+            add(null)
+            add(
+                QueueMenuEntry("Pause $name downloads", R.drawable.wna_pause) {
                     launchQueueControl("pauseSource") { downloadEngine.pauseSource(card.providerId) }
                 },
             )
         }
-    showStyledOptionsDialog("Trouble verifying $name?", items)
+    showQueueMenu("Having trouble?", "Some sites ask for a quick human check before chapters can download.", items)
 }

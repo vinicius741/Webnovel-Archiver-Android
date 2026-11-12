@@ -1,0 +1,139 @@
+/* v3 Restructured — tokens, reset, app shell (rail / bottom nav / dock / views) */
+:root {
+  color-scheme: dark;
+  --bg: #110f0c;
+  --s1: #191712;
+  --s2: #201d18;
+  --s3: #28241e;
+  --s4: #312c25;
+  --s5: #3a342b;
+  --line: rgba(255, 236, 200, 0.075);
+  --line2: rgba(255, 236, 200, 0.13);
+  --on: #ede6da;
+  --muted: #aaa190;
+  --faint: #776f61;
+  --gold: #d8b65a;
+  --gold-hi: #ecd086;
+  --gold-ink: #2b2000;
+  --gold-cont: #47380c;
+  --on-gold-cont: #f1e0a8;
+  --gold-tint: rgba(216, 182, 90, 0.14);
+  --copper: #dca582;
+  --copper-cont: #4b2e1d;
+  --on-copper-cont: #f6dccd;
+  --red: #ff9a8f;
+  --red-cont: #5a1b16;
+  --on-red-cont: #ffd9d4;
+  --bm: #f6eedd; /* bookmark: ivory, reads on the gold progress bar without looking like an error */
+  --sage: #b3c98d;
+  --sage-cont: #2f3a20;
+  --r-card: 18px;
+  --r-md: 14px;
+  --r-sm: 10px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-emph: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --nav-h: 0px;
+  --mini-h: 0px;
+  --rail-w: 0px;
+  font-family: 'Roboto Flex', Roboto, system-ui, sans-serif;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--on); overflow: hidden; }
+body { font-size: 14.5px; line-height: 1.45; -webkit-font-smoothing: antialiased; touch-action: manipulation; font-variation-settings: 'opsz' 14; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; touch-action: manipulation; }
+input, textarea { outline: none; }
+a { color: inherit; }
+img { display: block; }
+[hidden] { display: none !important; }
+.ms { font-family: 'Material Symbols Rounded'; font-weight: 400; font-style: normal; font-size: 24px; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; direction: ltr; -webkit-font-feature-settings: 'liga'; font-feature-settings: 'liga'; font-variation-settings: 'FILL' 0, 'wght' 400, 'opsz' 24; user-select: none; flex: none; overflow: hidden; width: 1em; }
+.ms.f { font-variation-settings: 'FILL' 1, 'wght' 400, 'opsz' 24; }
+.ms.sm { font-size: 18px; }
+.ms.xs { font-size: 16px; }
+.ms.lg { font-size: 28px; }
+
+/* ---------- shell ---------- */
+#app { position: fixed; inset: 0; }
+body.nav-on { --nav-h: 72px; }
+body.mini-on { --mini-h: 72px; }
+/* computed on body (not :root) so it sees the --nav-h / --mini-h that body classes set: room for everything docked at the bottom */
+body { --bottom-space: calc(var(--nav-h) + var(--mini-h) + var(--sab) + 24px); }
+/* Bottom shelf: one solid surface behind the nav bar and mini player (no content peeking through the gaps around the
+   floating player), topped by a short fade so rows visibly slide under it instead of being cut by a hard edge. */
+#app::after { content: ''; position: fixed; left: 0; right: var(--rail-w); bottom: 0; height: calc(var(--nav-h) + var(--mini-h) + var(--sab) + 20px); background: linear-gradient(rgba(17, 15, 12, 0), var(--bg) 20px); pointer-events: none; z-index: 38; }
+body:not(.nav-on):not(.mini-on) #app::after { display: none; } /* reader, add story, select: they bring their own bottom bars */
+#stage { position: absolute; inset: 0 var(--rail-w) 0 0; overflow: hidden; }
+.view { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding-bottom: var(--bottom-space); background: var(--bg); scrollbar-width: none; }
+.view::-webkit-scrollbar { display: none; }
+.view.enter { animation: viewIn 0.28s var(--ease-emph); }
+.view.enter-fade { animation: fadeIn 0.2s ease; }
+@keyframes viewIn { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* bottom navigation */
+.bottomnav { position: fixed; left: 0; right: 0; bottom: 0; height: calc(72px + var(--sab)); padding-bottom: var(--sab); background: #17150f; border-top: 1px solid var(--line); display: none; z-index: 40; }
+body.nav-on .bottomnav { display: flex; }
+.navitem { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.1px; position: relative; min-width: 0; }
+.navitem .pill { width: 60px; height: 32px; border-radius: 16px; display: grid; place-items: center; transition: background 0.25s var(--ease), color 0.2s; position: relative; }
+.navitem.on { color: var(--on); }
+.navitem.on .pill { background: var(--gold-cont); color: var(--on-gold-cont); }
+.navitem.on .ms { font-variation-settings: 'FILL' 1, 'wght' 500, 'opsz' 24; }
+.navitem .badge { position: absolute; top: 1px; left: 34px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--gold); color: var(--gold-ink); font-size: 10px; font-weight: 800; display: grid; place-items: center; line-height: 1; }
+.navitem .badge.dot { min-width: 8px; width: 8px; height: 8px; padding: 0; top: 4px; left: 40px; animation: pulse 1.6s infinite; }
+
+/* navigation rail (inner screen) — on the right edge, under the thumb that holds a Fold */
+.rail { position: fixed; right: 0; top: 0; bottom: 0; width: 84px; background: #15130e; border-left: 1px solid var(--line); display: none; flex-direction: column; align-items: center; padding: calc(16px + var(--sat)) 0 16px; gap: 6px; z-index: 40; }
+.rail .fab-sm { width: 52px; height: 52px; border-radius: 16px; background: var(--gold-cont); color: var(--on-gold-cont); display: grid; place-items: center; margin: 4px 0 18px; }
+.rail .navitem { flex: none; height: 68px; width: 84px; }
+.rail .navitem .pill { width: 56px; }
+.rail .navitem .badge { left: 38px; }
+
+@media (min-width: 720px) {
+  :root { --rail-w: 84px; }
+  body.nav-on .rail { display: flex; }
+  body.nav-on .bottomnav { display: none; }
+  body.nav-on { --nav-h: 0px; }
+  body.mini-on { --mini-h: 92px; } /* the player floats 16px up on wide screens; the shelf covers it fully */
+  body:not(.nav-on) { --rail-w: 0px; }
+}
+
+/* ---------- app bar ---------- */
+.appbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 4px; min-height: calc(64px + var(--sat)); padding: var(--sat) 6px 0 4px; background: rgba(17, 15, 12, 0.86); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); transition: background 0.2s, box-shadow 0.2s; }
+.appbar.flat { background: var(--bg); }
+.view.scrolled > .appbar, .appbar.raised { background: rgba(30, 27, 22, 0.92); box-shadow: 0 1px 0 var(--line); }
+.appbar .ttl { flex: 1; min-width: 0; padding: 0 6px; }
+.appbar .ttl h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.1px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appbar .ttl .sub { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appbar.big .ttl { padding-left: 14px; }
+.appbar.big .ttl h1 { font-size: 26px; font-weight: 720; letter-spacing: -0.4px; }
+.ib { width: 48px; height: 48px; border-radius: 24px; display: grid; place-items: center; color: var(--on); position: relative; flex: none; transition: background 0.15s; }
+.ib:active { background: rgba(255, 255, 255, 0.08); }
+.ib.gold { color: var(--gold); }
+.ib.tonal { background: var(--s3); }
+.ib .dotb { position: absolute; top: 11px; right: 11px; width: 8px; height: 8px; border-radius: 4px; background: var(--gold); box-shadow: 0 0 0 2px var(--bg); }
+.ib:disabled { opacity: 0.35; }
+
+/* content wrappers */
+.pad { padding: 0 16px; }
+.wrap { max-width: 860px; margin: 0 auto; }
+.narrow { max-width: 720px; margin: 0 auto; }
+.section-label { font-size: 12.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--gold); margin: 22px 4px 10px; display: flex; align-items: center; gap: 8px; }
+.section-label .aside { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--muted); font-size: 12.5px; }
+.section-label .aside button { color: var(--gold); font-weight: 650; padding: 8px 4px; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.gold { color: var(--gold); }
+.red { color: var(--red); }
+.sage { color: var(--sage); }
+.nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grow { flex: 1; min-width: 0; }
+.row { display: flex; align-items: center; gap: 10px; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: spin 0.8s linear infinite; flex: none; display: inline-block; }
+/* rail destinations sit low on the inner screen, within thumb reach (and clear of the prototype handle) */
+.rail .fab-sm { margin-bottom: auto; }
+.ib.bmon { color: var(--bm); }

@@ -33,21 +33,28 @@ internal fun buildTrendChart(
     val entries = points.map { (x, y) -> Entry(x.toFloat(), y.toFloat()) }
     // Point markers only while they read as discrete samples; dense series draw a plain line.
     val drawCircles = entries.size <= MAX_POINTS_WITH_CIRCLES
+    // Score in gold, Patreon in copper, engagement in a muted gold, as across the app.
+    val lineColor =
+        when (kind) {
+            TrendMetricKind.SCORE -> colors.primary
+            TrendMetricKind.PATREON_MEMBERS, TrendMetricKind.PATREON_USD -> colors.secondary
+            TrendMetricKind.COUNT -> ENGAGEMENT_LINE_COLOR
+        }
     val dataSet =
         if (entries.isEmpty()) {
             null
         } else {
             LineDataSet(entries, "").apply {
                 // No per-point value labels; the summary line above the chart carries the current value.
-                color = colors.primary
+                color = lineColor
                 lineWidth = 2.5f
                 isDrawCirclesEnabled = drawCircles
                 isDrawCircleHoleEnabled = false
-                circleColors = listOf(colors.primary)
+                circleColors = listOf(lineColor)
                 circleRadius = 2.5f
                 isDrawValuesEnabled = false
                 isDrawFilledEnabled = true
-                fillColor = colors.primary
+                fillColor = lineColor
                 fillAlpha = 40
                 mode = LineDataSet.Mode.LINEAR
                 isHighlightEnabled = false
@@ -219,3 +226,5 @@ internal fun formatCompactCount(value: Long): String {
     val formatted = if (decimals > 0) rounded.trimEnd('0').trimEnd('.') else rounded
     return "$formatted$suffix"
 }
+
+private const val ENGAGEMENT_LINE_COLOR = 0xFFC9B98A.toInt()

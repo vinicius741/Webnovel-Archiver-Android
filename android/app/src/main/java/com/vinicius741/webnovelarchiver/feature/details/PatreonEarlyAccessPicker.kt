@@ -51,8 +51,8 @@ internal fun ScreenHost.showPatreonEarlyAccessPicker(story: Story) {
                 return@launch
             }
         val (campaignId, collections) = loaded
-        // The user may have left Details while collections loaded; don't pop a picker elsewhere.
-        if (navigator.current != AppRoute.Details(story.id)) return@launch
+        // The user may have left the story while collections loaded; don't pop a picker elsewhere.
+        if (!storyTabShowing(story.id)) return@launch
         showCollectionOptions(story, campaignId, PatreonEarlyAccessPlanning.rankCollections(story.title, collections))
     }
 }
@@ -103,7 +103,7 @@ private fun ScreenHost.showCollectionOptions(
                 confirm("Unlink this collection? Stored Patreon chapters are removed.", confirmLabel = "Unlink") {
                     scope.launch {
                         repository.setPatreonEarlyAccess(story.id, null)
-                        showDetails(story.id)
+                        showStoryScreen(story.id)
                     }
                 }
             }

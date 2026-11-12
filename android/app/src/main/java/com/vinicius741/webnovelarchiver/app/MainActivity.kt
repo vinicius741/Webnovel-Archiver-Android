@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
+import android.view.Choreographer
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
@@ -18,6 +19,7 @@ import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
@@ -29,6 +31,7 @@ import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
 import com.vinicius741.webnovelarchiver.feature.details.detachDetailsTtsListener
 import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
+import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
@@ -36,6 +39,7 @@ import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
+import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
@@ -45,7 +49,10 @@ import com.vinicius741.webnovelarchiver.navigation.LibraryScreenState
 import com.vinicius741.webnovelarchiver.navigation.RouteViewMemory
 import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.ShellBadgePlanning
+import com.vinicius741.webnovelarchiver.navigation.ShellDestination
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.openDestination
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
 import com.vinicius741.webnovelarchiver.perf.PerfRecorder
@@ -54,14 +61,18 @@ import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackError
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackErrorKind
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
+import com.vinicius741.webnovelarchiver.ui.AppShell
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.captureScreenViewState
+import com.vinicius741.webnovelarchiver.ui.systemBarBottom
+import com.vinicius741.webnovelarchiver.ui.systemBarTop
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.vinicius741.webnovelarchiver.app.notificationPermissionActionLabel as notificationPermissionActionLabelExt
@@ -85,6 +96,7 @@ class MainActivity :
     override lateinit var epubEngine: EpubEngine
     override lateinit var ttsEngine: TtsEngine
     override lateinit var frame: FrameLayout
+    override lateinit var shell: AppShell
     override var activeStory: Story? = null
     override var storyOperation: StoryOperationState? = null
     override var aiOperation: StoryOperationState? = null
@@ -97,6 +109,7 @@ class MainActivity :
     override val aiControlsScreenState: AiControlsScreenState = AiControlsScreenState()
     override val libraryScreenState: LibraryScreenState = LibraryScreenState()
     override val cleanupScreenState: CleanupScreenState = CleanupScreenState()
+    override val updatesSyncState: UpdatesSyncState = UpdatesSyncState()
     override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
@@ -228,15 +241,20 @@ class MainActivity :
         super.onCreate(savedInstanceState)
         restoredNavigation = restoreNavigationState(savedInstanceState)
         startPerfSessionIfRequested()
-        // Screens render into `frame`; the TTS mini-player floats above them in `root` so it
-        // survives every screen rebuild.
+        // Screens render into `frame`; the app shell around it docks the TTS mini player and the
+        // navigation bar below it (or the rail beside it on the inner screen) across rebuilds.
         frame = FrameLayout(this)
-        val root = FrameLayout(this)
-        root.addView(
-            frame,
-            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
-        )
-        setContentView(root)
+        shell =
+            AppShell(
+                context = this,
+                frame = frame,
+                systemBarBottom = { systemBarBottom() },
+                systemBarTop = { systemBarTop() },
+                onDestination = ::onDestinationTapped,
+                onAddStory = { if (uiReady) showAddStory() },
+            )
+        val root = shell.overlayHost
+        setContentView(shell.root)
         holdSplashScreenUntilFirstContent { uiReady }
         onBackPressedDispatcher.addCallback(this, backCallback)
         scope.launch {
@@ -258,10 +276,11 @@ class MainActivity :
                         )
                     ttsEngine = container.ttsEngine
                     ttsEngine.addErrorListener(audioNotGeneratedListener)
-                    attachTtsMiniPlayer(root)
+                    attachTtsMiniPlayer(shell.miniSlot)
                     attachAiJobChip(root)
                     attachAiJobBridges()
                     container.awaitRepositoryReady()
+                    attachShellBadges(container.narration)
                     initializeUiAfterRepositoryReady()
                     ttsEngine.restorePausedSession()
                     container.simulation?.attachIndicator(root)
@@ -462,7 +481,62 @@ class MainActivity :
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        shell.onConfigurationChanged()
         rerender?.invoke()
+    }
+
+    /**
+     * Keeps the navigation badges current: novels whose next chapter may be out (Updates), novels
+     * with chapters waiting to download (Downloads), and a dot while audio generates (Listen).
+     */
+    private fun attachShellBadges(narration: com.vinicius741.webnovelarchiver.narration.NarrationCoordinator) {
+        scope.launch {
+            repository.downloadState.collect { snapshot ->
+                shell.setBadge(ShellDestination.DOWNLOADS, ShellBadgePlanning.downloadsBadge(snapshot.queue))
+            }
+        }
+        // Forecasting every novel is too slow for the main thread on each download tick, so the
+        // Updates overview is planned in the background when the library changes. The Updates
+        // screen reuses that plan, so opening it skips the forecast.
+        scope.launch {
+            val cache = updatesSyncState.overviewCache
+            repository.downloadState.collectLatest { snapshot ->
+                val now = System.currentTimeMillis()
+                // A fresh plan is shown again, not skipped: a plan interrupted by a newer snapshot
+                // is kept by the cache without ever having reached the badge.
+                val overview =
+                    cache.fresh(snapshot.library, now)
+                        ?: withContext(Dispatchers.Default) { cache.plan(snapshot.library, now) }
+                shell.setBadge(ShellDestination.UPDATES, overview.count(UpdatesPlanning.Section.MAY_BE_OUT))
+            }
+        }
+        scope.launch {
+            narration.progress.collect { progress -> shell.setBadge(ShellDestination.LISTEN, null, dot = progress != null) }
+        }
+    }
+
+    /** A destination tapped while the previous tap's screen has not been built yet. */
+    private var pendingDestination: ShellDestination? = null
+
+    /**
+     * A navigation bar / rail tap: start that destination's history over the Library root. The tapped
+     * item is selected first and that frame drawn before the screen builds, so the tap answers at
+     * once even when the destination takes a moment to build. Taps in that gap retarget it.
+     */
+    private fun onDestinationTapped(destination: ShellDestination) {
+        if (!uiReady) return
+        val alreadyPending = pendingDestination != null
+        pendingDestination = destination
+        shell.preselect(destination)
+        if (alreadyPending) return
+        Choreographer.getInstance().postFrameCallback {
+            // Posted from the frame callback, so it runs after this frame's traversal has drawn the selection.
+            frame.post {
+                val target = pendingDestination ?: return@post
+                pendingDestination = null
+                if (!isDestroyed) openDestination(target)
+            }
+        }
     }
 
     private fun applyWindowTheme() {

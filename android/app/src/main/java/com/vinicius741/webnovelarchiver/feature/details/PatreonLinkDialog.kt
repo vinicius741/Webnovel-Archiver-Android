@@ -95,7 +95,7 @@ private fun ScreenHost.savePatreonLink(
         scope.launch {
             val updated = repository.setManualPatreonUrl(story.id, url) ?: return@launch
             // A new creator has no stats yet, and a sync is what fetches them.
-            if (changesCreator && updated.effectivePatreonUrl != null) syncStory(updated) else showDetails(story.id)
+            if (changesCreator && updated.effectivePatreonUrl != null) syncStory(updated) else showStoryScreen(story.id)
         }
         Unit
     }
