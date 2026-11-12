@@ -1,15 +1,16 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
-import android.content.res.ColorStateList
+import android.text.InputType
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.Spinner
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.feature.browser.showBrowser
 import com.vinicius741.webnovelarchiver.feature.browser.sourcePickerRows
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
@@ -24,113 +25,54 @@ import com.vinicius741.webnovelarchiver.ui.clipboardText
 import com.vinicius741.webnovelarchiver.ui.disableButton
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.fullButton
-import com.vinicius741.webnovelarchiver.ui.makeField
+import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeListGroup
+import com.vinicius741.webnovelarchiver.ui.makeSmallSpinner
 import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.makeThemedSpinner
+import com.vinicius741.webnovelarchiver.ui.makeTintedCard
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
+import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
+import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showAddStory() {
     val tabs = repository.tabs.get().sortedBy { it.order }
     // URL text + fetch status live in ScreenHost state so they survive status-driven re-renders;
     // the flow stays on this screen (button flips to "Fetching...", spinner + status line appear).
-    // Null status = fresh open: clear any leftover URL draft. Non-null = mid-fetch re-render.
+    // Null status = fresh open: clear any leftover URL draft and tab pick.
     if (addStoryStatus == null) {
         addStoryUrlText = ""
+        libraryExtras.addStoryTabChosen = false
     }
+    if (!libraryExtras.addStoryTabChosen) libraryExtras.addStoryTabId = defaultAddStoryTab(tabs)
     val status = addStoryStatus
+    val fetching = status != null
     screen(
         route = AppRoute.AddStory,
-        title = "Add Story",
+        title = "Add story",
         subtitle = "Paste a story URL to import",
         scrollable = true,
     ) {
         rerender = { showAddStory() }
-        val url =
-            makeField(
-                context,
-                addStoryUrlText ?: "",
-                "Story URL",
-                android.text.InputType.TYPE_TEXT_VARIATION_URI,
-            ).apply {
-                // Roomier padding than the compact search/dialog field style — this is the
-                // primary URL input.
-                setPadding(context.dp(Space.MD + 2), context.dp(Space.MD), context.dp(Space.MD + 2), context.dp(Space.MD))
-                // Mirror typing into state so a re-render restores the exact text, not a blank field.
-                doAfterTextChanged { addStoryUrlText = it?.toString().orEmpty() }
-            }
-        // One-tap paste from the system clipboard, beside the field.
-        val pasteButton =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                val radiusPx = context.dp(ThemeManager.shapes.buttonRadius).toFloat()
-                background =
-                    ripple(
-                        roundedBg(ThemeManager.colors.secondaryContainer, radiusPx),
-                        radiusPx,
-                        ThemeManager.colors.onSecondaryContainer,
-                    )
-                isClickable = true
-                isFocusable = true
-                setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD))
-                addView(
-                    ImageView(context).apply {
-                        contentDescription = "Paste URL"
-                        setImageDrawable(context.tintedIcon(R.drawable.wna_paste, ThemeManager.colors.onSecondaryContainer))
-                        scaleType = ImageView.ScaleType.CENTER_INSIDE
-                    },
-                )
-                setOnClickListener {
-                    if (status != null) return@setOnClickListener
-                    val clip = clipboardText()?.trim()
-                    if (clip.isNullOrEmpty()) {
-                        toast("Clipboard is empty")
-                    } else {
-                        url.setText(clip)
-                        url.setSelection(clip.length)
-                    }
-                }
-            }
-        val urlRow =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(url, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(
-                    pasteButton,
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        marginStart = dp(Space.SM)
-                    },
-                )
-            }
-        addView(urlRow)
-        var tabSpinner: Spinner? = null
+        addView(addStoryHero())
+        addView(fieldLabel("Story URL"))
+        val urlField = addStoryUrlField(fetching)
+        addView(urlField.first)
+        val url = urlField.second
         if (tabs.isNotEmpty()) {
-            section("Save to tab")
-            val tabLabels = tabs.map { it.name }
-            tabSpinner = makeThemedSpinner(context, tabLabels)
-            addView(tabSpinner)
+            addView(fieldLabel("Save to tab").apply { setPadding(paddingLeft, dp(Space.LG), paddingRight, paddingBottom) })
+            addView(tabPickerField(tabs, enabled = !fetching))
         }
-        val fetching = status != null
         val fetchButton =
-            fullButton(
-                if (fetching) "Fetching..." else "Fetch Story",
-                Btn.FILLED,
-                R.drawable.wna_download,
-            ) {
-                val spinnerPos = tabSpinner?.selectedItemPosition ?: 0
-                val tabId = tabs.getOrNull(spinnerPos)?.id
-                // syncStory's first onStatus re-renders with the button disabled — no manual
-                // state toggling needed here.
+            fullButton(if (fetching) "Fetching..." else "Fetch story", Btn.FILLED, R.drawable.wna_download) {
+                // syncStory's first onStatus re-renders with the button disabled.
                 syncStory(
                     url.text.toString(),
-                    tabId,
+                    libraryExtras.addStoryTabId,
                     onStatus = { msg ->
                         addStoryStatus = msg
                         showAddStory()
@@ -151,14 +93,24 @@ internal fun ScreenHost.showAddStory() {
             }
         if (fetching) disableButton(fetchButton)
         // Spinner + live sync status rendered inline where the user tapped.
-        status?.let { msg ->
-            addView(makeAddStoryProgress(context, msg))
-        }
+        status?.let { addView(addStoryProgress(it)) }
         // Each row opens a Custom Tab at the source's baseUrl (sign in, browse, in-tab Import).
         section("Or browse a source")
-        sourcePickerRows(context) { provider -> showBrowser(provider.baseUrl) }
-            .forEach { addView(it) }
+        addView(
+            makeListGroup(context).apply {
+                sourcePickerRows(context) { provider -> showBrowser(provider.baseUrl) }.forEach { row ->
+                    (row.layoutParams as? LinearLayout.LayoutParams)?.topMargin = 0
+                    addView(row)
+                }
+            },
+        )
     }
+}
+
+/** New stories go to the Library's current tab when it is a real tab, else the first tab. */
+private fun ScreenHost.defaultAddStoryTab(tabs: List<Tab>): String? {
+    val current = repository.getDisplayPreferences().libraryTabId
+    return tabs.firstOrNull { it.id == current }?.id ?: tabs.firstOrNull()?.id
 }
 
 /** Fetch status shared across re-renders: null = idle; non-null renders the inline spinner and
@@ -176,29 +128,176 @@ internal var ScreenHost.addStoryUrlText: String?
         addStoryScreenState.urlText = value
     }
 
-private fun makeAddStoryProgress(
-    context: android.content.Context,
-    message: String,
-): LinearLayout =
-    LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(0, context.dp(Space.MD), 0, context.dp(Space.MD))
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+private fun ScreenHost.addStoryHero(): View {
+    val colors = ThemeManager.colors
+    return makeTintedCard(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        val box = dp(HERO_ICON_BOX_DP)
         addView(
-            ProgressBar(context).apply {
-                indeterminateTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
-                layoutParams =
-                    LinearLayout.LayoutParams(context.dp(28), context.dp(28)).apply {
-                        bottomMargin = context.dp(Space.SM)
-                    }
+            ImageView(app).apply {
+                setImageDrawable(app.tintedIcon(R.drawable.wna_link, colors.onPrimaryContainer))
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                background = roundedBg(colors.primaryContainer, dp(Space.LG).toFloat())
             },
+            LinearLayout.LayoutParams(box, box).apply { marginEnd = dp(Space.MD + 2) },
         )
         addView(
-            makeText(context, message, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                gravity = Gravity.CENTER
-                maxLines = 2
-                ellipsize = TextUtils.TruncateAt.END
+            LinearLayout(app).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(makeText(app, "Import from a link", Type.TITLE_MEDIUM, colors.onSurface))
+                addView(
+                    makeText(
+                        app,
+                        "Chapters, cover, tags and metrics are saved for offline reading.",
+                        Type.BODY_SMALL,
+                        colors.onSurfaceVariant,
+                    ),
+                )
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        layoutParams =
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(Space.SM)
+                bottomMargin = dp(Space.XL - 4)
+            }
+    }
+}
+
+private fun ScreenHost.fieldLabel(label: String) =
+    makeText(app, label, Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+        setPadding(dp(Space.XS), 0, dp(Space.XS), dp(Space.SM - 2))
+    }
+
+/** The URL field: link icon, the input, and Paste. Returns the field row and its input. */
+private fun ScreenHost.addStoryUrlField(fetching: Boolean): Pair<View, EditText> {
+    val colors = ThemeManager.colors
+    val input =
+        EditText(app).apply {
+            setText(addStoryUrlText.orEmpty())
+            hint = "https://www.royalroad.com/fiction/…"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine()
+            background = null
+            setTextColor(colors.onSurface)
+            setHintTextColor(colors.faint)
+            textSize = FIELD_TEXT_SP
+            setPadding(0, dp(Space.MD + 2), 0, dp(Space.MD + 2))
+            contentDescription = "Story URL"
+            isEnabled = !fetching
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) textCursorDrawable?.setTint(colors.primary)
+            // Mirror typing into state so a re-render restores the exact text, not a blank field.
+            doAfterTextChanged { addStoryUrlText = it?.toString().orEmpty() }
+        }
+    val paste =
+        makeButton(app, "Paste", Btn.TEXT, R.drawable.wna_paste) {
+            if (fetching) return@makeButton
+            val clip = clipboardText()?.trim()
+            if (clip.isNullOrEmpty()) {
+                toast("Clipboard is empty")
+            } else {
+                input.setText(clip)
+                input.setSelection(clip.length)
+            }
+        }.apply {
+            minHeight = dp(PASTE_HEIGHT_DP)
+            minimumHeight = dp(PASTE_HEIGHT_DP)
+            setPadding(dp(Space.MD), 0, dp(Space.MD), 0)
+            contentDescription = "Paste URL"
+        }
+    val row = fieldShell(R.drawable.wna_link)
+    row.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    row.addView(paste)
+    input.setOnFocusChangeListener { _, focused -> row.background = fieldBackground(focused) }
+    return row to input
+}
+
+/** "Save to tab": a field that opens a sheet of tabs. */
+private fun ScreenHost.tabPickerField(
+    tabs: List<Tab>,
+    enabled: Boolean,
+): View {
+    val colors = ThemeManager.colors
+    val options = listOf<Pair<String?, String>>(null to "Unassigned") + tabs.map { it.id to it.name }
+    val current = options.firstOrNull { it.first == libraryExtras.addStoryTabId }?.second ?: "Unassigned"
+    val row = fieldShell(R.drawable.wna_label)
+    row.addView(
+        makeText(app, current, Type.BODY_LARGE, colors.onSurface).apply {
+            textSize = FIELD_TEXT_SP
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(0, dp(Space.MD + 2), 0, dp(Space.MD + 2))
+        },
+        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+    )
+    row.addView(
+        ImageView(app).apply { setImageDrawable(app.tintedIcon(R.drawable.wna_chevron_down, colors.onSurfaceVariant)) },
+        LinearLayout.LayoutParams(dp(FIELD_ICON_DP), dp(FIELD_ICON_DP)).apply { marginEnd = dp(Space.SM + 2) },
+    )
+    row.contentDescription = "Save to tab: $current"
+    row.isClickable = enabled
+    row.isFocusable = enabled
+    row.alpha = if (enabled) 1f else DISABLED_ALPHA
+    val radius = dp(FIELD_RADIUS_DP).toFloat()
+    row.background = ripple(fieldBackground(false), radius, colors.onSurface)
+    row.setOnClickListener {
+        showStyledOptionsDialog(
+            "Save to tab",
+            options.map { (id, name) ->
+                name to {
+                    libraryExtras.addStoryTabId = id
+                    libraryExtras.addStoryTabChosen = true
+                    showAddStory()
+                }
             },
         )
     }
+    return row
+}
+
+private fun ScreenHost.fieldShell(iconRes: Int): LinearLayout =
+    LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(FIELD_MIN_HEIGHT_DP)
+        background = fieldBackground(false)
+        setPadding(dp(Space.MD + 2), 0, dp(Space.XS + 2), 0)
+        addView(
+            ImageView(app).apply { setImageDrawable(app.tintedIcon(iconRes, ThemeManager.colors.onSurfaceVariant)) },
+            LinearLayout.LayoutParams(dp(FIELD_ICON_DP), dp(FIELD_ICON_DP)).apply { marginEnd = dp(Space.SM + 2) },
+        )
+    }
+
+private fun ScreenHost.fieldBackground(focused: Boolean) =
+    strokeBg(
+        ThemeManager.colors.elevation2,
+        dp(FIELD_RADIUS_DP).toFloat(),
+        if (focused) ThemeManager.colors.primary else ThemeManager.colors.outline,
+        dp(1),
+    )
+
+private fun ScreenHost.addStoryProgress(message: String): LinearLayout =
+    LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(Space.XS), dp(Space.MD), dp(Space.XS), 0)
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        addView(makeSmallSpinner(app, PROGRESS_SPINNER_DP))
+        addView(
+            makeText(app, message, Type.BODY_MEDIUM, ThemeManager.colors.onSurface).apply {
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+                setPadding(dp(Space.SM + 2), 0, 0, 0)
+            },
+        )
+    }
+
+private const val HERO_ICON_BOX_DP = 52
+private const val FIELD_MIN_HEIGHT_DP = 52
+private const val FIELD_RADIUS_DP = 14
+private const val FIELD_ICON_DP = 22
+private const val FIELD_TEXT_SP = 15f
+private const val PASTE_HEIGHT_DP = 40
+private const val PROGRESS_SPINNER_DP = 20
+private const val DISABLED_ALPHA = 0.5f

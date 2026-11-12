@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
+import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -11,22 +13,18 @@ import com.vinicius741.webnovelarchiver.domain.metrics.PatreonEarningsPlanning
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
-import com.vinicius741.webnovelarchiver.feature.library.LibraryQuery
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.ChapterCoverageBar
+import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeChapterCoverageSummary
-import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
-import com.vinicius741.webnovelarchiver.ui.row
-import com.vinicius741.webnovelarchiver.ui.scoreRow
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.strokeBg
-import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.updateChapterCoverageSummary
 import java.text.NumberFormat
@@ -37,56 +35,53 @@ private data class LibraryProgressTag(
     val storyId: String,
 )
 
+/** null = normal browsing; non-null = multi-select mode with this story's checked state. */
+internal fun ScreenHost.librarySelectionState(story: Story): Boolean? =
+    if (libraryScreenState.selectedStoryIds.isEmpty()) null else story.id in libraryScreenState.selectedStoryIds
+
+/** Binds a v3 list card: cover, title, author, source/status/score, Patreon, tags, and chapter coverage. */
 internal fun ScreenHost.bindLibraryStoryCard(
     card: LinearLayout,
     story: Story,
-    alignToTop: Boolean,
 ) {
     card.removeAllViews()
-    // null = normal browsing; non-null = multi-select mode with this card's checked state.
-    val selected = if (libraryScreenState.selectedStoryIds.isEmpty()) null else story.id in libraryScreenState.selectedStoryIds
-    val content = buildStoryCard(story, if (alignToTop) Gravity.TOP else Gravity.CENTER_VERTICAL, selected)
-    wireLibraryStoryContent(card, content, story, selected)
-    // Extra row height belongs to the content, keeping the progress summary at the card's bottom.
-    card.addView(
-        content,
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-    )
-    if (story.totalChapters > 0) card.addView(makeLibraryProgressSummary(story, topMarginDp = Space.MD))
+    val selected = librarySelectionState(story)
+    val content = buildStoryCard(story, selected)
+    card.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    wireLibraryStoryContent(card, story, selected)
+    applyListCardSelection(card, selected)
 }
 
-/** Selection styling plus tap (open/toggle) and long-press (select/toggle) for one story's content. */
+/** Tap (open/toggle) and long-press (select/toggle) on one story's card or tile. */
 internal fun ScreenHost.wireLibraryStoryContent(
-    card: LinearLayout,
-    content: LinearLayout,
+    card: View,
     story: Story,
     selected: Boolean?,
 ) {
-    content.background = selectableRipple(ThemeManager.colors.onSurface)
-    content.isClickable = true
-    applySelectionStyle(card, content, selected)
+    card.foreground = selectableRipple(ThemeManager.colors.onSurface)
+    card.isClickable = true
+    card.isFocusable = true
     if (selected == null) {
-        content.setOnClickListener { showDetails(story.id) }
-        content.setOnLongClickListener {
+        card.setOnClickListener { showDetails(story.id) }
+        card.setOnLongClickListener {
             startLibrarySelection(story.id)
             true
         }
     } else {
         // Toggling refreshes this story's cards on every page (see refreshStoryCards), not just this one.
-        val toggle = { toggleLibrarySelection(story.id) }
-        content.setOnClickListener { toggle() }
-        content.setOnLongClickListener {
-            toggle()
+        card.setOnClickListener { toggleLibrarySelection(story.id) }
+        card.setOnLongClickListener {
+            toggleLibrarySelection(story.id)
             true
         }
     }
 }
 
-/** Chapter coverage row tagged so [patchLibraryProgress] can update it during downloads. */
+/** Chapter coverage ("X / Y" and the capsule) tagged so [patchLibraryProgress] can update it during downloads. */
 internal fun ScreenHost.makeLibraryProgressSummary(
     story: Story,
     topMarginDp: Int,
-): android.view.View =
+): View =
     makeChapterCoverageSummary(
         app,
         StoryBookmarkPlanning.downloadedFlags(story),
@@ -96,83 +91,85 @@ internal fun ScreenHost.makeLibraryProgressSummary(
     ).apply {
         tag = LibraryProgressTag(story.id)
         layoutParams =
-            LinearLayout
-                .LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    topMargin = dp(topMarginDp)
-                }
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(topMarginDp)
+            }
     }
 
-/** Patches only the count text and coverage bar for a story, preserving every scroll/gesture view. */
+/** The bare coverage capsule (no count) under a cover-grid tile's art. */
+internal fun ScreenHost.makeLibraryCoverageBar(story: Story): View =
+    ChapterCoverageBar(app, StoryBookmarkPlanning.downloadedFlags(story), StoryBookmarkPlanning.bookmarkFraction(story)).apply {
+        tag = LibraryProgressTag(story.id)
+    }
+
+/** Patches only the coverage views for a story, preserving every scroll/gesture view. */
 internal fun patchLibraryProgress(
-    root: android.view.View,
+    root: View,
     story: Story,
 ) {
     if (root.tag == LibraryProgressTag(story.id)) {
-        updateChapterCoverageSummary(
-            root,
-            StoryBookmarkPlanning.downloadedFlags(story),
-            StoryBookmarkPlanning.bookmarkFraction(story),
-            story.downloadedChapters,
-            story.totalChapters,
-        )
+        val flags = StoryBookmarkPlanning.downloadedFlags(story)
+        val bookmark = StoryBookmarkPlanning.bookmarkFraction(story)
+        if (root is ChapterCoverageBar) {
+            root.bind(flags, bookmark)
+        } else {
+            updateChapterCoverageSummary(root, flags, bookmark, story.downloadedChapters, story.totalChapters)
+        }
     }
     if (root is ViewGroup) {
         for (index in 0 until root.childCount) patchLibraryProgress(root.getChildAt(index), story)
     }
 }
 
-/** Horizontal library card content: 80×120 cover + stacked text. */
+/** List card content: a 78dp cover beside the text column, whose coverage row sits at the bottom. */
 internal fun ScreenHost.buildStoryCard(
     story: Story,
-    contentGravity: Int,
     selected: Boolean?,
 ): LinearLayout {
-    val row =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = contentGravity
-        }
+    val colors = ThemeManager.colors
+    val row = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
     row.addView(storyCover(story, selected))
-    row.addView(
+    val body =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
             addView(
-                makeText(app, story.title, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
+                makeText(app, story.title, Type.TITLE_SMALL, colors.onSurface).apply {
+                    textSize = TITLE_SP
                     maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    ellipsize = TextUtils.TruncateAt.END
                 },
             )
             addView(
-                makeText(app, "by ${story.author}", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                    setPadding(0, dp(Space.XS), 0, 0)
+                makeText(app, "by ${story.author.ifBlank { "Unknown" }}", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    setPadding(0, dp(2), 0, 0)
                 },
             )
             libraryBadgeRow(story)?.let(::addView)
-            story.score?.takeIf { it.isNotBlank() }?.let { score ->
-                addView(scoreRow(score))
-            }
             story.patreonStats?.let(PatreonEarningsPlanning::estimate)?.let { earnings ->
                 addView(
-                    makeText(app, formatLibraryPatreonStats(earnings), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                    makeText(app, formatLibraryPatreonStats(earnings), Type.BODY_SMALL, colors.secondary).apply {
                         maxLines = 1
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                        setPadding(0, dp(Space.XS), 0, 0)
+                        ellipsize = TextUtils.TruncateAt.END
+                        setPadding(0, dp(Spacing.XS + 1), 0, 0)
                     },
                 )
             }
             story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
                 addView(
-                    makeText(app, tags.take(5).joinToString("  •  "), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                        setPadding(0, dp(Space.XS), 0, 0)
+                    makeText(app, tags.take(TAG_PREVIEW).joinToString(" • "), Type.BODY_SMALL, colors.faint).apply {
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        setPadding(0, dp(Spacing.XS), 0, 0)
                     },
                 )
             }
-        },
-        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-    )
+            // Pushes the coverage row to the card's bottom edge when the cover is taller than the text.
+            addView(View(app), LinearLayout.LayoutParams(1, 0, 1f))
+            if (story.totalChapters > 0) addView(makeLibraryProgressSummary(story, topMarginDp = Spacing.SM))
+        }
+    row.addView(body, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { marginStart = dp(Spacing.MD + 2) })
     return row
 }
 
@@ -191,78 +188,39 @@ private fun formatLibraryPatreonStats(earnings: PatreonEarningsPlanning.PatreonE
 private fun ScreenHost.storyCover(
     story: Story,
     selected: Boolean?,
-): android.view.View {
-    val cover = coverImage(story, widthDp = 80, heightDp = 120, tapToOpen = false)
-    val unseenAi = hasUnseenAiResult(story)
-    return if (selected == null && !unseenAi) cover else coverWithBadges(cover, selected != null, unseenAi)
-}
-
-/** Wraps the cover so the check / AI-result badges overlay its corners; the cover stays fully visible. */
-private fun ScreenHost.coverWithBadges(
-    cover: android.view.View,
-    selectable: Boolean,
-    unseenAi: Boolean,
-): android.view.View {
-    val coverParams = cover.layoutParams as? LinearLayout.LayoutParams
-    cover.layoutParams = FrameLayout.LayoutParams(coverParams?.width ?: 0, coverParams?.height ?: 0)
+): View {
+    val cover = coverImage(story, widthDp = LIST_COVER_WIDTH_DP, heightDp = LIST_COVER_WIDTH_DP * 3 / 2, tapToOpen = false)
+    cover.layoutParams = FrameLayout.LayoutParams(dp(LIST_COVER_WIDTH_DP), dp(LIST_COVER_WIDTH_DP * 3 / 2))
     return FrameLayout(app).apply {
         addView(cover)
-        if (unseenAi) addView(aiResultBadge())
-        if (selectable) addSelectionBadge(this)
-        layoutParams =
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                marginEnd = coverParams?.marginEnd ?: 0
-            }
+        if (hasUnseenAiResult(story)) addView(aiResultBadge())
+        if (selected != null) addView(selectionCheck(selected))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 }
 
-/** Overlays the unstyled check badge on [frame]'s top-start corner; [applySelectionStyle] paints it. */
-internal fun ScreenHost.addSelectionBadge(frame: FrameLayout) {
-    val badgeSize = dp(26)
-    val inset = dp(Space.SM)
-    frame.addView(
-        ImageView(app).apply {
-            tag = SELECTION_BADGE_TAG
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
-        },
-        FrameLayout.LayoutParams(badgeSize, badgeSize, Gravity.TOP or Gravity.START).apply {
-            setMargins(inset, inset, 0, 0)
-        },
-    )
-}
-
-/** Restyles one card's highlight outline and cover badge for [selected]; null clears both. */
-private fun ScreenHost.applySelectionStyle(
+/** Selected list cards take a warm fill and a gold border. */
+private fun ScreenHost.applyListCardSelection(
     card: LinearLayout,
-    content: LinearLayout,
     selected: Boolean?,
 ) {
     val colors = ThemeManager.colors
-    card.foreground =
+    val radius = dp(ThemeManager.shapes.cardRadius).toFloat()
+    card.background =
         if (selected == true) {
             strokeBg(
-                ColorUtils.setAlphaComponent(colors.primary, SELECTED_FILL_ALPHA),
-                dp(ThemeManager.shapes.cardRadius).toFloat(),
-                colors.primary,
-                dp(2),
+                SELECTED_CARD_FILL,
+                radius,
+                ColorUtils.setAlphaComponent(colors.primary, SELECTED_BORDER_ALPHA),
+                dp(1).coerceAtLeast(1),
             )
         } else {
-            null
+            strokeBg(colors.elevation1, radius, colors.line, dp(1).coerceAtLeast(1))
         }
-    val badge = content.findViewWithTag<ImageView>(SELECTION_BADGE_TAG) ?: return
-    val radius = dp(13).toFloat()
-    if (selected == true) {
-        badge.background = roundedBg(colors.primary, radius)
-        badge.setImageDrawable(app.tintedIcon(R.drawable.wna_check, colors.onPrimary))
-        badge.contentDescription = "Selected"
-    } else {
-        badge.background = strokeBg(ColorUtils.setAlphaComponent(colors.surface, BADGE_IDLE_ALPHA), radius, colors.onSurface, dp(2))
-        badge.setImageDrawable(null)
-        badge.contentDescription = "Not selected"
-    }
 }
 
-private const val SELECTION_BADGE_TAG = "wna_library_selection_badge"
-private const val SELECTED_FILL_ALPHA = 0x26
-private const val BADGE_IDLE_ALPHA = 0xB3
+private const val LIST_COVER_WIDTH_DP = 78
+private const val TITLE_SP = 15.5f
+private const val TAG_PREVIEW = 4
+private const val SELECTED_CARD_FILL = 0xFF2B2414.toInt()
+private const val SELECTED_BORDER_ALPHA = 0x80
