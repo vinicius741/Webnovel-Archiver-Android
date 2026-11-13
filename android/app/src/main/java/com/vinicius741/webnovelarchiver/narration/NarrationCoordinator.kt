@@ -59,7 +59,7 @@ class NarrationCoordinator internal constructor(
             store = store,
             queue = queue,
             source = source,
-            synthesizers = AndroidNarrationSynthesizers(context, kokoro) { queue.state.value.generateOnServer },
+            synthesizers = AndroidNarrationSynthesizers(context, kokoro) { queue.state.value.places },
             onPublished = ::onPublished,
             generationAllowed = generationAllowed,
         )
@@ -411,26 +411,33 @@ class NarrationCoordinator internal constructor(
         return server
     }
 
-    /** Removes a computer; chapters it was generating continue on this phone. */
+    /** Removes a computer; chapters it was generating continue on the other chosen ones, or on this phone. */
     fun removeServer(id: String) {
         queue.update { document ->
+            val chosen = document.generateOnIds - id
             document.copy(
                 servers = document.servers.filter { it.id != id },
-                generateOn = document.generateOn.takeUnless { it == id },
+                generateOnIds = chosen,
+                phoneFallback = document.phoneFallback && chosen.isNotEmpty(),
             )
         }
     }
 
     /**
-     * Where Kokoro chapters generate: a server id, or null for this phone. A chapter in progress
-     * switches at its next sentence. Choosing a place resumes a queue that paused because the previous
-     * one could not be reached.
+     * Where Kokoro chapters generate: the chosen computers share each chapter ([NarrationServerPlanning.tapGenerateOn]
+     * decides what a tap on a chip changes). A chapter in progress switches at its next sentence and
+     * keeps its clips. Choosing a place resumes a queue that paused because the previous one could not be used.
      */
-    fun setGenerateOn(serverId: String?) {
+    fun setGenerateOn(
+        serverIds: List<String>,
+        phoneFallback: Boolean,
+    ) {
         queue.update { document ->
             val resume = document.paused && document.pausedForServer
+            val chosen = serverIds.distinct().filter { id -> document.servers.any { it.id == id } }
             document.copy(
-                generateOn = serverId?.takeIf { id -> document.servers.any { it.id == id } },
+                generateOnIds = chosen,
+                phoneFallback = phoneFallback && chosen.isNotEmpty(),
                 paused = document.paused && !resume,
                 pauseReason = if (resume) null else document.pauseReason,
                 pausedForServer = false,

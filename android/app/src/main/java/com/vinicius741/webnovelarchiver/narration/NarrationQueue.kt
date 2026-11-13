@@ -53,8 +53,19 @@ class NarrationQueue(
 
     /** Gson leaves fields absent from older files null even when Kotlin says otherwise. */
     @Suppress("SENSELESS_COMPARISON", "USELESS_ELVIS")
-    private fun sanitize(document: NarrationQueueDocument): NarrationQueueDocument =
-        document.copy(
+    private fun sanitize(document: NarrationQueueDocument): NarrationQueueDocument {
+        val servers =
+            (document.servers ?: emptyList())
+                .filter { it != null && it.id != null && it.address != null }
+                .map { it.copy(name = it.name ?: it.address, token = it.token ?: "", tailscaleAddress = it.tailscaleAddress ?: "") }
+        // Earlier versions chose one computer (`generateOn`); it becomes the first of the chosen ones.
+        val chosen =
+            (document.generateOnIds ?: emptyList())
+                .filterNotNull()
+                .ifEmpty { listOfNotNull(document.generateOn) }
+                .filter { id -> servers.any { it.id == id } }
+                .distinct()
+        return document.copy(
             jobs =
                 (document.jobs ?: emptyList()).filter { it != null && it.storyId != null && it.chapterId != null && it.voice != null }.map {
                     it.copy(
@@ -64,9 +75,10 @@ class NarrationQueue(
                 },
             msPerChar = document.msPerChar ?: emptyMap(),
             speed = document.speed ?: emptyMap(),
-            servers =
-                (document.servers ?: emptyList())
-                    .filter { it != null && it.id != null && it.address != null }
-                    .map { it.copy(name = it.name ?: it.address, token = it.token ?: "", tailscaleAddress = it.tailscaleAddress ?: "") },
+            servers = servers,
+            generateOn = null,
+            generateOnIds = chosen,
+            phoneFallback = document.phoneFallback && chosen.isNotEmpty(),
         )
+    }
 }

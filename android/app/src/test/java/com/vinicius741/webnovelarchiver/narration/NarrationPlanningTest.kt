@@ -124,4 +124,17 @@ class NarrationPlanningTest {
         assertEquals("1 h 05 min", NarrationPlanning.formatDuration(65 * 60_000L))
         assertEquals(1.0, NarrationPlanning.blend(null, 1.0), 0.0)
     }
+
+    @Test
+    fun storedSpeedsAreKeptPerPlaceAndAddUpForComputersSharingChapters() {
+        val kokoro = "builtin:kokoro-en-v0_19"
+        val speeds = mapOf(kokoro to 1.5, "$kokoro@mac" to 6.0, "$kokoro@bazzite" to 6.5)
+        assertEquals(1.5, NarrationPlanning.storedSpeed(speeds, kokoro, null)!!, 0.0)
+        assertEquals(6.0, NarrationPlanning.storedSpeed(speeds, kokoro, "mac")!!, 0.0)
+        assertEquals(12.5, NarrationPlanning.storedSpeed(speeds, kokoro, "mac+bazzite")!!, 0.0)
+        assertEquals(11.0, NarrationPlanning.storedSpeed(speeds + ("$kokoro@mac+bazzite" to 11.0), kokoro, "mac+bazzite")!!, 0.0)
+        // A computer never measured: the engine's speed until the pair is.
+        assertEquals(1.5, NarrationPlanning.storedSpeed(speeds, kokoro, "mac+studio")!!, 0.0)
+        assertEquals(1.5, NarrationPlanning.storedSpeed(speeds, kokoro, "studio")!!, 0.0)
+    }
 }

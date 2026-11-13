@@ -511,6 +511,56 @@ class NarrationGeneratorTest {
             assertEquals(sizes.size, sizes.toSet().size)
         }
 
+    /** A computer for [NarrationPlacePool]: speaks after [speakMs], and drops off after [dropAfter] sentences. */
+    private class PoolPlace(
+        override val id: String,
+        private val speakMs: Long,
+        private val dropAfter: Int = Int.MAX_VALUE,
+    ) : NarrationPlace {
+        override val name = id
+        override val slots = 2
+        val spoken = mutableListOf<String>()
+
+        override suspend fun connect(checkMemory: Boolean) {
+            if (spoken.size >= dropAfter) throw NarrationServerProblem("Can't reach $id", transient = true)
+        }
+
+        override suspend fun synthesize(text: String): TtsPcmClip {
+            delay(speakMs)
+            if (spoken.size >= dropAfter) throw NarrationServerProblem("Lost the connection to $id", transient = true)
+            spoken += text
+            return TtsWavWriter.pcm16(FloatArray(2_400 + text.length) { 0.5f }, 24_000)
+        }
+
+        override fun close() = Unit
+    }
+
+    @Test
+    fun computersSharingAChapterWriteItInOrderEvenWhenOneDrops() =
+        runTest {
+            source.sentences = (1..16).map { "Sentence ${"x".repeat(it * 10)}." }
+            val fast = PoolPlace("bazzite", speakMs = 40)
+            val slow = PoolPlace("mac", speakMs = 90, dropAfter = 3)
+            val pooled =
+                object : NarrationSynthesizerFactory {
+                    override fun location(voice: NarrationVoice) = "mac,bazzite"
+
+                    override suspend fun open(voice: NarrationVoice): NarrationSynthesizer =
+                        NarrationPlacePool.open(voice, "fake|v1", "mac,bazzite", listOf(slow, fast), null, backgroundScope) {
+                            testScheduler.currentTime
+                        }
+                }
+            NarrationGenerator(store, queue, source, pooled).runJob(enqueue())
+
+            val pack = store.pack("s", "c")!!
+            assertEquals(3, slow.spoken.size)
+            assertEquals(14, fast.spoken.size)
+            val sizes = source.sentences.indices.map { store.readClip(store.clipFile(pack.dir, it))!!.pcm.size }
+            assertEquals(sizes.sorted(), sizes)
+            assertEquals(sizes.size, sizes.toSet().size)
+            assertFalse(queue.state.value.paused)
+        }
+
     @Test
     fun anUnreachableServerPausesTheQueueAndKeepsTheClips() =
         runTest {

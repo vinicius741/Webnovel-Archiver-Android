@@ -455,11 +455,11 @@ internal class NarrationGenerator(
     /** Whether [job] is still the one the queue wants generated now (nothing was moved ahead of it). */
     private fun isNext(job: NarrationJob): Boolean = NarrationPlanning.next(queue.state.value.jobs)?.id == job.id
 
-    /** Speeds are kept per place: a computer generates several times faster than the phone. */
+    /** Speeds are kept per place: a computer generates several times faster than the phone, two computers faster still. */
     private fun speedKey(
         engine: String,
         voice: NarrationSynthesizer,
-    ): String = voice.location?.let { "$engine@${it.substringBefore('|')}" } ?: engine
+    ): String = voice.speedPlace?.let { "$engine@$it" } ?: engine
 
     /**
      * The open synthesizer for [voice], re-fitted to the device: Kokoro must not run more threads
@@ -489,10 +489,11 @@ internal class NarrationGenerator(
         stats: GenerationStats,
         voice: NarrationSynthesizer,
     ) {
-        val speedKey = speedKey(job.voice.engine, voice)
         val document = queue.state.value
         val measuredSpeed = stats.speed(now())
-        val speed = measuredSpeed ?: document.speed[speedKey] ?: document.speed[job.voice.engine] ?: NarrationPlanning.DEFAULT_SPEED
+        val speed =
+            measuredSpeed ?: NarrationPlanning.storedSpeed(document.speed, job.voice.engine, voice.speedPlace)
+                ?: NarrationPlanning.DEFAULT_SPEED
         // This chapter's own voice rate, once enough of it is measured, beats the stored average.
         val measured = stats.msPerChar().takeIf { stats.characters >= MIN_STATS_CHARACTERS }
         val chapterAudio =
