@@ -79,6 +79,7 @@ Emulator-based functional QA reports for the native Android app.
 
 | File | Description |
 |------|-------------|
+| `dependency-update-2026-11-09.md` | Stable dependency audit (AGP 9.5.1, jsoup 1.24.1, Gradle 9.9.0), repair of the broken androidTest build plus stale/flaky device tests, pre-change verification of those failures, and local/emulator validation results. |
 | `native-app-emulator-qa-2026-11-07.md` | Emulator QA and independent retest on 1.0.6-native: confirmed Trends player overlap and Patreon earnings inconsistency; Library count and AI Settings grouping are design observations; the AI key finding was retracted and the banner observation remains unconfirmed. Evidence in `assets/qa-2026-11-07/`. |
 | `offline-simulation.md` | Offline agent QA commands, scenario catalog, timing/hold controls, disposable storage, fail-closed networking, reports, replay fixtures, and validation. |
 | `offline-simulation-plan.md` | Original design and options for offline agent QA, with implementation references. |

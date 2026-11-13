@@ -1,9 +1,12 @@
 package com.vinicius741.webnovelarchiver.app
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
+import android.view.inspector.WindowInspector
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.RadioButton
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
@@ -11,11 +14,13 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
 import com.vinicius741.webnovelarchiver.feature.ai.patchAiDraftProgress
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import kotlinx.coroutines.runBlocking
@@ -32,52 +37,30 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AiSimplificationDeviceTest {
     @Test
-    fun coverChoicesPersistAndOptionsRetainTheirStoryScope() =
+    fun coverPromptDraftsAndChoicesRetainTheirStoryScope() =
         withFixture { scenario ->
             scenario.onActivity { activity ->
-                assertNull(activity.textView("Write your own prompt"))
-                activity.textView("Generation options")!!.performClick()
-                assertNotNull(activity.textView("Write your own prompt"))
-                activity.aiControlsScreenState.coverPrompts[ID] = "Keep this pending prompt"
+                val field = activity.promptField()
+                field.setText("Keep this pending prompt")
+                assertEquals("Keep this pending prompt", activity.aiControlsScreenState.coverPrompts[ID])
                 activity.showDetails(ID)
                 activity.showAiControls(ID)
-                assertNotNull(activity.textView("Write your own prompt"))
-                activity.textView("Generation options")!!.performClick()
-                assertNull(activity.textView("Write your own prompt"))
+                assertEquals("Keep this pending prompt", activity.promptField().text.toString())
                 assertEquals("Keep this pending prompt", activity.aiControlsScreenState.coverPrompts[ID])
-                assertEquals(2, activity.allViews().filterIsInstance<RadioButton>().size)
-                activity
-                    .allViews()
-                    .filterIsInstance<RadioButton>()
-                    .single { it.text == "Source" }
-                    .performClick()
             }
+            // The strip loads asynchronously; the source choice is present and not in use (the AI cover is showing).
+            scenario.eventually { it.coverChoice("Source") != null }
+            // Tapping a choice opens the full-screen viewer (its own dialog window); "Use this cover" commits it.
+            scenario.onActivity { activity -> activity.coverChoice("Source")!!.performClick() }
+            scenario.eventually { windowView<TextView> { it.text.toString() == "Use this cover" } != null }
+            scenario.onActivity { windowView<TextView> { it.text.toString() == "Use this cover" }!!.performClick() }
             scenario.eventually { !it.repository.story(ID)!!.showAiCover }
+            scenario.eventually { windowView<TextView> { it.text.toString() == "In use" } != null }
             scenario.onActivity { activity ->
-                activity.showAiControls(ID)
-                assertTrue(
-                    activity
-                        .allViews()
-                        .filterIsInstance<RadioButton>()
-                        .single { it.text == "Source" }
-                        .isChecked,
-                )
+                // Choosing a display cover never rewrites which AI cover file is on record.
                 assertEquals("fixture.png", activity.repository.story(ID)!!.aiCoverPath)
-                activity.textView("Generation options")!!.performClick()
-                activity
-                    .allViews()
-                    .filterIsInstance<CheckBox>()
-                    .single {
-                        it.parent is android.widget.LinearLayout &&
-                            (it.parent as ViewGroup).let { parent ->
-                                (0 until parent.childCount).map { i -> parent.getChildAt(i) }.filterIsInstance<TextView>().any { view ->
-                                    view.text ==
-                                        "Generate prompt + image in one step"
-                                }
-                            }
-                    }.performClick()
+                windowView<View> { it.contentDescription == "Close" }!!.performClick()
             }
-            scenario.eventually { it.textView("Try a new AI prompt") != null || it.textView("Try a new cover") != null }
         }
 
     @Test
@@ -120,37 +103,46 @@ class AiSimplificationDeviceTest {
         withFixture { scenario ->
             scenario.onActivity { activity ->
                 activity.aiOperation = StoryOperationState(ID, StoryOperationKind.AI_DESCRIPTION, "Starting")
-                activity.showAiControls(ID)
+                activity.showAiControls(ID, AiControlsTab.DESCRIPTION)
                 val binding = activity.aiControlsScreenState.binding!!
                 val root = activity.frame.getChildAt(0)
-                activity.textView("Generation options")!!.performClick()
+                assertNotNull(activity.textView("Starting"))
+                assertFalse(activity.textView("Generating...")!!.isEnabled)
                 repeat(100) { activity.patchAiDraftProgress(ID, "Message $it") }
                 assertSame(root, activity.frame.getChildAt(0))
                 assertSame(binding, activity.aiControlsScreenState.binding)
                 assertNotNull(activity.textView("Message 99"))
-                assertNotNull(activity.textView("Write your own prompt"))
+                // The description card stays gated for the whole run.
                 assertFalse(activity.textView("Generating...")!!.isEnabled)
+                // A cover operation changes the busy kind and the tab that renders it; switching re-renders.
                 activity.aiOperation = StoryOperationState(ID, StoryOperationKind.AI_COVER, "Cover starting")
-                activity.updateAiControlsProgress(activity.aiOperation!!)
+                activity.showAiControls(ID, AiControlsTab.COVER)
                 assertNotSame(root, activity.frame.getChildAt(0))
+                val coverBinding = activity.aiControlsScreenState.binding!!
                 val coverRoot = activity.frame.getChildAt(0)
+                assertNotNull(activity.textView("Cover starting"))
+                assertFalse(activity.promptField().isEnabled)
                 repeat(100) {
                     activity.aiOperation = activity.aiOperation!!.copy(message = "Cover $it")
                     activity.updateAiControlsProgress(activity.aiOperation!!)
                 }
                 assertSame(coverRoot, activity.frame.getChildAt(0))
+                assertSame(coverBinding, activity.aiControlsScreenState.binding)
                 assertNotNull(activity.textView("Cover 99"))
+                // Leaving the screen drops the binding; late messages cannot patch a detached tree.
                 activity.showDetails(ID)
                 assertNull(activity.aiControlsScreenState.binding)
                 val detailsRoot = activity.frame.getChildAt(0)
                 activity.updateAiControlsProgress(StoryOperationState(ID, StoryOperationKind.AI_COVER, "Late"))
                 assertSame(detailsRoot, activity.frame.getChildAt(0))
+                assertNull(activity.textView("Late"))
                 activity.aiOperation = null
-                activity.showAiControls(ID)
+                activity.showAiControls(ID, AiControlsTab.DESCRIPTION)
                 assertNull(activity.textView("Generating..."))
+                assertTrue(activity.textView("Generate Description with AI")!!.isEnabled)
             }
             scenario.recreate()
-            scenario.eventually { it.textView("AI Controls") != null }
+            scenario.eventually { (it.navigator.current as? AppRoute.AiControls)?.storyId == ID && it.promptField().isShown }
         }
 
     @Test
@@ -255,7 +247,35 @@ private fun MainActivity.allViews(): List<View> {
     return descendants(window.decorView)
 }
 
+/** Every visible view in all of the app's windows, including dialogs such as the cover viewer. */
+@SuppressLint("NewApi") // WindowInspector is API 29+; these tests run on the API 36 emulator.
+private fun allWindowViews(): List<View> {
+    fun descendants(view: View): List<View> =
+        if (view.visibility != View.VISIBLE) {
+            emptyList()
+        } else {
+            listOf(view) + if (view is ViewGroup) (0 until view.childCount).flatMap { descendants(view.getChildAt(it)) } else emptyList()
+        }
+    return WindowInspector.getGlobalWindowViews().flatMap { descendants(it) }
+}
+
+private inline fun <reified T : View> windowView(match: (T) -> Boolean): T? = allWindowViews().filterIsInstance<T>().firstOrNull(match)
+
 private fun MainActivity.textView(text: String) = allViews().filterIsInstance<TextView>().firstOrNull { it.text.toString() == text }
+
+/** The Cover tab's prompt box ("Make a new cover" card). */
+private fun MainActivity.promptField(): EditText =
+    allViews()
+        .filterIsInstance<EditText>()
+        .single { it.contentDescription == "Image prompt" }
+
+/** One strip entry's tappable frame; its contentDescription starts with the choice label ("Source", "AI 1", …). */
+private fun MainActivity.coverChoice(label: String): View? =
+    allViews()
+        .filterIsInstance<FrameLayout>()
+        .firstOrNull {
+            it.contentDescription?.toString()?.startsWith(label) == true
+        }
 
 private fun ActivityScenario<MainActivity>.eventually(predicate: (MainActivity) -> Boolean) {
     val deadline = System.currentTimeMillis() + 15000
