@@ -23,7 +23,7 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
-import com.vinicius741.webnovelarchiver.ui.roundedBg
+import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.systemBarBottom
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import kotlinx.coroutines.launch
@@ -44,7 +44,7 @@ private class AiJobChipView(
         LinearLayout(root.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            elevation = root.context.dp(6).toFloat()
+            elevation = root.context.dp(Spacing.XS).toFloat()
             isClickable = true
             isFocusable = true
             visibility = View.GONE
@@ -56,7 +56,7 @@ private class AiJobChipView(
         }
     private val icon = ImageView(root.context).apply { scaleType = ImageView.ScaleType.CENTER_INSIDE }
     private val headline =
-        makeText(root.context, "", Type.LABEL_LARGE, 0).apply {
+        makeText(root.context, "", Type.TITLE_SMALL, 0).apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
@@ -66,7 +66,7 @@ private class AiJobChipView(
             ellipsize = TextUtils.TruncateAt.END
         }
     private val close =
-        root.context.iconButton(R.drawable.wna_close, "Dismiss", ThemeManager.colors.onSecondaryContainer, onClick = onDismiss)
+        root.context.iconButton(R.drawable.wna_close, "Dismiss", ThemeManager.colors.onSurfaceVariant, onClick = onDismiss)
 
     init {
         val context = root.context
@@ -86,21 +86,31 @@ private class AiJobChipView(
 
     fun bind(state: AiJobChipState) {
         val colors = ThemeManager.colors
+        val context = view.context
+        // v3 floating chrome, matching the mini player: a raised obsidian card with a hairline
+        // border, onSurface text, and the status carried by the accent (copper = generating,
+        // sage = ready, red = failed) instead of a solid tinted fill.
+        val accent =
+            when (state.status) {
+                AiJobChipStatus.RUNNING -> colors.secondary
+                AiJobChipStatus.READY -> colors.tertiary
+                AiJobChipStatus.FAILED -> colors.error
+            }
         val failed = state.status == AiJobChipStatus.FAILED
-        val background = if (failed) colors.errorContainer else colors.secondaryContainer
-        val foreground = if (failed) colors.onErrorContainer else colors.onSecondaryContainer
-        val radius = view.context.dp(Spacing.LG).toFloat()
-        view.background = ripple(roundedBg(background, radius), radius, foreground)
-        headline.setTextColor(foreground)
-        storyTitle.setTextColor(foreground)
+        val radius = context.dp(ThemeManager.shapes.cardRadius).toFloat()
+        val border = (if (failed) colors.error else colors.primary) and BORDER_ALPHA_MASK
+        view.background =
+            ripple(strokeBg(CHIP_SURFACE, radius, border, context.dp(1).coerceAtLeast(1)), radius, colors.onSurface)
+        headline.setTextColor(colors.onSurface)
+        storyTitle.setTextColor(colors.onSurfaceVariant)
         headline.text = state.headline
         storyTitle.text = state.storyTitle
-        spinner.indeterminateTintList = ColorStateList.valueOf(foreground)
+        spinner.indeterminateTintList = ColorStateList.valueOf(accent)
         spinner.visibility = if (state.status == AiJobChipStatus.RUNNING) View.VISIBLE else View.GONE
         icon.visibility = if (state.status == AiJobChipStatus.RUNNING) View.GONE else View.VISIBLE
-        icon.setImageDrawable(view.context.tintedIcon(if (failed) R.drawable.wna_close else R.drawable.wna_auto_awesome, foreground))
+        icon.setImageDrawable(context.tintedIcon(if (failed) R.drawable.wna_close else R.drawable.wna_auto_awesome, accent))
         close.visibility = if (state.dismissKey != null) View.VISIBLE else View.GONE
-        close.setImageDrawable(view.context.tintedIcon(R.drawable.wna_close, foreground))
+        close.setImageDrawable(context.tintedIcon(R.drawable.wna_close, colors.onSurfaceVariant))
         view.contentDescription = "${state.headline}, ${state.storyTitle}. Open AI Controls"
     }
 }
@@ -201,3 +211,7 @@ internal fun ScreenHost.attachAiJobChip(root: ViewGroup) {
 private const val MAX_CHIP_WIDTH_DP = 360
 private const val MIN_CHIP_WIDTH_DP = 200
 private const val FAB_CLEARANCE_DP = 104
+
+// Same raised surface and gold hairline as the v3 mini player (TtsMiniPlayerBar).
+private const val CHIP_SURFACE = 0xFF2A251C.toInt()
+private const val BORDER_ALPHA_MASK = 0x29FFFFFF
