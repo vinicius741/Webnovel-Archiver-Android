@@ -178,10 +178,12 @@ about 6x each generate about 11-12x in the app: a 20-minute chapter in about 1.8
 | What happens | What the pool does |
 |---|---|
 | A computer cannot be reached, rejects the token or runs another model | It is set aside and its sentences go to the others at once. A background probe (`reachServer` + `/v1/status`) checks it after 15 s, then twice as long each time up to 5 minutes, and it rejoins when it answers and is not stopped for memory. |
-| A computer answers `503` | It gets no sentences until its `Retry-After`; the others continue. "Waiting for…" shows only when no computer can generate. A computer stopped for 15 minutes counts as out. |
+| A computer answers `503`, stopped for memory | It gets no sentences until its `Retry-After`; the others continue. "Waiting for…" shows only when no computer can generate. A computer stopped for 15 minutes counts as out. |
+| A computer answers `503` short of a stop (a slot wait timed out, too many connections) | Only that sentence waits its `Retry-After`; the computer's other slots keep working. |
 | Every chosen computer is out | Generation pauses (`pausedForServer`) with the most useful reason: a problem the user must fix (a wrong token) over computers that could not be reached ("Can't reach Mac or Bazzite…"). |
-| Every chosen computer is out and **This phone** is also chosen | This phone generates, one sentence at a time, until a computer is back; then it frees its model. Without the Kokoro model installed it pauses as above. |
+| Every chosen computer is out and **This phone** is also chosen | This phone generates, one sentence at a time, until a computer is back. Sentences still waiting for the phone then go to that computer, and the phone frees its model. Without the Kokoro model installed it pauses as above. |
 | A sentence returns 400/500 | The generator's one retry may land on another computer. |
+| Measured speed | Recorded for the computers that generated the chapter (`kokoro@mac+bazzite`, or `kokoro@bazzite` when the Mac was out throughout). A chapter that mixed places (the phone stood in, or a computer dropped or rejoined) records no speed. |
 
 **This phone** never generates beside the computers. It is about 4x slower, and clips are written in
 order, so the computers would sit idle behind its sentence. With computers chosen, its chip only

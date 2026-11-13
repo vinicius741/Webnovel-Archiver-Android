@@ -169,6 +169,7 @@ internal class NarrationGenerator(
             _progress.value = NarrationProgress(job = job, storyTitle = text.storyTitle, chapterTitle = text.chapterTitle, preparing = true)
         }
         val voice = openSynthesizer(job.voice)
+        voice.beginChapter()
         if (!stillWanted(job)) return JobOutcome.Interrupted
         val recipe =
             NarrationRecipe(
@@ -211,7 +212,8 @@ internal class NarrationGenerator(
             }
         }
         val published = pack ?: return interrupted(job, versionDir)
-        recordStats(job.voice.engine, speedKey(job.voice.engine, voice), stats)
+        // A chapter that mixed places (the phone stood in, a computer dropped) says nothing about any one of them.
+        recordStats(job.voice.engine, speedKey(job.voice.engine, voice.chapterSpeedPlace).takeUnless { voice.chapterSpeedMixed }, stats)
         ActivityLog.recordAll(
             ActivityCategory.TTS,
             "narration_published",
@@ -458,8 +460,8 @@ internal class NarrationGenerator(
     /** Speeds are kept per place: a computer generates several times faster than the phone, two computers faster still. */
     private fun speedKey(
         engine: String,
-        voice: NarrationSynthesizer,
-    ): String = voice.speedPlace?.let { "$engine@$it" } ?: engine
+        place: String?,
+    ): String = place?.let { "$engine@$it" } ?: engine
 
     /**
      * The open synthesizer for [voice], re-fitted to the device: Kokoro must not run more threads
@@ -524,9 +526,10 @@ internal class NarrationGenerator(
         return NarrationPlanning.estimatedAudioMs(recipe.characters(), msPerChar)
     }
 
+    /** Records the chapter's voice rate, and its speed under [speedKey] unless that is null. */
     private fun recordStats(
         engine: String,
-        speedKey: String,
+        speedKey: String?,
         stats: GenerationStats,
     ) {
         if (stats.characters < MIN_STATS_CHARACTERS) return
@@ -534,8 +537,9 @@ internal class NarrationGenerator(
             document.copy(
                 msPerChar = document.msPerChar + (engine to NarrationPlanning.blend(document.msPerChar[engine], stats.msPerChar())),
                 speed =
-                    stats.speed(now())?.let { document.speed + (speedKey to NarrationPlanning.blend(document.speed[speedKey], it)) }
-                        ?: document.speed,
+                    speedKey?.let { key ->
+                        stats.speed(now())?.let { document.speed + (key to NarrationPlanning.blend(document.speed[key], it)) }
+                    } ?: document.speed,
             )
         }
     }

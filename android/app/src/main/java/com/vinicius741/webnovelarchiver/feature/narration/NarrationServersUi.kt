@@ -186,7 +186,7 @@ private fun generateOnHint(
                 }
             val fallback =
                 if (choice.phoneFallback) {
-                    " This phone takes over while ${if (chosen.size == 1) "it" else "none of them"} can generate."
+                    " This phone takes over while ${if (chosen.size == 1) "it can't generate" else "none of them can generate"}."
                 } else {
                     ""
                 }

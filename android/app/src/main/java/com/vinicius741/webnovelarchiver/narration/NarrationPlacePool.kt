@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.narration
 
 import com.vinicius741.webnovelarchiver.tts.TtsPcmClip
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +42,9 @@ internal data class NarrationPlaces(
         const val PHONE_KEY = "phone"
     }
 }
+
+/** What a sentence queued for this phone returns when a computer came back while it waited its turn. */
+private object BackToComputers
 
 /** One computer in a [NarrationPlacePool]. */
 internal interface NarrationPlace {
@@ -142,7 +146,38 @@ internal class NarrationPlacePool private constructor(
     private var phoneInFlight = 0
     private var phoneActive = false
 
-    override val speedPlace: String = seats.joinToString("+") { it.place.id }
+    /** This chapter so far: the computers that generated some of it, whether this phone did, and whether a computer dropped or rejoined. */
+    private val usedSeats = HashSet<String>()
+    private var usedPhone = false
+    private var changedMidChapter = false
+
+    /** The computers generating now, for estimates; null while this phone stands in. */
+    override val speedPlace: String?
+        get() =
+            synchronized(lock) {
+                val working = seats.filter { it.state != State.DOWN }
+                when {
+                    working.isNotEmpty() -> working.joinToString("+") { it.place.id }
+                    phoneActive -> null
+                    else -> seats.joinToString("+") { it.place.id }
+                }
+            }
+
+    override val chapterSpeedPlace: String?
+        get() =
+            synchronized(lock) {
+                seats.filter { it.place.id in usedSeats }.takeIf { it.isNotEmpty() }?.joinToString("+") { it.place.id }
+            }
+
+    override val chapterSpeedMixed: Boolean
+        get() = synchronized(lock) { changedMidChapter || (usedPhone && usedSeats.isNotEmpty()) }
+
+    override fun beginChapter() =
+        synchronized(lock) {
+            usedSeats.clear()
+            usedPhone = false
+            changedMidChapter = false
+        }
 
     override val parallelism: Int
         get() = synchronized(lock) { seats.filter { it.state != State.DOWN }.sumOf { it.place.slots } }.coerceAtLeast(1)
@@ -170,17 +205,25 @@ internal class NarrationPlacePool private constructor(
         output: File,
     ): TtsPcmClip? {
         while (true) {
-            val seat = acquire() ?: return onPhone(text, output)
+            val seat = acquire()
+            if (seat == null) {
+                val spoken = onPhone(text, output)
+                if (spoken === BackToComputers) continue
+                return spoken as TtsPcmClip?
+            }
+            var wait = 0L
             try {
                 return seat.place.synthesize(text).also { succeeded(seat) }
             } catch (busy: NarrationServerBusy) {
-                held(seat, busy)
+                wait = held(seat, busy)
             } catch (problem: NarrationServerProblem) {
                 Timber.w(problem, "%s set aside; its sentence goes elsewhere", seat.place.name)
                 down(seat, problem)
             } finally {
                 release(seat)
             }
+            // A refusal short of a stop: only this sentence waits, so the computer's other slots keep working.
+            if (wait > 0) delay(wait)
         }
     }
 
@@ -205,7 +248,11 @@ internal class NarrationPlacePool private constructor(
     }
 
     private fun pick(at: Long): Pick {
-        seats.filter { it.state == State.HELD && it.until <= at }.forEach { it.state = State.READY }
+        val expired = seats.filter { it.state == State.HELD && it.until <= at }
+        if (expired.isNotEmpty()) {
+            expired.forEach { it.state = State.READY }
+            changed()
+        }
         val ready = seats.filter { it.state == State.READY }
         ready.filter { it.inFlight < it.place.slots }.maxByOrNull { it.place.slots - it.inFlight }?.let { seat ->
             seat.inFlight++
@@ -235,6 +282,7 @@ internal class NarrationPlacePool private constructor(
 
     private fun succeeded(seat: Seat) =
         synchronized(lock) {
+            usedSeats += seat.place.id
             if (seat.stoppedSince != 0L) {
                 seat.stoppedSince = 0L
                 seat.stopReason = null
@@ -242,25 +290,30 @@ internal class NarrationPlacePool private constructor(
             }
         }
 
-    /** The server holds back for memory: ask it again when it says, unless it has been stopped too long. */
+    /**
+     * The server refused a sentence. Stopped for memory: it gets no sentences until it says, unless it
+     * has been stopped too long. Short of a stop (a slot wait that timed out, too many connections): only
+     * this sentence waits, for the returned milliseconds, as before several computers.
+     */
     private fun held(
         seat: Seat,
         busy: NarrationServerBusy,
-    ) = synchronized(lock) {
-        if (seat.state == State.DOWN) return@synchronized
-        val at = now()
-        if (busy.stopped) {
+    ): Long =
+        synchronized(lock) {
+            if (!busy.stopped) return@synchronized busy.retryAfterMs
+            if (seat.state == State.DOWN) return@synchronized 0L
+            val at = now()
             if (seat.stoppedSince == 0L) seat.stoppedSince = at
             seat.stopReason = busy.message
             if (at - seat.stoppedSince >= MAX_STOPPED_WAIT_MS) {
                 markDown(seat, NarrationServerProblem("${busy.message}. Resume when it has memory again", cause = busy))
-                return@synchronized
+                return@synchronized 0L
             }
+            seat.state = State.HELD
+            seat.until = maxOf(seat.until, at + busy.retryAfterMs)
+            changed()
+            0L
         }
-        seat.state = State.HELD
-        seat.until = maxOf(seat.until, at + busy.retryAfterMs)
-        changed()
-    }
 
     private fun down(
         seat: Seat,
@@ -275,11 +328,13 @@ internal class NarrationPlacePool private constructor(
         seat.problem = problem
         seat.stoppedSince = 0L
         seat.stopReason = null
+        changedMidChapter = true
         changed()
         if (seat.probe?.isActive != true) seat.probe = probes.launch { probe(seat) }
     }
 
     /** Checks a computer that is out, less and less often, until it can generate again. */
+    @Suppress("TooGenericExceptionCaught") // Runs on its own scope: anything a connection throws must not crash the app.
     private suspend fun probe(seat: Seat) {
         var wait = PROBE_FIRST_MS
         while (true) {
@@ -290,11 +345,19 @@ internal class NarrationPlacePool private constructor(
                     null
                 } catch (problem: NarrationServerProblem) {
                     problem
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Timber.w(error, "Checking %s failed", seat.place.name)
+                    NarrationServerProblem("Can't reach ${seat.place.name}", transient = true, cause = error)
                 }
             if (problem == null) {
                 synchronized(lock) {
                     seat.state = State.READY
                     seat.problem = null
+                    // Cleared here, so a drop right after this still starts a new probe.
+                    seat.probe = null
+                    changedMidChapter = true
                     changed()
                 }
                 return
@@ -312,14 +375,18 @@ internal class NarrationPlacePool private constructor(
         closePhoneIfIdle()
     }
 
-    /** This phone generates while every computer is out, one sentence at a time. */
+    /**
+     * This phone generates while every computer is out, one sentence at a time. A sentence still waiting
+     * its turn when a computer comes back returns [BackToComputers] instead, so it is not held up here.
+     */
     private suspend fun onPhone(
         text: String,
         output: File,
-    ): TtsPcmClip? {
+    ): Any? {
         synchronized(lock) { phoneInFlight++ }
         try {
             return phoneLock.withLock {
+                if (synchronized(lock) { seats.any { it.state != State.DOWN } }) return@withLock BackToComputers
                 val standIn =
                     phoneVoice ?: try {
                         checkNotNull(phone)().also { opened -> synchronized(lock) { phoneVoice = opened } }
@@ -328,7 +395,7 @@ internal class NarrationPlacePool private constructor(
                         Timber.w(unavailable, "This phone cannot stand in for the computers")
                         throw synchronized(lock) { failure() }
                     }
-                standIn.synthesize(text, output)
+                standIn.synthesize(text, output).also { synchronized(lock) { usedPhone = true } }
             }
         } finally {
             synchronized(lock) { phoneInFlight-- }
@@ -372,7 +439,7 @@ internal class NarrationPlacePool private constructor(
          * Connects to every place at once. Those that answer start generating; the rest are probed in
          * the background. Throws when none answers and there is no [phone] to fall back on.
          */
-        @Suppress("LongParameterList") // The synthesizer's identity plus where it runs.
+        @Suppress("LongParameterList", "TooGenericExceptionCaught") // Identity plus where it runs; any failure closes the places.
         suspend fun open(
             voice: NarrationVoice,
             voiceKey: String,
@@ -383,18 +450,12 @@ internal class NarrationPlacePool private constructor(
             now: () -> Long = System::currentTimeMillis,
         ): NarrationPlacePool {
             val problems =
-                coroutineScope {
-                    places
-                        .map { place ->
-                            async {
-                                try {
-                                    place.connect(checkMemory = false)
-                                    null
-                                } catch (problem: NarrationServerProblem) {
-                                    problem
-                                }
-                            }
-                        }.awaitAll()
+                try {
+                    connectAll(places)
+                } catch (failure: Throwable) {
+                    // Cancelled (a pause) or failed: close the computers that already connected.
+                    places.forEach(NarrationPlace::close)
+                    throw failure
                 }
             if (phone == null && problems.all { it != null }) {
                 places.forEach(NarrationPlace::close)
@@ -411,5 +472,21 @@ internal class NarrationPlacePool private constructor(
                 }
             }
         }
+
+        /** Each place's problem, or null where it connected. */
+        private suspend fun connectAll(places: List<NarrationPlace>): List<NarrationServerProblem?> =
+            coroutineScope {
+                places
+                    .map { place ->
+                        async {
+                            try {
+                                place.connect(checkMemory = false)
+                                null
+                            } catch (problem: NarrationServerProblem) {
+                                problem
+                            }
+                        }
+                    }.awaitAll()
+            }
     }
 }

@@ -32,6 +32,9 @@ class NarrationPlacePoolTest {
 
         /** Every sentence answers `503` with this while set. */
         var busy: NarrationServerBusy? = null
+
+        /** These sentences are refused once with a `503` short of a stop. */
+        val refuseOnce = mutableSetOf<String>()
         var speakMs = 1_000L
         val spoken = mutableListOf<String>()
         var running = 0
@@ -46,6 +49,7 @@ class NarrationPlacePoolTest {
 
         override suspend fun synthesize(text: String): TtsPcmClip? {
             busy?.let { throw it }
+            if (refuseOnce.remove(text)) throw NarrationServerBusy("$name is busy", 20_000L, stopped = false)
             if (!reachable) throw NarrationServerProblem("Lost the connection to $name", transient = true)
             running++
             maxRunning = maxOf(maxRunning, running)
@@ -66,6 +70,7 @@ class NarrationPlacePoolTest {
 
     private class FakePhone(
         override val voice: NarrationVoice,
+        private val speakMs: Long = 4_000,
     ) : NarrationSynthesizer {
         override val voiceKey = "phone"
         val spoken = mutableListOf<String>()
@@ -75,7 +80,7 @@ class NarrationPlacePoolTest {
             text: String,
             output: File,
         ): TtsPcmClip {
-            delay(4_000)
+            delay(speakMs)
             spoken += text
             return TtsPcmClip(24_000, ByteArray(2))
         }
@@ -265,5 +270,120 @@ class NarrationPlacePoolTest {
             assertNull(pool.waitingFor.value)
             // Six one-second sentences two at a time, plus nothing lost waiting on the Mac.
             assertEquals(3_000L, testScheduler.currentTime)
+        }
+
+    @Test
+    fun sentencesWaitingForThePhoneGoBackToAComputerThatReturns() =
+        runTest {
+            val mac = FakePlace("mac").apply { reachable = false }
+            var phone: FakePhone? = null
+            val pool = pool(mac, phone = { FakePhone(voice, speakMs = 10_000).also { phone = it } })
+            val clips = async { speak(pool, 3) }
+            // The phone takes one sentence at a time; the Mac is back after its first probe (15 s).
+            advanceTimeBy(1_000)
+            mac.reachable = true
+
+            assertEquals(3, clips.await().filterNotNull().size)
+            assertEquals(2, phone?.spoken?.size)
+            assertEquals(1, mac.spoken.size)
+            assertTrue(phone?.closed == true)
+        }
+
+    @Test
+    fun aRefusalShortOfAStopWaitsOnlyThatSentence() =
+        runTest {
+            val mac = FakePlace("mac").apply { refuseOnce += "Sentence 0." }
+            val pool = pool(mac)
+            val clips = async { speak(pool, 4) }
+            advanceTimeBy(2_500)
+
+            // The other three went on while the refused one waited its 20 s.
+            assertEquals(listOf("Sentence 1.", "Sentence 2.", "Sentence 3."), mac.spoken.sorted())
+            assertNull(pool.waitingFor.value)
+            assertEquals(4, clips.await().filterNotNull().size)
+            assertEquals("Sentence 0.", mac.spoken.last())
+        }
+
+    @Test
+    fun aCancelledSentenceGivesItsSlotBack() =
+        runTest {
+            val mac = FakePlace("mac", slots = 1)
+            val pool = pool(mac)
+            val cancelled = async { pool.synthesize("Cancelled.", output) }
+            advanceTimeBy(500)
+            cancelled.cancel()
+
+            pool.synthesize("Next.", output)
+
+            assertEquals(listOf("Next."), mac.spoken)
+            assertEquals(1_500L, testScheduler.currentTime)
+        }
+
+    @Test
+    fun closingStopsCheckingComputersThatAreOut() =
+        runTest {
+            val mac = FakePlace("mac").apply { reachable = false }
+            val bazzite = FakePlace("bazzite")
+            val pool = pool(mac, bazzite)
+            advanceTimeBy(NarrationPlacePool.PROBE_FIRST_MS + 1)
+            assertEquals(2, mac.connects)
+
+            pool.close()
+            advanceTimeBy(30 * 60_000L)
+
+            assertEquals(2, mac.connects)
+        }
+
+    @Test
+    fun withoutAVoiceOnThisPhoneTheComputersProblemIsReported() =
+        runTest {
+            val mac = FakePlace("mac").apply { reachable = false }
+            val pool = pool(mac, phone = { throw NarrationVoiceUnavailable("The Kokoro model is not installed") })
+            try {
+                pool.synthesize("Nowhere.", output)
+                fail("Expected a server problem")
+            } catch (problem: NarrationServerProblem) {
+                assertEquals("Can't reach Mac", problem.message)
+            }
+        }
+
+    @Test
+    fun aChaptersSpeedBelongsToTheComputersThatGeneratedItAlone() =
+        runTest {
+            val mac = FakePlace("mac")
+            val bazzite = FakePlace("bazzite")
+            val pool = pool(mac, bazzite)
+            pool.beginChapter()
+            speak(pool, 4)
+            assertEquals("mac+bazzite", pool.chapterSpeedPlace)
+            assertFalse(pool.chapterSpeedMixed)
+
+            // The Mac drops mid-chapter: the speed belongs to neither.
+            pool.beginChapter()
+            val clips = async { speak(pool, 4, from = 4) }
+            advanceTimeBy(500)
+            mac.reachable = false
+            clips.await()
+            assertTrue(pool.chapterSpeedMixed)
+
+            // A whole chapter on Bazzite alone is Bazzite's.
+            pool.beginChapter()
+            speak(pool, 4, from = 8)
+            assertEquals("bazzite", pool.chapterSpeedPlace)
+            assertFalse(pool.chapterSpeedMixed)
+            assertEquals("bazzite", pool.speedPlace)
+        }
+
+    @Test
+    fun aChapterTheStandInPhoneHelpedWithIsNotRecordedForTheComputers() =
+        runTest {
+            val mac = FakePlace("mac")
+            val pool = pool(mac, phone = { FakePhone(voice) })
+            pool.beginChapter()
+            speak(pool, 1)
+            mac.reachable = false
+            speak(pool, 2, from = 1)
+            assertNull(pool.speedPlace)
+            assertTrue(pool.chapterSpeedMixed)
         }
 }

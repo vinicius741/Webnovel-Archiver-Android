@@ -49,8 +49,17 @@ internal interface NarrationSynthesizer {
     /** The computer's name when it generates on one (several joined by " + "), for the screens. */
     val locationName: String? get() = null
 
-    /** Which computers its speed is recorded for: a server id, several joined by `+`, or null on this phone. */
+    /** Which computers generate now, for speed estimates: a server id, several joined by `+`, or null on this phone. */
     val speedPlace: String? get() = null
+
+    /** Which computers generated this chapter, for its measured speed (see [speedPlace]). */
+    val chapterSpeedPlace: String? get() = speedPlace
+
+    /** This chapter's speed belongs to no one place (the phone stood in, or a computer dropped or rejoined): do not record it. */
+    val chapterSpeedMixed: Boolean get() = false
+
+    /** Starts counting a new chapter for [chapterSpeedPlace] and [chapterSpeedMixed]. */
+    fun beginChapter() = Unit
 
     /**
      * Why generation is waiting on the engine right now (a computer holding back to protect its
