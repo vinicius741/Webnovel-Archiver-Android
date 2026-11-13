@@ -47,8 +47,8 @@ android {
         applicationId 'com.vinicius741.webnovelarchiver.nativeapp'
         minSdk 26
         targetSdk 36
-        versionCode 24
-        versionName '1.0.23-native'
+        versionCode 25
+        versionName '1.0.24-native'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         // Native ABIs are set per build type below, not here: AGP merges defaultConfig and build
         // type abiFilters as a union, so a list here could not be narrowed for release.
