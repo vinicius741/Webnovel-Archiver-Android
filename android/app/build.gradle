@@ -50,12 +50,8 @@ android {
         versionCode 24
         versionName '1.0.23-native'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-        // The built-in Kokoro voices ship native code: arm64 and 32-bit ARM for phones, x86_64 for
-        // the emulator. An APK with native code cannot install on a device matching none of these
-        // (only 32-bit x86 devices, which are all but extinct), so keep every real phone ABI here.
-        ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
-        }
+        // Native ABIs are set per build type below, not here: AGP merges defaultConfig and build
+        // type abiFilters as a union, so a list here could not be narrowed for release.
         // GitHub repository whose latest release the in-app update check reads (owner/name).
         buildConfigField 'String', 'UPDATE_REPOSITORY', '"vinicius741/Webnovel-Archiver-Android"'
         // Release track the in-app update check follows (appupdate/UpdateChannel); beta overrides it.
@@ -77,9 +73,18 @@ android {
         }
     }
 
+    // The built-in Kokoro voices ship native code (sherpa-onnx + ONNX Runtime), which is almost all
+    // of the APK's size. Every build type ships both phone ABIs, arm64 and 32-bit ARM: an APK with
+    // native code cannot install on a device matching none of its ABIs, so never drop one of them.
+    // Only debug and instrumentation, the builds that run on the x86_64 emulator, also ship x86_64;
+    // that one ABI is about 23 MB. Release and beta are phone builds and leave it out.
+    def phoneAbis = ['arm64-v8a', 'armeabi-v7a']
+    def emulatorAbis = phoneAbis + ['x86_64']
+
     buildTypes {
         debug {
             applicationIdSuffix '.debug'
+            ndk { abiFilters(*emulatorAbis) }
         }
         // Instrumentation launches the real application, so give it a separate data sandbox. This
         // keeps connected tests from reading, clearing, or overwriting the user's emulator library.
@@ -87,8 +92,10 @@ android {
             initWith debug
             applicationIdSuffix '.instrumentation'
             matchingFallbacks = ['debug']
+            ndk { abiFilters(*emulatorAbis) }
         }
         release {
+            ndk { abiFilters(*phoneAbis) }
             minifyEnabled true
             shrinkResources true
             if (hasReleaseSigning) {
@@ -104,9 +111,25 @@ android {
             applicationIdSuffix '.beta'
             versionNameSuffix "-beta.$betaNumber"
             matchingFallbacks = ['release']
+            ndk { abiFilters(*phoneAbis) }
             buildConfigField 'String', 'UPDATE_CHANNEL', '"beta"'
             // A distinct deep-link scheme keeps links from asking which of the two apps to open.
             manifestPlaceholders = [deepLinkScheme: 'webnovel-archiver-beta']
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // sherpa-onnx's Kotlin API loads only libsherpa-onnx-jni.so, which links only
+            // libonnxruntime.so. The C and C++ API libraries in its AAR are for native callers and
+            // nothing loads them: about 4.7 MB per ABI. Check `readelf -d libsherpa-onnx-jni.so`
+            // (NEEDED) and the AAR's System.loadLibrary call before relying on this after an upgrade.
+            excludes += ['**/libsherpa-onnx-c-api.so', '**/libsherpa-onnx-cxx-api.so']
+            // Store the native libraries compressed (extractNativeLibs=true) rather than page-aligned
+            // and uncompressed. They deflate to about 35-50%, which roughly halves the download from
+            // GitHub releases; in exchange, install unpacks them to the app's lib directory, so the
+            // installed footprint is about the same and install takes a moment longer.
+            useLegacyPackaging = true
         }
     }
 
