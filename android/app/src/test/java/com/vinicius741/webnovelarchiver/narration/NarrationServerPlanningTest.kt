@@ -137,4 +137,48 @@ class NarrationServerPlanningTest {
             NarrationServerPlanning.testSummary(info, tailscale, audioMs = 6_000, realMs = 1_000),
         )
     }
+
+    @Test
+    fun chipsToggleComputersInAndThePhoneStandsInOnlyBesideThem() {
+        val phone = GenerateOnChoice()
+        val mac = NarrationServerPlanning.tapGenerateOn(phone, "mac")
+        assertEquals(GenerateOnChoice(listOf("mac")), mac)
+        assertFalse(mac.phoneChosen)
+        val both = NarrationServerPlanning.tapGenerateOn(mac, "bazzite")
+        assertEquals(listOf("mac", "bazzite"), both.serverIds)
+        val withPhone = NarrationServerPlanning.tapGenerateOn(both, null)
+        assertTrue(withPhone.phoneFallback && withPhone.phoneChosen)
+        assertEquals(both, NarrationServerPlanning.tapGenerateOn(withPhone, null))
+        // Dropping a computer keeps the others and the fallback; dropping the last leaves this phone alone.
+        val bazzite = NarrationServerPlanning.tapGenerateOn(withPhone, "mac")
+        assertEquals(GenerateOnChoice(listOf("bazzite"), phoneFallback = true), bazzite)
+        assertEquals(phone, NarrationServerPlanning.tapGenerateOn(bazzite, "bazzite"))
+        // "This phone" alone stays chosen when tapped.
+        assertEquals(phone, NarrationServerPlanning.tapGenerateOn(phone, null))
+        assertTrue(phone.phoneChosen)
+    }
+
+    @Test
+    fun whenEveryComputerIsOutTheProblemToFixIsReportedOverUnreachableOnes() {
+        val offline = NarrationServerProblem("Can't reach Mac", transient = true)
+        val alsoOffline = NarrationServerProblem("Can't reach Bazzite", transient = true)
+        val token = NarrationServerRejected("Bazzite rejected the token. Check it in Audio generation.")
+        assertEquals(offline, NarrationServerPlanning.poolFailure(listOf("Mac" to offline)))
+        assertEquals(token, NarrationServerPlanning.poolFailure(listOf("Mac" to offline, "Bazzite" to token)))
+        assertEquals(
+            "Can't reach Mac, Bazzite or Studio. Check that they are on and the server is running",
+            NarrationServerPlanning.poolFailure(listOf("Mac" to offline, "Bazzite" to alsoOffline, "Studio" to offline)).message,
+        )
+    }
+
+    @Test
+    fun theLocationChangesWithTheChosenComputersAndTheFallback() {
+        val mac = NarrationServer("mac", "Mac", "192.168.1.20", "token-1")
+        val bazzite = NarrationServer("bazzite", "Bazzite", "192.168.1.30", "token-2")
+        assertNull(NarrationPlaces().locationKey)
+        assertNull(NarrationPlaces(phoneFallback = true).locationKey)
+        val both = NarrationPlaces(listOf(mac, bazzite)).locationKey
+        assertEquals("${mac.locationKey},${bazzite.locationKey}", both)
+        assertEquals("$both,phone", NarrationPlaces(listOf(mac, bazzite), phoneFallback = true).locationKey)
+    }
 }

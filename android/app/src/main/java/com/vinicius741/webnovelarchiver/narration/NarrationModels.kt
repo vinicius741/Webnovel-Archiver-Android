@@ -60,13 +60,23 @@ data class NarrationQueueDocument(
     val screenOffPromptShown: Boolean = false,
     /** The user's computers that can generate Kokoro audio (see `docs/tts/remote-narration-servers.md`). */
     val servers: List<NarrationServer> = emptyList(),
-    /** Id of the server Kokoro chapters generate on; null generates on this phone. */
+    /** The one server earlier versions generated on; [NarrationQueue] moves it into [generateOnIds] on load. */
     val generateOn: String? = null,
-    /** Generation paused itself because that server could not be used; choosing a place resumes it. */
+    /** Generation paused itself because the chosen computers could not be used; choosing a place resumes it. */
     val pausedForServer: Boolean = false,
+    /** Ids of the servers Kokoro chapters generate on, sharing each chapter's sentences; empty generates on this phone. */
+    val generateOnIds: List<String> = emptyList(),
+    /** With computers chosen, this phone takes over while none of them can generate. */
+    val phoneFallback: Boolean = false,
 ) {
-    /** The server Kokoro chapters generate on, or null for this phone. */
-    val generateOnServer: NarrationServer? get() = generateOn?.let { id -> servers.firstOrNull { it.id == id } }
+    /** The servers Kokoro chapters generate on, in the order they were added; empty for this phone. */
+    val generateOnServers: List<NarrationServer> get() = servers.filter { it.id in generateOnIds }
+
+    /** Where Kokoro chapters generate. */
+    internal val places: NarrationPlaces get() = NarrationPlaces(generateOnServers, phoneFallback)
+
+    /** What the Generate on chips show as chosen. */
+    internal val generateOnChoice: GenerateOnChoice get() = GenerateOnChoice(generateOnServers.map { it.id }, phoneFallback)
 }
 
 /**

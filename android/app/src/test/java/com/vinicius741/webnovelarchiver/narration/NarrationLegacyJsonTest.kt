@@ -84,4 +84,26 @@ class NarrationLegacyJsonTest {
         assertEquals(index, NarrationLegacyJson.index(index))
         assertNull(gson.fromJson(NarrationLegacyJson.queue(current), NarrationQueueDocument::class.java).jobs.firstOrNull())
     }
+
+    @Test
+    fun theOneComputerEarlierVersionsChoseBecomesTheFirstChosen() {
+        val servers = """[{"id":"mac","name":"Mac","address":"192.168.1.20","token":"abcd-efgh-jkmn"}]"""
+        val file = File(folder.newFolder(), "queue.json").apply { writeText("""{"jobs":[],"servers":$servers,"generateOn":"mac"}""") }
+        val document = NarrationQueue(file).apply { load() }.state.value
+        assertEquals(listOf("mac"), document.generateOnIds)
+        assertEquals(false, document.phoneFallback)
+        assertNull(document.generateOn)
+        assertEquals(
+            "Mac",
+            document.places.servers
+                .single()
+                .name,
+        )
+
+        // A computer that was removed is not chosen.
+        file.writeText("""{"jobs":[],"servers":$servers,"generateOnIds":["gone","mac"],"phoneFallback":true}""")
+        val current = NarrationQueue(file).apply { load() }.state.value
+        assertEquals(listOf("mac"), current.generateOnIds)
+        assertEquals(true, current.phoneFallback)
+    }
 }

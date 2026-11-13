@@ -9,6 +9,7 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.narration.GenerateOnChoice
 import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument
 import com.vinicius741.webnovelarchiver.narration.NarrationServer
@@ -69,26 +70,26 @@ private fun LinearLayout.generateOnSection(
     listenSectionLabel("Generate on")
     val colors = ThemeManager.colors
     val kokoro = KokoroVoices.isEngine(host.narration.currentVoice().engine)
-    val selected = document.generateOnServer?.id
+    val choice = document.generateOnChoice
     val card =
         makeCard(context).apply {
             if (document.servers.isNotEmpty()) {
                 flow(spacing = Space.SM) {
-                    chip("This phone", selected = selected == null) {
-                        host.narrationAction("Could not save the setting") { setGenerateOn(null) }
-                    }
+                    chip("This phone", selected = choice.phoneChosen) { host.chooseGenerateOn(choice, null) }
                     document.servers.forEach { server ->
-                        chip(server.name, selected = selected == server.id) {
-                            host.narrationAction("Could not save the setting") { setGenerateOn(server.id) }
-                        }
+                        chip(server.name, selected = server.id in choice.serverIds) { host.chooseGenerateOn(choice, server.id) }
                     }
                 }
                 spacer(Space.SM + 2)
             }
-            text(generateOnHint(kokoro, document.servers.isEmpty(), selected != null), Type.BODY_SMALL, colors.onSurfaceVariant)
+            text(
+                generateOnHint(kokoro, document.servers.isEmpty(), document.generateOnServers, choice),
+                Type.BODY_SMALL,
+                colors.onSurfaceVariant,
+            )
         }
     addView(card, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-    val rows = ServerRows(host, document.servers, selected)
+    val rows = ServerRows(host, document.servers, choice)
     (rows.view.layoutParams as LinearLayout.LayoutParams).topMargin = context.dp(Space.SM + 2)
     addView(rows.view)
     rows.bind(host.narration.serverStatus.value)
@@ -102,7 +103,7 @@ private fun LinearLayout.generateOnSection(
 internal class ServerRows(
     private val host: ScreenHost,
     private val servers: List<NarrationServer>,
-    private val selected: String?,
+    private val choice: GenerateOnChoice,
 ) {
     val view: LinearLayout = makeListGroup(host.app)
     private var shown: Map<String, NarrationServerStatus?>? = null
@@ -115,10 +116,10 @@ internal class ServerRows(
         view.removeAllViews()
         val context = host.app
         servers.forEach { server ->
-            val generatingHere = server.id == selected
+            val generatingHere = server.id in choice.serverIds
             val more =
                 context.iconButton(R.drawable.wna_more_vert, "${server.name} options", ThemeManager.colors.onSurfaceVariant) {
-                    host.showServerMenu(server, isSelected = generatingHere)
+                    host.showServerMenu(server, choice)
                 }
             view.addView(
                 makeListRow(
@@ -128,7 +129,7 @@ internal class ServerRows(
                     leadIcon = R.drawable.wna_computer,
                     trailing = more,
                 ) {
-                    host.showServerMenu(server, isSelected = generatingHere)
+                    host.showServerMenu(server, choice)
                 },
             )
         }
@@ -156,16 +157,41 @@ internal class ServerRows(
     }
 }
 
+/** Saves what a tap on a Generate on chip chooses ([serverId] null is "This phone"). */
+private fun ScreenHost.chooseGenerateOn(
+    current: GenerateOnChoice,
+    serverId: String?,
+) {
+    val next = NarrationServerPlanning.tapGenerateOn(current, serverId)
+    if (next == current) return
+    narrationAction("Could not save the setting") { setGenerateOn(next.serverIds, next.phoneFallback) }
+}
+
 private fun generateOnHint(
     kokoro: Boolean,
     noServers: Boolean,
-    onServer: Boolean,
+    chosen: List<NarrationServer>,
+    choice: GenerateOnChoice,
 ): String =
     when {
         !kokoro -> "Only Kokoro voices can generate on a computer. Your current voice generates on this phone."
         noServers -> "Generating on this phone. Add one of your computers to generate faster over Wi-Fi or Tailscale."
-        onServer -> "A computer generates faster and saves battery. The audio plays from this phone."
-        else -> "Uses the Kokoro voice on this phone."
+        chosen.isEmpty() -> "Uses the Kokoro voice on this phone. Choose one or more computers to generate faster."
+        else -> {
+            val who =
+                if (chosen.size == 1) {
+                    "A computer generates faster and saves battery."
+                } else {
+                    "${chosen.joinToString(" and ") { it.name }} share each chapter, so it generates faster."
+                }
+            val fallback =
+                if (choice.phoneFallback) {
+                    " This phone takes over while ${if (chosen.size == 1) "it can't generate" else "none of them can generate"}."
+                } else {
+                    ""
+                }
+            "$who The audio plays from this phone.$fallback"
+        }
     }
 
 private fun LinearLayout.keepAheadSection(
@@ -233,19 +259,18 @@ private fun keepAheadSummary(count: Int): String =
 
 private fun ScreenHost.showServerMenu(
     server: NarrationServer,
-    isSelected: Boolean,
+    choice: GenerateOnChoice,
 ) {
     val items = mutableListOf<OptionsDialogItem>()
-    if (!isSelected) {
-        items += OptionsDialogItem.Option("Generate here") { narrationAction("Could not save the setting") { setGenerateOn(server.id) } }
-    }
+    val label = if (server.id in choice.serverIds) "Stop generating here" else "Generate here"
+    items += OptionsDialogItem.Option(label) { chooseGenerateOn(choice, server.id) }
     items += OptionsDialogItem.Option("Test connection") { testServer(server) }
     items += OptionsDialogItem.Option("Rename or edit") { showServerDialog(server) }
     items += OptionsDialogItem.Divider
     items +=
         OptionsDialogItem.Option("Remove", destructive = true) {
             confirm(
-                "Remove ${server.name}? Chapters waiting to generate continue on this phone.",
+                "Remove ${server.name}? Chapters waiting to generate continue on your other chosen computers, or on this phone.",
                 confirmLabel = "Remove",
             ) { narrationAction("Could not remove the computer") { removeServer(server.id) } }
         }

@@ -175,6 +175,23 @@ object NarrationPlanning {
 
     private const val BLEND_KEEP = 0.7
 
+    /**
+     * The stored speed for [engine] generating at [place] (a server id, or several joined by `+` when
+     * computers share chapters; null on this phone). A combination not measured yet adds up its
+     * computers' own speeds when each is known, else falls back to the engine's speed.
+     */
+    fun storedSpeed(
+        speeds: Map<String, Double>,
+        engine: String,
+        place: String?,
+    ): Double? {
+        if (place == null) return speeds[engine]
+        speeds["$engine@$place"]?.let { return it }
+        val parts = place.split('+')
+        val each = parts.mapNotNull { speeds["$engine@$it"] }
+        return if (parts.size > 1 && each.size == parts.size) each.sum() else speeds[engine]
+    }
+
     fun formatBytes(bytes: Long): String {
         val mb = bytes / (1024.0 * 1024.0)
         return when {

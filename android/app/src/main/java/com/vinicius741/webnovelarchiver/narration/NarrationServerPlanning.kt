@@ -34,6 +34,18 @@ internal data class NarrationServerStatus(
 /** How a computer's status reads at a glance. */
 internal enum class NarrationServerTone { CHECKING, ONLINE, WARNING, OFFLINE }
 
+/** What the Generate on chips have chosen: computers sharing each chapter, and whether this phone stands in for them. */
+internal data class GenerateOnChoice(
+    val serverIds: List<String> = emptyList(),
+    val phoneFallback: Boolean = false,
+) {
+    /** No computer chosen: this phone generates. */
+    val phoneOnly: Boolean get() = serverIds.isEmpty()
+
+    /** Whether the "This phone" chip shows as chosen. */
+    val phoneChosen: Boolean get() = phoneOnly || phoneFallback
+}
+
 /** Rules for the user's narration servers: compatibility, how many sentences to send at once, form checks. */
 @Suppress("TooManyFunctions") // Small, related rules about the same computers.
 internal object NarrationServerPlanning {
@@ -103,6 +115,45 @@ internal object NarrationServerPlanning {
                         cause = failures.last(),
                     )
         }
+
+    /**
+     * The one problem to report when none of the chosen computers can generate, from each one's own
+     * ([name] to problem). A problem the user must fix (a wrong token, another model, stopped too long for
+     * memory) says more than computers that could not be reached, which one message covers.
+     */
+    fun poolFailure(problems: List<Pair<String, NarrationServerProblem>>): NarrationServerProblem =
+        when {
+            problems.isEmpty() -> NarrationServerProblem("No computer is chosen to generate on")
+            problems.size == 1 -> problems.single().second
+            else ->
+                problems.firstOrNull { !it.second.transient }?.second
+                    ?: NarrationServerProblem(
+                        "Can't reach ${names(problems.map { it.first })}. Check that they are on and the server is running",
+                        transient = true,
+                        cause = problems.last().second,
+                    )
+        }
+
+    /**
+     * The choice after a tap on a Generate on chip; [serverId] null is "This phone". Computers toggle in
+     * and out and share chapters. With computers chosen, "This phone" toggles whether it stands in while
+     * none can generate; it never generates beside them, since it is several times slower and would hold
+     * up the clips written after its sentence. Leaving no computer chosen generates on this phone.
+     */
+    fun tapGenerateOn(
+        current: GenerateOnChoice,
+        serverId: String?,
+    ): GenerateOnChoice =
+        when {
+            serverId == null -> if (current.phoneOnly) current else current.copy(phoneFallback = !current.phoneFallback)
+            serverId in current.serverIds ->
+                (current.serverIds - serverId).let { rest -> if (rest.isEmpty()) GenerateOnChoice() else current.copy(serverIds = rest) }
+            else -> current.copy(serverIds = current.serverIds + serverId)
+        }
+
+    /** "Mac", "Mac or Bazzite", "Mac, Bazzite or Studio". */
+    private fun names(names: List<String>): String =
+        if (names.size <= 1) names.joinToString() else names.dropLast(1).joinToString(", ") + " or " + names.last()
 
     /** What is wrong with the add/edit form, or null when it can be saved. Either address may be left blank, not both. */
     fun formError(
