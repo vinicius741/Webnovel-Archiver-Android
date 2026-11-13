@@ -28,6 +28,17 @@
     <init>(...);
     <fields>;
 }
+# Narration JSON is read reflectively too. Keep wire names, default constructors and generic
+# field signatures: erased jobs become maps, and sentenceDurationsMs elements become Doubles,
+# crashing playback when it reads them as Longs.
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationVoice { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationJob { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationRecipe { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationPackIndex { <init>(...); <fields>; }
+-keep enum com.vinicius741.webnovelarchiver.narration.NarrationOrigin { *; }
+-keep enum com.vinicius741.webnovelarchiver.narration.NarrationJobState { *; }
+
 # Source reliability state is restored eagerly in AppContainer.init(). Unkept, R8 drops the generic
 # signature of PersistedReliabilityDocument.hosts, Gson then yields LinkedTreeMap elements instead
 # of PersistedHostReliability, and the element cast crashes Application.onCreate in release only.
