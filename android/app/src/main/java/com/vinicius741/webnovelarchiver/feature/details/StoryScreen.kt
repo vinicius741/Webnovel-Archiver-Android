@@ -184,7 +184,7 @@ private fun ScreenHost.buildStoryTabStrip(
 ): View {
     val colors = ThemeManager.colors
     val audio = runCatching { narration.store.packsFor(story.id).size }.getOrDefault(0)
-    val row = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
+    val row = SpreadRow(app)
     StoryTab.entries.forEach { tab ->
         val on = tab == current
         val label = StoryTabPlanning.label(tab, twoPane)
@@ -197,12 +197,16 @@ private fun ScreenHost.buildStoryTabStrip(
                 gravity = Gravity.TOP
                 addView(
                     makeText(app, label, Type.LABEL_LARGE, if (on) colors.primary else colors.onSurfaceVariant).apply {
+                        isSingleLine = true
                         typeface = Typeface.create(Typeface.DEFAULT, if (on) Typeface.BOLD else Typeface.NORMAL)
                     },
                 )
                 count?.let {
                     addView(
-                        makeText(app, it, Type.LABEL_SMALL, colors.faint).apply { setPadding(dp(6), 0, 0, 0) },
+                        makeText(app, it, Type.LABEL_SMALL, colors.faint).apply {
+                            isSingleLine = true
+                            setPadding(dp(6), 0, 0, 0)
+                        },
                     )
                 }
             }
@@ -230,13 +234,11 @@ private fun ScreenHost.buildStoryTabStrip(
                 )
                 setOnClickListener { if (!on) switchStoryTab(story.id, tab) }
             }
-        // Weighted so spare width is shared evenly when every tab fits (fillViewport below).
-        row.addView(item, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(item, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
     val scroller =
         HorizontalScrollView(app).apply {
             isHorizontalScrollBarEnabled = false
-            isFillViewport = true
             setPadding(dp(Spacing.XS), 0, dp(Spacing.XS), 0)
             clipToPadding = false
             addView(row)
@@ -304,6 +306,39 @@ internal fun ScreenHost.returnToStory(storyId: String) {
         storyTabShowing(storyId) -> renderRoute(navigator.current)
         below != null && StoryTabPlanning.storyIdOf(below) == storyId -> navigateBack()
         else -> showDetails(storyId)
+    }
+}
+
+/**
+ * A row of tabs that keeps each tab at its natural width: when they all fit, the spare width is
+ * shared evenly between them; when they don't, the row is wider than the strip and scrolls. (Layout
+ * weights would instead squeeze the tabs and wrap their labels mid-word.)
+ */
+private class SpreadRow(
+    context: Context,
+) : LinearLayout(context) {
+    init {
+        orientation = HORIZONTAL
+    }
+
+    override fun onMeasure(
+        widthMeasureSpec: Int,
+        heightMeasureSpec: Int,
+    ) {
+        super.onMeasure(MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED), heightMeasureSpec)
+        val available = MeasureSpec.getSize(widthMeasureSpec)
+        val spare = available - measuredWidth
+        val tabs = (0 until childCount).map(::getChildAt).filter { it.visibility != GONE }
+        if (spare <= 0 || tabs.isEmpty()) return
+        tabs.forEachIndexed { i, tab ->
+            // The first tabs take the remainder pixel by pixel, so the row fills the strip exactly.
+            val extra = spare / tabs.size + if (i < spare % tabs.size) 1 else 0
+            tab.measure(
+                MeasureSpec.makeMeasureSpec(tab.measuredWidth + extra, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(tab.measuredHeight, MeasureSpec.EXACTLY),
+            )
+        }
+        setMeasuredDimension(available, measuredHeight)
     }
 }
 
