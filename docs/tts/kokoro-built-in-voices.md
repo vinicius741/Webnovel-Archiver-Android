@@ -152,8 +152,14 @@ gaps between sentences come from generation speed, and how much of the phone it 
 
 ## Native code and release builds
 
-- The app ships native code for `arm64-v8a` and `armeabi-v7a` (phones) and `x86_64` (emulator). This
-  is set by `abiFilters` in `app/build.gradle`.
+- The app ships native code for `arm64-v8a` and `armeabi-v7a` (phones) in every build. Only the
+  `debug` and `instrumentation` builds, which run on the x86_64 emulator, also ship `x86_64`; release
+  and beta leave it out (about 23 MB). This is set by the per-build-type `abiFilters` in
+  `app/build.gradle`.
+- Only `libonnxruntime.so` and `libsherpa-onnx-jni.so` ship. The sherpa-onnx AAR also carries its C
+  and C++ API libraries, which nothing loads, so `packaging.jniLibs` excludes them. The libraries are
+  stored compressed (`useLegacyPackaging`), which roughly halves the download; Android unpacks them at
+  install. Together these took the release APK from 73.6 MB (1.0.23) to about 17 MB.
 - An APK with native code cannot install on a device that matches none of its ABIs, so the filter
   must keep every phone ABI. Only 32-bit x86 devices, which are all but extinct, are left out.
 - If the native library still fails to load, Kokoro reports "cannot load" instead of crashing, and
