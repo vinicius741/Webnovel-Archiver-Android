@@ -53,7 +53,17 @@ class AiJobNotificationDeviceTest {
                 manager.notify(1003 + index, notification)
             }
             assertEquals(4, notifications.map { it.contentIntent }.toSet().size)
-            assertTrue(manager.activeNotifications.map { it.id }.containsAll((1003..1006).toList()))
+            // Posting is asynchronous in NotificationManagerService: poll until all four surface
+            // in activeNotifications instead of asserting against a racer.
+            val expected = (1003..1006).toList()
+            val deadline = System.currentTimeMillis() + 5000
+            var active: List<Int> = emptyList()
+            while (System.currentTimeMillis() < deadline) {
+                active = manager.activeNotifications.map { it.id }
+                if (active.containsAll(expected)) break
+                Thread.sleep(50)
+            }
+            assertTrue("expected active notification ids $expected, saw $active", active.containsAll(expected))
         } finally {
             (1003..1006).forEach(manager::cancel)
         }
