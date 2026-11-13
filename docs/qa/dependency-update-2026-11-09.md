@@ -146,3 +146,14 @@ adb -s emulator-5554 shell am instrument -w -r \
 No paid AI generation, live source import/sync, mass downloads, destructive library operations,
 phone access, release build, or performance benchmark was run. The user's debug library was
 never cleared or written by the instrumentation runs (separate sandbox).
+
+## Rebased onto the v3 UI (2026-11-13)
+
+The update was recovered from a stash and rebased onto `main` after the v3 redesign. In v3, tapping a
+cover-strip choice opens the full-screen cover viewer (a dialog window) and the choice is committed
+with its "Use this cover" action, and the AI screen no longer shows an "AI Controls" title.
+`AiSimplificationDeviceTest` now drives the viewer through `WindowInspector` and checks the
+`AppRoute.AiControls` route after recreation. `AiSimplificationDeviceTest` and
+`AiJobNotificationDeviceTest` pass on `webnovel_api36` (8/8). The minified beta build was
+smoke-tested on the emulator: launch, every destination, a live Royal Road import, chapter
+download, EPUB generation, and the reader.

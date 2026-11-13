@@ -1,8 +1,10 @@
 package com.vinicius741.webnovelarchiver.app
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.view.View
 import android.view.ViewGroup
+import android.view.inspector.WindowInspector
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.RadioButton
@@ -18,6 +20,7 @@ import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import kotlinx.coroutines.runBlocking
@@ -47,12 +50,16 @@ class AiSimplificationDeviceTest {
             }
             // The strip loads asynchronously; the source choice is present and not in use (the AI cover is showing).
             scenario.eventually { it.coverChoice("Source") != null }
+            // Tapping a choice opens the full-screen viewer (its own dialog window); "Use this cover" commits it.
             scenario.onActivity { activity -> activity.coverChoice("Source")!!.performClick() }
+            scenario.eventually { windowView<TextView> { it.text.toString() == "Use this cover" } != null }
+            scenario.onActivity { windowView<TextView> { it.text.toString() == "Use this cover" }!!.performClick() }
             scenario.eventually { !it.repository.story(ID)!!.showAiCover }
-            scenario.eventually { it.textView("Source · In use") != null }
+            scenario.eventually { windowView<TextView> { it.text.toString() == "In use" } != null }
             scenario.onActivity { activity ->
                 // Choosing a display cover never rewrites which AI cover file is on record.
                 assertEquals("fixture.png", activity.repository.story(ID)!!.aiCoverPath)
+                windowView<View> { it.contentDescription == "Close" }!!.performClick()
             }
         }
 
@@ -135,7 +142,7 @@ class AiSimplificationDeviceTest {
                 assertTrue(activity.textView("Generate Description with AI")!!.isEnabled)
             }
             scenario.recreate()
-            scenario.eventually { it.textView("AI Controls") != null }
+            scenario.eventually { (it.navigator.current as? AppRoute.AiControls)?.storyId == ID && it.promptField().isShown }
         }
 
     @Test
@@ -239,6 +246,20 @@ private fun MainActivity.allViews(): List<View> {
         }
     return descendants(window.decorView)
 }
+
+/** Every visible view in all of the app's windows, including dialogs such as the cover viewer. */
+@SuppressLint("NewApi") // WindowInspector is API 29+; these tests run on the API 36 emulator.
+private fun allWindowViews(): List<View> {
+    fun descendants(view: View): List<View> =
+        if (view.visibility != View.VISIBLE) {
+            emptyList()
+        } else {
+            listOf(view) + if (view is ViewGroup) (0 until view.childCount).flatMap { descendants(view.getChildAt(it)) } else emptyList()
+        }
+    return WindowInspector.getGlobalWindowViews().flatMap { descendants(it) }
+}
+
+private inline fun <reified T : View> windowView(match: (T) -> Boolean): T? = allWindowViews().filterIsInstance<T>().firstOrNull(match)
 
 private fun MainActivity.textView(text: String) = allViews().filterIsInstance<TextView>().firstOrNull { it.text.toString() == text }
 
