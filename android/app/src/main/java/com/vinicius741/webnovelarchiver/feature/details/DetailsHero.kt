@@ -332,7 +332,10 @@ private fun LinearLayout.addQuickAction(
             background = ripple(roundedBg(android.graphics.Color.TRANSPARENT, radius), radius, colors.onSurface)
             addView(box, LinearLayout.LayoutParams(context.dp(QUICK_BOX_WIDTH_DP), context.dp(QUICK_BOX_HEIGHT_DP)))
             addView(
-                makeText(context, label, Type.LABEL_MEDIUM, colors.onSurfaceVariant).apply { setPadding(0, context.dp(6), 0, 0) },
+                makeText(context, label, Type.LABEL_MEDIUM, colors.onSurfaceVariant).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setPadding(0, context.dp(6), 0, 0)
+                },
             )
             if (enabled) setOnClickListener { onClick() }
         }
