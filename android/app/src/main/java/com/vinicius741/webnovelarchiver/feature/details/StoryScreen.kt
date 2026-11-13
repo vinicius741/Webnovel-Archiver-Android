@@ -192,7 +192,9 @@ private fun ScreenHost.buildStoryTabStrip(
         val texts =
             LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+                // Sit the smaller count on the label's baseline rather than centring it.
+                isBaselineAligned = true
+                gravity = Gravity.TOP
                 addView(
                     makeText(app, label, Type.LABEL_LARGE, if (on) colors.primary else colors.onSurfaceVariant).apply {
                         typeface = Typeface.create(Typeface.DEFAULT, if (on) Typeface.BOLD else Typeface.NORMAL)
@@ -228,11 +230,13 @@ private fun ScreenHost.buildStoryTabStrip(
                 )
                 setOnClickListener { if (!on) switchStoryTab(story.id, tab) }
             }
-        row.addView(item, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        // Weighted so spare width is shared evenly when every tab fits (fillViewport below).
+        row.addView(item, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     }
     val scroller =
         HorizontalScrollView(app).apply {
             isHorizontalScrollBarEnabled = false
+            isFillViewport = true
             setPadding(dp(Spacing.XS), 0, dp(Spacing.XS), 0)
             clipToPadding = false
             addView(row)
