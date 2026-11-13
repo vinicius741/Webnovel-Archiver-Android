@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.narration
 
+import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -52,7 +53,7 @@ private const val SIDE_BY_SIDE_MIN_DP = 720
  * generation queue grouped by story, with the live banner, reordering, retry and removal),
  * Generated (every story's audio and its storage) and Setup (where to generate, computers, and
  * chapters ahead). A segmented control picks one section on a phone; the inner display shows the
- * queue beside the other two.
+ * queue beside Generated, with Setup under the shorter of the two.
  */
 internal fun ScreenHost.showNarration() {
     rerender = { showNarration() }
@@ -93,7 +94,10 @@ internal fun ScreenHost.showNarration() {
         val generatedBox = section { generatedSection(host, audio) }
         val setupBox = section { serverRows = setupSection(host, document) }
         if (sideBySide) {
-            content.addView(sideBySide(queueBox, generatedBox, setupBox))
+            content.addView(
+                ListenColumns(context, queueBox, generatedBox, setupBox),
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+            )
         } else {
             val boxes = mapOf(ListenSegment.QUEUE to queueBox, ListenSegment.GENERATED to generatedBox, ListenSegment.SETUP to setupBox)
 
@@ -161,30 +165,78 @@ private fun LinearLayout.section(block: LinearLayout.() -> Unit): LinearLayout =
         block()
     }
 
-/** Queue on the left; Generated and Setup stacked on the right. */
-private fun LinearLayout.sideBySide(
-    queue: View,
-    generated: View,
-    setup: View,
-): View =
-    LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        val right =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(generated)
-                addView(setup)
-            }
-        addView(
-            queue,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, QUEUE_WEIGHT).apply {
-                marginEnd =
-                    context.dp(Space.XL - 4)
-            },
-        )
-        addView(right, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+/**
+ * Queue on the left and Generated on the right, with Setup under whichever of the two is shorter so
+ * neither column ends early beside a long run of the other (a short queue used to leave most of the
+ * left side empty while Setup ran on far below Generated on the right).
+ *
+ * The columns are one view group that places its three sections itself, so Setup lands in its
+ * column within the first measure pass: no reparenting and no skipped frame. The choice is made
+ * once per width and kept, so a live banner that grows a line cannot make Setup jump across while
+ * it is being read; every queue change rebuilds the screen and chooses again.
+ */
+private class ListenColumns(
+    context: Context,
+    private val queue: View,
+    private val generated: View,
+    private val setup: View,
+) : ViewGroup(context) {
+    private val gap = context.dp(Space.XL - 4)
+    private var decidedForWidth = -1
+    private var setupLeft = true
+
+    init {
+        addView(queue)
+        addView(generated)
+        addView(setup)
     }
+
+    private fun leftWidth(width: Int) = ((width - gap) * QUEUE_WEIGHT / (QUEUE_WEIGHT + 1f)).toInt()
+
+    override fun onMeasure(
+        widthMeasureSpec: Int,
+        heightMeasureSpec: Int,
+    ) {
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        val leftWidth = leftWidth(width)
+        val rightWidth = width - gap - leftWidth
+        val anyHeight = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+        queue.measure(MeasureSpec.makeMeasureSpec(leftWidth, MeasureSpec.EXACTLY), anyHeight)
+        generated.measure(MeasureSpec.makeMeasureSpec(rightWidth, MeasureSpec.EXACTLY), anyHeight)
+        if (width != decidedForWidth) {
+            decidedForWidth = width
+            setupLeft = queue.measuredHeight <= generated.measuredHeight
+        }
+        setup.measure(MeasureSpec.makeMeasureSpec(if (setupLeft) leftWidth else rightWidth, MeasureSpec.EXACTLY), anyHeight)
+        val leftHeight = queue.measuredHeight + if (setupLeft) setup.measuredHeight else 0
+        val rightHeight = generated.measuredHeight + if (setupLeft) 0 else setup.measuredHeight
+        setMeasuredDimension(width, resolveSize(maxOf(leftHeight, rightHeight), heightMeasureSpec))
+    }
+
+    override fun onLayout(
+        changed: Boolean,
+        l: Int,
+        t: Int,
+        r: Int,
+        b: Int,
+    ) {
+        val width = r - l
+        val rightStart = leftWidth(width) + gap
+
+        // Lays a child out from its start edge, mirrored in right-to-left layouts.
+        fun place(
+            child: View,
+            start: Int,
+            top: Int,
+        ) {
+            val x = if (layoutDirection == LAYOUT_DIRECTION_RTL) width - start - child.measuredWidth else start
+            child.layout(x, top, x + child.measuredWidth, top + child.measuredHeight)
+        }
+        place(queue, 0, 0)
+        place(generated, rightStart, 0)
+        if (setupLeft) place(setup, 0, queue.measuredHeight) else place(setup, rightStart, generated.measuredHeight)
+    }
+}
 
 private fun LinearLayout.queueSection(
     host: ScreenHost,
