@@ -67,7 +67,7 @@ internal class TtsSamplePreview(
         TtsAudioFocusManager(
             context,
             object : TtsAudioFocusManager.Callbacks {
-                override fun onFocusGained() = Unit
+                override fun onFocusGained(afterCall: Boolean) = Unit
 
                 override fun onTransientFocusLoss() = stop()
 

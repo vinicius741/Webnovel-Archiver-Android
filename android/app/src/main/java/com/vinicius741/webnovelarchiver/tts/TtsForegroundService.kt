@@ -87,9 +87,16 @@ class TtsForegroundService : Service() {
             TtsAudioFocusManager(
                 this,
                 object : TtsAudioFocusManager.Callbacks {
-                    override fun onFocusGained() {
+                    override fun onFocusGained(afterCall: Boolean) {
                         if (!resumeAfterFocusGain) return
                         resumeAfterFocusGain = false
+                        if (afterCall) {
+                            // A phone call pauses for good: the listener presses play to continue.
+                            // Release focus so the paused app doesn't hold it.
+                            audioFocus.abandon()
+                            refreshMediaStateFromEngine()
+                            return
+                        }
                         resumePlayback()
                     }
 

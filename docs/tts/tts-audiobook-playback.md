@@ -113,6 +113,10 @@ starts audio.
 - A service restart after process death plays only if the session was actually playing. A paused
   session comes back loaded and silent, with its notification, so headphones can resume it.
 - Opening the app restores a saved session as paused and writes nothing, so its age stays accurate.
+- A brief interruption (navigation prompt, voice assistant) pauses and resumes on its own when it
+  ends. A phone call, ringing or answered, pauses and stays paused: press play to continue.
+  `TtsAudioFocusManager` recognizes the call from the audio mode and from ringtone/VoIP streams
+  while focus is lost (`TtsInterruptionPlanning`).
 - A sleep timer running out cancels pending auto-resume and releases audio focus. Stopping playback
   cancels the timer. The last 10 seconds fade out. An end-of-chapter timer stops at the top of the next
   chapter rather than replaying the last sentence.

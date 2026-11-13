@@ -34,7 +34,7 @@ inline content); otherwise the viewed chapter plays from the top.
 - After a system kill the service restarts (`START_STICKY`, null intent). A session that was
   playing continues on its own; one the listener paused comes back loaded and silent.
 - **Permanent audio-focus loss pauses** (session + paused notification survive) instead of
-  stopping and wiping position. Transient loss already paused + auto-resumed.
+  stopping and wiping position. Transient loss pauses and auto-resumes, except after a phone call, which stays paused.
 - A session ending (explicit stop or natural completion) stops the foreground service and
   removes the notification — no zombie service with a dismissable notification.
 - A service instance started right after a previous stop must ignore the replayed
