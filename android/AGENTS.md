@@ -61,6 +61,8 @@ Run `:app:assembleRelease` only when the user explicitly requests a release arti
 
 - Reuse a running `webnovel_api36` emulator; do not start another unnecessarily.
 - When starting `webnovel_api36` manually, include `-dns-server 8.8.8.8,1.1.1.1` so the emulator does not inherit stale host DNS.
+- **This host (Bazzite, kernel 6.14.4) requires `-gpu swangle_indirect`.** The emulator's default `swiftshader_indirect`/`gfxstream` renderers SEGFAULT during startup on this kernel; only the ANGLE-on-SwiftShader renderer (`swangle_indirect`) boots. Prefer the `webnovel-emulator` wrapper in `~/.local/bin/`, which applies this flag (plus the DNS pin and `ANDROID_AVD_HOME`) automatically.
+- The SDK and AVD live on an ext4 loopback image (`~/Android` → `/mnt/android-avd`, auto-mounted via `/etc/fstab`). This is load-bearing: the emulator's qemu binary SEGFAULTs when its mmap'd files sit on the host's btrfs filesystem (Google issue #423670833). Do not move the SDK or AVD back onto btrfs.
 - Use `scripts/redeploy.sh` for a one-shot debug rebuild/install/relaunch and `scripts/watch-redeploy.sh` for iterative UI work.
 - Both scripts must target an `emulator-` serial explicitly and fail closed rather than selecting a physical device.
 - Debug package: `com.vinicius741.webnovelarchiver.nativeapp.debug`
