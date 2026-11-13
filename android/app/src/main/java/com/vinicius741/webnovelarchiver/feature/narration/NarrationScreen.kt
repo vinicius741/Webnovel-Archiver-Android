@@ -36,7 +36,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -58,6 +57,12 @@ internal fun ScreenHost.showNarration() {
     rerender = { showNarration() }
     val coordinator = narration
     val document = coordinator.queueState.value
+    // What this build shows; the observer below rebuilds on anything newer, even a change that lands before it subscribes.
+    val runningJobId =
+        coordinator.progress.value
+            ?.job
+            ?.id
+    val shown = ListenBuild(document.withoutLiveFields(), coordinator.packsRevision.value, runningJobId)
     val host = this
     val sideBySide = app.resources.configuration.screenWidthDp >= SIDE_BY_SIDE_MIN_DP
     val liveStatus = NarrationLiveStatus(this, hideWhenIdle = false) { banner -> banner.storyId?.let { showNarrationStory(it) } }
@@ -146,12 +151,19 @@ internal fun ScreenHost.showNarration() {
             // Keep-ahead and speed measurements change without anything to rebuild (the stepper and
             // the live banner show them), so they are left out; a rebuild would also cut a held stepper.
             val queue = coordinator.queueState.map { it.withoutLiveFields() }
-            combine(queue, coordinator.packsRevision, runningJob) { q, packs, job -> Triple(q, packs, job) }
-                .distinctUntilChanged()
-                .drop(1)
+            val live = combine(queue, coordinator.packsRevision, runningJob) { q, packs, job -> ListenBuild(q, packs, job) }
+            NarrationScreenPlanning
+                .changesSince(live, shown)
                 .collect { if (navigator.current == AppRoute.Narration) showNarration() }
         }
 }
+
+/** The state a Listen build depends on: the queue (without live-only fields), the packs, and the running job. */
+private data class ListenBuild(
+    val queue: NarrationQueueDocument,
+    val packsRevision: Long,
+    val runningJobId: String?,
+)
 
 private fun NarrationQueueDocument.withoutLiveFields() = copy(keepAhead = 0, msPerChar = emptyMap(), speed = emptyMap())
 

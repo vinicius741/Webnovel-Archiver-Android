@@ -8,6 +8,9 @@ import com.vinicius741.webnovelarchiver.narration.NarrationJobState
 import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.narration.NarrationProgress
 import com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.dropWhile
 import java.util.Locale
 
 /** Which chapters the Chapter audio list shows. */
@@ -111,6 +114,18 @@ internal object NarrationScreenPlanning {
         jobs
             .groupBy { it.storyId }
             .map { (storyId, storyJobs) -> QueueGroup(storyId, storyJobs) }
+
+    /**
+     * The values of [live] that differ from [shown], what a screen was built from. Comparing with what
+     * was shown, rather than skipping the first value, keeps a change that lands between building the
+     * screen and subscribing: the Listen screen once kept a finished chapter queued that way, because a
+     * published pack rebuilt it while the queue still held the job and the removal came in before the
+     * new screen subscribed.
+     */
+    fun <T> changesSince(
+        live: Flow<T>,
+        shown: T,
+    ): Flow<T> = live.distinctUntilChanged().dropWhile { it == shown }
 
     fun banner(
         progress: NarrationProgress?,

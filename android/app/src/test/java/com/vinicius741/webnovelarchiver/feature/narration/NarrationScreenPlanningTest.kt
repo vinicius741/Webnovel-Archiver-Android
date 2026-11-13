@@ -8,6 +8,9 @@ import com.vinicius741.webnovelarchiver.narration.NarrationJobState
 import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.narration.NarrationProgress
 import com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -135,4 +138,17 @@ class NarrationScreenPlanningTest {
         assertEquals(GenerationBanner.State.FAILED, NarrationScreenPlanning.banner(null, failed, true).state)
         assertEquals(GenerationBanner.State.IDLE, NarrationScreenPlanning.banner(null, NarrationQueueDocument(), true).state)
     }
+
+    @Test
+    fun `changesSince keeps a change that landed before subscribing`() =
+        runTest {
+            // Built while the queue still held the finishing job; it was gone by the first collected value.
+            assertEquals(listOf(0), NarrationScreenPlanning.changesSince(flowOf(0), shown = 1).toList())
+        }
+
+    @Test
+    fun `changesSince skips what the screen already shows, then every distinct change`() =
+        runTest {
+            assertEquals(listOf(2, 1), NarrationScreenPlanning.changesSince(flowOf(1, 1, 2, 2, 1), shown = 1).toList())
+        }
 }
