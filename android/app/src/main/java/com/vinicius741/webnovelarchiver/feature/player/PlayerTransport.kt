@@ -102,12 +102,19 @@ internal fun ScreenHost.transportRow(playPause: ImageView): LinearLayout {
     ): View {
         val size = dp(TRANSPORT_SIZE_DP)
         val button = app.iconButton(icon, desc, colors.onSurface) { TtsForegroundService.command(app, action) }
+        if (badge != null) {
+            // Upscale the ring so the seconds label sits inside it instead of over the stroke.
+            button.scaleType = ImageView.ScaleType.FIT_CENTER
+            val inset = (size - dp(BADGE_ICON_DP)) / 2
+            button.setPadding(inset, inset, inset, inset)
+        }
         return FrameLayout(app).apply {
             addView(button, FrameLayout.LayoutParams(size, size))
             badge?.let {
                 addView(
                     makeText(app, it, Type.LABEL_SMALL, colors.onSurface).apply {
                         textSize = BADGE_SP
+                        includeFontPadding = false
                         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     },
                     FrameLayout
@@ -116,7 +123,8 @@ internal fun ScreenHost.transportRow(playPause: ImageView): LinearLayout {
                             FrameLayout.LayoutParams.WRAP_CONTENT,
                             Gravity.CENTER,
                         ).apply {
-                            topMargin = dp(3)
+                            // Ring centre sits below the icon centre (y=13.5 of 24).
+                            topMargin = dp(BADGE_OFFSET_DP)
                         },
                 )
             }
@@ -131,11 +139,11 @@ internal fun ScreenHost.transportRow(playPause: ImageView): LinearLayout {
         setPadding(0, dp(Spacing.SM + 2), 0, dp(Spacing.MD + 2))
         addView(transport("Previous chapter", R.drawable.wna_skip_prev, TtsForegroundService.ACTION_PREVIOUS_CHAPTER))
         addView(gap())
-        addView(transport("Back 15 seconds", R.drawable.wna_replay, TtsForegroundService.ACTION_SKIP_BACK, "15"))
+        addView(transport("Back 15 seconds", R.drawable.wna_seek_back_ring, TtsForegroundService.ACTION_SKIP_BACK, "15"))
         addView(gap())
         addView(playPause)
         addView(gap())
-        addView(transport("Forward 30 seconds", R.drawable.wna_forward_skip, TtsForegroundService.ACTION_SKIP_FORWARD, "30"))
+        addView(transport("Forward 30 seconds", R.drawable.wna_seek_forward_ring, TtsForegroundService.ACTION_SKIP_FORWARD, "30"))
         addView(gap())
         addView(transport("Next chapter", R.drawable.wna_skip_next, TtsForegroundService.ACTION_NEXT_CHAPTER))
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -145,7 +153,9 @@ internal fun ScreenHost.transportRow(playPause: ImageView): LinearLayout {
 private const val PLAY_SIZE_DP = 76
 private const val PLAY_RADIUS_DP = 26
 private const val TRANSPORT_SIZE_DP = 56
-private const val BADGE_SP = 9.5f
+private const val BADGE_SP = 10f
+private const val BADGE_ICON_DP = 32
+private const val BADGE_OFFSET_DP = 4
 private const val CAPTION_RADIUS_DP = 16
 private const val CAPTION_MIN_HEIGHT_DP = 78
 private const val EYEBROW_ICON_DP = 14

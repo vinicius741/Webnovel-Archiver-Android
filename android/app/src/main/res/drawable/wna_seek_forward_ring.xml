@@ -1,0 +1,16 @@
+<!-- Open ring with a right-pointing arrowhead; the player draws the seconds label inside the ring. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M12,5.5A8,8 0,1 0,19.6 11" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M12,2.5L12,8.5L16,5.5Z" />
+</vector>
