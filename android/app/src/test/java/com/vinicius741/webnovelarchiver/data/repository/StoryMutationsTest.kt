@@ -29,17 +29,6 @@ class StoryMutationsTest {
     }
 
     @Test
-    fun setLastReadChapterUpdatesOnlyProgressField() {
-        val latest = story().copy(title = "Keep me", lastReadChapterId = "c1")
-
-        val committed = StoryMutations.setLastReadChapter(latest, "c2")
-
-        assertEquals("c2", committed.lastReadChapterId)
-        assertEquals("Keep me", committed.title)
-        assertEquals(latest.chapters.map { it.id }, committed.chapters.map { it.id })
-    }
-
-    @Test
     fun cleanupCompletionAppliedAfterDownloadPreservesDownloadedChapter() {
         val operationSnapshot = story().copy(epubStale = false)
         val afterDownload =

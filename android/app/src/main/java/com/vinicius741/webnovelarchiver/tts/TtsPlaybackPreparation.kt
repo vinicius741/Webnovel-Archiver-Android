@@ -63,12 +63,6 @@ internal interface TtsPlaybackSource {
     fun session(): TtsSession?
 
     suspend fun position(storyId: String): TtsStoryPosition?
-
-    /** Persists last-read progress and keeps any in-memory library cache coherent. */
-    suspend fun markChapterRead(
-        storyId: String,
-        chapterId: String,
-    )
 }
 
 /** Performs all TTS file reads and chunk parsing away from Android's main dispatcher. */
@@ -168,8 +162,8 @@ internal class TtsPlaybackPreparer(
     }
 
     suspend fun nextChapter(session: TtsSession): NextChapterOutcome {
-        // Description narration has no following chapter; finish playback instead of marking the
-        // sentinel id as last-read (which would corrupt the story's reading position).
+        // Description narration has no following chapter; finish playback.
+        // Playback never moves the bookmark: only an explicit bookmark action does.
         if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId)) return NextChapterOutcome.NoNextChapter
         return when (val next = lookupNextChapter(session)) {
             NextChapterLookup.NoNextChapter -> NextChapterOutcome.NoNextChapter
@@ -187,7 +181,6 @@ internal class TtsPlaybackPreparer(
     private suspend fun lookupNextChapter(session: TtsSession): NextChapterLookup =
         withContext(ioDispatcher) {
             val story = source.story(session.storyId) ?: return@withContext NextChapterLookup.Ambiguous
-            source.markChapterRead(session.storyId, session.chapterId)
             val current = story.chapters.indexOfFirst { it.id == session.chapterId }
             when {
                 current < 0 -> NextChapterLookup.Ambiguous
@@ -206,7 +199,6 @@ internal class TtsPlaybackPreparer(
             withContext(ioDispatcher) {
                 val story = source.story(session.storyId) ?: return@withContext null
                 val targetIndex = TtsSessionPlanning.chapterIndexAtDelta(story, session.chapterId, delta) ?: return@withContext null
-                if (delta > 0) source.markChapterRead(session.storyId, session.chapterId)
                 story to story.chapters[targetIndex]
             } ?: return null
         val input = load(target.first.id, target.second.id) ?: return null
@@ -338,11 +330,4 @@ private class RepositoryTtsPlaybackSource(
     override fun session(): TtsSession? = repository.getTtsSession()
 
     override suspend fun position(storyId: String): TtsStoryPosition? = repository.getTtsStoryPosition(storyId)
-
-    override suspend fun markChapterRead(
-        storyId: String,
-        chapterId: String,
-    ) {
-        repository.setLastReadChapter(storyId, chapterId)
-    }
 }

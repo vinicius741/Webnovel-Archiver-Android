@@ -57,8 +57,7 @@ class TtsPlaybackPreparerTest {
                 )?.playback
                     ?: error("Expected next chapter")
 
-            assertEquals("one", source.markedChapterId)
-            assertEquals("story", source.markedStoryId)
+            assertEquals(null, story.lastReadChapterId)
             assertEquals("two", prepared.chapter.id)
             assertEquals(listOf("Second."), prepared.chunks)
         }
@@ -147,7 +146,6 @@ class TtsPlaybackPreparerTest {
 
             assertEquals(NextChapterOutcome.NoNextChapter, outcome)
             // The sentinel must never be persisted as the story's last-read chapter.
-            assertEquals(null, source.markedChapterId)
             assertEquals(null, story.lastReadChapterId)
         }
 
@@ -174,8 +172,8 @@ class TtsPlaybackPreparerTest {
                     .nextChapter(TtsSession(storyId = "story", chapterId = "one"))
 
             assertEquals(NextChapterOutcome.Unprepared, outcome)
-            // Progress on the finished chapter still persists; a later retry can advance.
-            assertEquals("one", source.markedChapterId)
+            // Playback never moves the bookmark.
+            assertEquals(null, story.lastReadChapterId)
         }
 
     @Test
@@ -332,13 +330,13 @@ class TtsPlaybackPreparerTest {
                     .chapterAt(TtsSession(storyId = "story", chapterId = "one"), 1)
                     ?: error("Expected next chapter")
 
-            assertEquals("one", source.markedChapterId)
+            assertEquals(null, story.lastReadChapterId)
             assertEquals("two", prepared.chapter.id)
             assertEquals(0, prepared.startIndex)
         }
 
     @Test
-    fun chapterAtSkipsBackwardWithoutMarkingRead() =
+    fun chapterAtSkipsBackwardWithoutMovingBookmark() =
         runTest {
             val story =
                 Story(
@@ -357,7 +355,7 @@ class TtsPlaybackPreparerTest {
                     .chapterAt(TtsSession(storyId = "story", chapterId = "two"), -1)
                     ?: error("Expected previous chapter")
 
-            assertEquals(null, source.markedChapterId)
+            assertEquals(null, story.lastReadChapterId)
             assertEquals("one", prepared.chapter.id)
         }
 
@@ -385,9 +383,6 @@ class TtsPlaybackPreparerTest {
         private val persisted: TtsSession?,
         private val storyPosition: TtsStoryPosition? = null,
     ) : TtsPlaybackSource {
-        var markedStoryId: String? = null
-        var markedChapterId: String? = null
-
         override fun story(id: String): Story? = story.takeIf { it.id == id }
 
         override suspend fun chapterHtml(
@@ -402,14 +397,5 @@ class TtsPlaybackPreparerTest {
         override fun session(): TtsSession? = persisted
 
         override suspend fun position(storyId: String): TtsStoryPosition? = storyPosition
-
-        override suspend fun markChapterRead(
-            storyId: String,
-            chapterId: String,
-        ) {
-            markedStoryId = storyId
-            markedChapterId = chapterId
-            story.lastReadChapterId = chapterId
-        }
     }
 }

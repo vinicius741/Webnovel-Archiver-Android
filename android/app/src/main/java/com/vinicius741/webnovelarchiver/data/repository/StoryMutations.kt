@@ -23,11 +23,6 @@ internal object StoryMutations {
 
     fun markCleanupApplied(latest: Story): Story = latest.copy(epubStale = true)
 
-    fun setLastReadChapter(
-        latest: Story,
-        chapterId: String,
-    ): Story = latest.copy(lastReadChapterId = chapterId)
-
     fun toggleBookmark(
         latest: Story,
         chapterId: String,

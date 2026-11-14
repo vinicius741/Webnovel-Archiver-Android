@@ -104,13 +104,6 @@ class TtsResumeCoherenceTest {
 
         override suspend fun position(storyId: String): TtsStoryPosition? = null
 
-        override suspend fun markChapterRead(
-            storyId: String,
-            chapterId: String,
-        ) {
-            story.lastReadChapterId = chapterId
-        }
-
         override suspend fun save(session: TtsSession) {
             persisted = session.copy()
         }
