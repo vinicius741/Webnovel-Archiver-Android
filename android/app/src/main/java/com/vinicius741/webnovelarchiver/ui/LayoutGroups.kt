@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.ui
 import android.content.Context
 import android.util.AttributeSet
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 
@@ -19,6 +20,9 @@ class WrapLayout(
 ) : ViewGroup(context) {
     var horizontalSpacingDp: Int = 8
     var verticalSpacingDp: Int = 8
+
+    /** Centre each row horizontally instead of packing it against the start edge. */
+    var centerRows: Boolean = false
 
     private fun hd(): Int = context.dp(horizontalSpacingDp)
 
@@ -73,26 +77,41 @@ class WrapLayout(
         bottom: Int,
     ) {
         val maxWidth = (right - left) - paddingStart - paddingEnd
-        var x = paddingStart
-        var y = paddingTop
-        var lineHeight = 0
+        // Group children into rows with the same wrap rule as onMeasure, then place each row.
+        val rows = mutableListOf<MutableList<View>>()
+        var rowWidth = 0
         for (i in 0 until childCount) {
             val child = getChildAt(i)
             if (child.visibility == GONE) continue
-            val lp = child.layoutParams as MarginLayoutParams
-            val cw = child.measuredWidth
-            val ch = child.measuredHeight
-            if (x + lp.leftMargin + cw + lp.rightMargin > paddingStart + maxWidth && x > paddingStart) {
-                x = paddingStart
-                y += lineHeight + vd()
-                lineHeight = 0
+            val cw = child.outerWidth()
+            if (rows.isEmpty() || rowWidth + hd() + cw > maxWidth) {
+                rows += mutableListOf<View>()
+                rowWidth = cw
+            } else {
+                rowWidth += hd() + cw
             }
-            val cl = x + lp.leftMargin
-            val ct = y + lp.topMargin
-            child.layout(cl, ct, cl + cw, ct + ch)
-            x += lp.leftMargin + cw + lp.rightMargin + hd()
-            lineHeight = maxOf(lineHeight, ch + lp.topMargin + lp.bottomMargin)
+            rows.last() += child
         }
+        var y = paddingTop
+        for (row in rows) {
+            val width = row.sumOf { it.outerWidth() } + hd() * (row.size - 1)
+            var x = paddingStart + if (centerRows) ((maxWidth - width) / 2).coerceAtLeast(0) else 0
+            var lineHeight = 0
+            for (child in row) {
+                val lp = child.layoutParams as MarginLayoutParams
+                val cl = x + lp.leftMargin
+                val ct = y + lp.topMargin
+                child.layout(cl, ct, cl + child.measuredWidth, ct + child.measuredHeight)
+                x += child.outerWidth() + hd()
+                lineHeight = maxOf(lineHeight, child.measuredHeight + lp.topMargin + lp.bottomMargin)
+            }
+            y += lineHeight + vd()
+        }
+    }
+
+    private fun View.outerWidth(): Int {
+        val lp = layoutParams as MarginLayoutParams
+        return measuredWidth + lp.leftMargin + lp.rightMargin
     }
 
     override fun checkLayoutParams(p: LayoutParams?): Boolean = p is MarginLayoutParams

@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
 import android.graphics.Typeface
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -96,6 +97,7 @@ private fun ScreenHost.statCard(
     val radius = dp(STAT_RADIUS_DP).toFloat()
     return LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
         setPadding(dp(Spacing.MD), dp(Spacing.SM + 2), dp(Spacing.MD), dp(Spacing.SM + 2))
         background = ripple(strokeBg(colors.elevation1, radius, colors.line, dp(1)), radius, colors.onSurface)
         isClickable = true
@@ -106,10 +108,16 @@ private fun ScreenHost.statCard(
             makeText(app, value, Type.TITLE_MEDIUM, colors.onSurface).apply {
                 textSize = STAT_VALUE_SP
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, dp(Spacing.XS), 0, 0)
             },
         )
-        addView(makeText(app, label, Type.LABEL_SMALL, colors.onSurfaceVariant).apply { maxLines = 1 })
+        addView(
+            makeText(app, label, Type.LABEL_SMALL, colors.onSurfaceVariant).apply {
+                maxLines = 1
+                gravity = Gravity.CENTER_HORIZONTAL
+            },
+        )
         setOnClickListener { onClick() }
     }
 }
@@ -130,6 +138,7 @@ internal fun ScreenHost.addWarningsAndUpdated(
         WrapLayout(app).apply {
             horizontalSpacingDp = 6
             verticalSpacingDp = 6
+            centerRows = true
             warnings.forEach { warning ->
                 addView(
                     makeBadge(
