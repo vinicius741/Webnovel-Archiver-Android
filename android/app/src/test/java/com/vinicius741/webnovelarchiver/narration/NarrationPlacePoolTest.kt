@@ -30,6 +30,9 @@ class NarrationPlacePoolTest {
         override val name: String = id.replaceFirstChar { it.uppercase() }
         var reachable = true
 
+        /** The server answers but refuses the token: a problem waiting cannot fix. */
+        var rejects = false
+
         /** Every sentence answers `503` with this while set. */
         var busy: NarrationServerBusy? = null
 
@@ -45,6 +48,7 @@ class NarrationPlacePoolTest {
         override suspend fun connect(checkMemory: Boolean) {
             connects++
             if (!reachable) throw NarrationServerProblem("Can't reach $name", transient = true)
+            if (rejects) throw NarrationServerRejected("$name refused the token")
         }
 
         override suspend fun synthesize(text: String): TtsPcmClip? {
@@ -174,21 +178,62 @@ class NarrationPlacePoolTest {
         }
 
     @Test
-    fun everyComputerOutStopsGenerationWithOneMessage() =
+    fun everyComputerOutOfReachIsWaitedForThenStopsGenerationWithOneMessage() =
         runTest {
             val mac = FakePlace("mac").apply { reachable = false }
             val bazzite = FakePlace("bazzite").apply { reachable = false }
+            val pool = pool(mac, bazzite)
+            assertEquals("Can't reach Mac or Bazzite", pool.waitingFor.value)
             try {
-                pool(mac, bazzite)
+                pool.synthesize("Never.", output)
                 fail("Expected a server problem")
             } catch (problem: NarrationServerProblem) {
                 assertEquals("Can't reach Mac or Bazzite. Check that they are on and the server is running", problem.message)
             }
-            assertTrue(mac.closed && bazzite.closed)
+            assertTrue(testScheduler.currentTime >= NarrationPlacePool.MAX_UNREACHABLE_WAIT_MS)
         }
 
     @Test
-    fun theLastComputerDroppingMidChapterStopsGeneration() =
+    fun computersThatAnswerWithAProblemWaitingCannotFixStopGenerationAtOnce() =
+        runTest {
+            val mac = FakePlace("mac").apply { rejects = true }
+            try {
+                pool(mac)
+                fail("Expected a server problem")
+            } catch (problem: NarrationServerProblem) {
+                assertEquals("Mac refused the token", problem.message)
+            }
+            assertTrue(mac.closed)
+            assertEquals(0L, testScheduler.currentTime)
+        }
+
+    @Test
+    fun aBriefLossOfTheNetworkIsWaitedOutAndGenerationGoesOn() =
+        runTest {
+            val mac = FakePlace("mac")
+            val bazzite = FakePlace("bazzite")
+            val pool = pool(mac, bazzite)
+            speak(pool, 4)
+            // The phone changes Wi-Fi: both computers are gone for five seconds.
+            mac.reachable = false
+            bazzite.reachable = false
+            val clips = async { speak(pool, 4, from = 4) }
+            advanceTimeBy(2_000)
+            assertEquals("Can't reach Mac or Bazzite", pool.waitingFor.value)
+            assertEquals("Mac + Bazzite", pool.locationName)
+            advanceTimeBy(3_000)
+            mac.reachable = true
+            bazzite.reachable = true
+
+            assertEquals(4, clips.await().filterNotNull().size)
+            assertNull(pool.waitingFor.value)
+            assertEquals(8, mac.spoken.size + bazzite.spoken.size)
+            // They dropped at 1 s and were checked 3 s and then 6 s later: sooner than the 15 s of a computer set aside.
+            assertTrue(testScheduler.currentTime < 1_000 + NarrationPlacePool.PROBE_FIRST_MS)
+        }
+
+    @Test
+    fun theLastComputerStayingOutOfReachStopsGenerationAfterTheWait() =
         runTest {
             val mac = FakePlace("mac")
             val pool = pool(mac)
@@ -198,8 +243,27 @@ class NarrationPlacePoolTest {
                 pool.synthesize("Next.", output)
                 fail("Expected a server problem")
             } catch (problem: NarrationServerProblem) {
-                assertEquals("Lost the connection to Mac", problem.message)
+                assertEquals("Can't reach Mac", problem.message)
             }
+            assertTrue(testScheduler.currentTime >= NarrationPlacePool.MAX_UNREACHABLE_WAIT_MS)
+        }
+
+    @Test
+    fun aProblemWaitingCannotFixEndsTheWait() =
+        runTest {
+            val mac = FakePlace("mac")
+            val pool = pool(mac)
+            speak(pool, 2)
+            mac.reachable = false
+            val clip = async { runCatching { pool.synthesize("Next.", output) } }
+            advanceTimeBy(1_000)
+            // The network is back, but the server no longer takes this token.
+            mac.reachable = true
+            mac.rejects = true
+
+            val problem = clip.await().exceptionOrNull()
+            assertEquals("Mac refused the token", problem?.message)
+            assertTrue(testScheduler.currentTime < 60_000)
         }
 
     @Test

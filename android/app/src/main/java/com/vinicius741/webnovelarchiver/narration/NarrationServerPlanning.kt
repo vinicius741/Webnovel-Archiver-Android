@@ -151,6 +151,9 @@ internal object NarrationServerPlanning {
             else -> current.copy(serverIds = current.serverIds + serverId)
         }
 
+    /** Why generation waits while none of the chosen computers answers; the screens add that it resumes by itself. */
+    fun outOfReach(names: List<String>): String = "Can't reach ${names(names)}"
+
     /** "Mac", "Mac or Bazzite", "Mac, Bazzite or Studio". */
     private fun names(names: List<String>): String =
         if (names.size <= 1) names.joinToString() else names.dropLast(1).joinToString(", ") + " or " + names.last()

@@ -181,7 +181,7 @@ internal object NarrationScreenPlanning {
         }
     }
 
-    /** "Generating on Mac · 40%", or "Waiting for Mac · 40%" while the computer holds back for memory. */
+    /** "Generating on Mac · 40%", or "Waiting for Mac · 40%" while the computer holds back for memory or cannot be reached. */
     fun generatingTitle(progress: NarrationProgress): String {
         val where = progress.generatingOn
         val verb =

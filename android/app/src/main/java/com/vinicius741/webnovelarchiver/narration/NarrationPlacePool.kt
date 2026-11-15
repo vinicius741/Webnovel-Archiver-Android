@@ -77,9 +77,12 @@ internal interface NarrationPlace {
  *
  * A computer that cannot be reached is set aside and its sentence goes to another; it is checked
  * again in the background (after 15 s, then less often) and rejoins when it answers. One short of
- * memory (`503`) is left alone for as long as it asks. Generation stops with a [NarrationServerProblem]
- * (which pauses the queue) only when every computer is out, or after [MAX_STOPPED_WAIT_MS] of them all
- * having stopped for memory; with a [phone] fallback, this phone generates instead until one is back.
+ * memory (`503`) is left alone for as long as it asks. With a [phone] fallback, this phone generates
+ * while every computer is out, until one is back. Without it, generation waits for one to answer again
+ * (the phone changing Wi-Fi, a router restarting), checking every few seconds, and stops with a
+ * [NarrationServerProblem] (which pauses the queue) only after [MAX_UNREACHABLE_WAIT_MS], or at once
+ * for a problem waiting cannot fix (a wrong token). Computers that all stopped for memory are waited
+ * for [MAX_STOPPED_WAIT_MS].
  */
 @Suppress("TooManyFunctions") // One scheduler: picking, holding back and probing share its state.
 internal class NarrationPlacePool private constructor(
@@ -145,6 +148,9 @@ internal class NarrationPlacePool private constructor(
     private var phoneVoice: NarrationSynthesizer? = null
     private var phoneInFlight = 0
     private var phoneActive = false
+
+    /** Since when no computer can be used. */
+    private var allOutSince = 0L
 
     /** This chapter so far: the computers that generated some of it, whether this phone did, and whether a computer dropped or rejoined. */
     private val usedSeats = HashSet<String>()
@@ -272,8 +278,15 @@ internal class NarrationPlacePool private constructor(
             }
             return Pick.Phone
         }
-        return Pick.Fail(failure())
+        val problem = failure()
+        // Out of reach is often brief (this phone changing Wi-Fi): the probes bring a computer back.
+        val waited = at - allOutSince
+        if (problem.transient && waited < MAX_UNREACHABLE_WAIT_MS) return Pick.Wait(MAX_UNREACHABLE_WAIT_MS - waited)
+        return Pick.Fail(problem)
     }
+
+    /** Whether generation is waiting for any computer to answer again. Call holding [lock]. */
+    private fun reconnecting(): Boolean = phone == null && seats.all { it.state == State.DOWN }
 
     private fun failure(): NarrationServerProblem =
         NarrationServerPlanning.poolFailure(
@@ -329,16 +342,35 @@ internal class NarrationPlacePool private constructor(
         seat.stoppedSince = 0L
         seat.stopReason = null
         changedMidChapter = true
+        if (reconnecting()) {
+            allOutSince = now()
+            // Generation now waits on the probes: all start over, checking every few seconds.
+            seats.forEach { out ->
+                out.probe?.cancel()
+                out.probe = probes.launch { probe(out) }
+            }
+        } else if (seat.probe?.isActive != true) {
+            seat.probe = probes.launch { probe(seat) }
+        }
         changed()
-        if (seat.probe?.isActive != true) seat.probe = probes.launch { probe(seat) }
+    }
+
+    /** How long a probe waits before its next check: seconds apart while generation waits on it. Call holding [lock]. */
+    private fun probeWait(attempt: Int): Long {
+        val shift = attempt.coerceAtMost(MAX_PROBE_DOUBLINGS)
+        return if (reconnecting()) {
+            (RECONNECT_FIRST_MS shl shift).coerceAtMost(RECONNECT_MAX_MS)
+        } else {
+            (PROBE_FIRST_MS shl shift).coerceAtMost(PROBE_MAX_MS)
+        }
     }
 
     /** Checks a computer that is out, less and less often, until it can generate again. */
     @Suppress("TooGenericExceptionCaught") // Runs on its own scope: anything a connection throws must not crash the app.
     private suspend fun probe(seat: Seat) {
-        var wait = PROBE_FIRST_MS
+        var attempt = 0
         while (true) {
-            delay(wait)
+            delay(synchronized(lock) { probeWait(attempt++) })
             val problem =
                 try {
                     seat.place.connect(checkMemory = true)
@@ -362,8 +394,11 @@ internal class NarrationPlacePool private constructor(
                 }
                 return
             }
-            synchronized(lock) { seat.problem = problem }
-            wait = (wait * 2).coerceAtMost(PROBE_MAX_MS)
+            synchronized(lock) {
+                seat.problem = problem
+                // A problem waiting cannot fix (the token was changed meanwhile) ends the wait.
+                if (!problem.transient) changed()
+            }
         }
     }
 
@@ -421,7 +456,11 @@ internal class NarrationPlacePool private constructor(
         changes.update { it + 1 }
         val generating = phoneActive || seats.any { it.state == State.READY && it.stopReason == null }
         waiting.value =
-            if (generating) null else seats.firstNotNullOfOrNull { seat -> seat.stopReason?.takeIf { seat.state != State.DOWN } }
+            when {
+                generating -> null
+                reconnecting() && failure().transient -> NarrationServerPlanning.outOfReach(seats.map { it.place.name })
+                else -> seats.firstNotNullOfOrNull { seat -> seat.stopReason?.takeIf { seat.state != State.DOWN } }
+            }
     }
 
     companion object {
@@ -429,15 +468,28 @@ internal class NarrationPlacePool private constructor(
 
         /** How long the computers may all stay stopped for memory before generation pauses (or the phone takes over). */
         const val MAX_STOPPED_WAIT_MS = 15 * 60_000L
+
+        /**
+         * How long generation waits for any computer to answer again before it pauses. Long enough for
+         * a Wi-Fi change, a router restart or a computer waking; short enough that a phone that left
+         * home does not stay awake checking for hours.
+         */
+        const val MAX_UNREACHABLE_WAIT_MS = 15 * 60_000L
         const val PROBE_FIRST_MS = 15_000L
         const val PROBE_MAX_MS = 5 * 60_000L
+
+        /** The same checks while generation waits on them. */
+        const val RECONNECT_FIRST_MS = 3_000L
+        const val RECONNECT_MAX_MS = 30_000L
+        private const val MAX_PROBE_DOUBLINGS = 10
 
         /** Every computer is full: a release wakes the wait sooner. */
         private const val FULL_WAIT_MS = 60_000L
 
         /**
          * Connects to every place at once. Those that answer start generating; the rest are probed in
-         * the background. Throws when none answers and there is no [phone] to fall back on.
+         * the background. When none can be reached, generation waits for one as it does mid-chapter.
+         * Throws when none answers for a reason waiting cannot fix and there is no [phone] to fall back on.
          */
         @Suppress("LongParameterList", "TooGenericExceptionCaught") // Identity plus where it runs; any failure closes the places.
         suspend fun open(
@@ -458,13 +510,17 @@ internal class NarrationPlacePool private constructor(
                     throw failure
                 }
             if (phone == null && problems.all { it != null }) {
-                places.forEach(NarrationPlace::close)
-                throw NarrationServerPlanning.poolFailure(
-                    places.zip(problems.filterNotNull()).map { (place, problem) ->
-                        place.name to
-                            problem
-                    },
-                )
+                val failure =
+                    NarrationServerPlanning.poolFailure(
+                        places.zip(problems.filterNotNull()).map { (place, problem) ->
+                            place.name to
+                                problem
+                        },
+                    )
+                if (!failure.transient) {
+                    places.forEach(NarrationPlace::close)
+                    throw failure
+                }
             }
             return NarrationPlacePool(voice, voiceKey, location, places, phone, scope, now).apply {
                 synchronized(lock) {
