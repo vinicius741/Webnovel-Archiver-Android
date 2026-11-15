@@ -88,6 +88,37 @@ before the model loads and 16-18 MB after an idle unload. As a background-priori
 it to the efficiency cores (0.22x against 5.1x on one slot), so the agent runs as `ProcessType`
 `Interactive`.
 
+### Where the processor time goes
+
+Measured on Bazzite (ROG Ally X, Ryzen Z1 Extreme, on mains, 30 W limit) on 2026-11-14 with `--bench 2`
+and nothing else running. "Per CPU-second" is seconds of audio for each second of processor time
+the process used:
+
+| Layout | Speed | Logical CPUs busy | Audio per CPU-second | Peak memory |
+|---|---|---|---|---|
+| 1 thread, 1 slot | 1.44x | 1.0 | 1.45 s | 0.85 GB |
+| 1 thread, 4 slots | 4.49x | 3.5 | 1.28 s | 1.4 GB |
+| 1 thread, 8 slots | 6.55x | 6.2 | 1.05 s | 2.1 GB |
+| 1 thread, 16 slots | 6.80x | 11.6 | 0.59 s | 2.3 GB |
+| 2 threads, 8 slots | 6.77x | 7.6 | 0.89 s | 2.1 GB |
+| 4 threads, 4 slots | 6.52x | 6.5 | 1.00 s | 1.4 GB |
+| 8 threads, 4 slots (default) | 6.93-7.05x | 10.3 | 0.68 s | 1.4 GB |
+| 8 threads, 6 slots | 7.38x | 11.9 | 0.62 s | 1.8 GB |
+| 16 threads, 4 slots | 6.21x | 14.8 | 0.42 s | 1.4 GB |
+
+The default layout turns under half of its processor time into audio (0.68 s against 1.45 s for one
+sentence on one thread); the rest is threads of the shared pool waiting on each other. Giving that
+up does not make it faster: every layout ends between 6.5x and 7.4x, because the machine is the
+limit. Under this load the processor sits at its 30 W limit (the most the Ally allows sustained) and
+84-95 °C with both fans at full speed, at about 3.5-3.8 GHz against 5.1 GHz for one core. A layout
+with one thread per sentence gives nearly the same speed with 40% less processor time, but needs
+0.7 GB more memory, which this machine does not have to spare. So the default stays. The benchmark has
+32 sentences, so layouts with many slots lose a little at the end of the run, when few sentences are
+left.
+
+On the Mac (M1 Pro), 8 threads gave 5.09x on 1 slot (0.75 s per CPU-second) and 7.39x on 4 (0.82 s).
+One thread per sentence has not been measured there.
+
 ### Memory
 
 The server checks memory every second and adapts. Thresholds come from the machine's RAM:
