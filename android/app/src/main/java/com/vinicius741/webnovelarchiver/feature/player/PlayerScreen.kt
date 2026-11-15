@@ -143,7 +143,10 @@ private fun ScreenHost.buildNowPlaying(
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             },
         )
-        val bodyWidth = if (wide) dp(WIDE_BODY_MAX_DP) else LinearLayout.LayoutParams.MATCH_PARENT
+        // Cap the wide body to the space inside the column's side padding; a fixed width wider than
+        // the screen (e.g. a foldable's inner display) would be centered and clipped on both edges.
+        val availableDp = app.resources.configuration.screenWidthDp - 2 * Spacing.LG
+        val bodyWidth = if (wide) dp(minOf(WIDE_BODY_MAX_DP, availableDp)) else LinearLayout.LayoutParams.MATCH_PARENT
         column.addView(
             body,
             LinearLayout.LayoutParams(bodyWidth, 0, 1f).apply { gravity = Gravity.CENTER_HORIZONTAL },
