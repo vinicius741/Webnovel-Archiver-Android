@@ -49,6 +49,12 @@ object StoryTabPlanning {
             StoryTab.AI -> AppRoute.AiControls(storyId)
         }
 
+    /** The tab [step] places from [tab] in strip order (+1 next, -1 previous), or null past either end. */
+    fun neighbor(
+        tab: StoryTab,
+        step: Int,
+    ): StoryTab? = StoryTab.entries.getOrNull(tab.ordinal + step)
+
     /** On the inner screen the hero has its own pane, so the Overview tab holds only the About part. */
     fun label(
         tab: StoryTab,

@@ -26,6 +26,14 @@ class StoryTabPlanningTest {
     }
 
     @Test
+    fun `swiping walks the strip order and stops at either end`() {
+        assertEquals(StoryTab.CHAPTERS, StoryTabPlanning.neighbor(StoryTab.OVERVIEW, 1))
+        assertEquals(StoryTab.TRENDS, StoryTabPlanning.neighbor(StoryTab.AI, -1))
+        assertNull(StoryTabPlanning.neighbor(StoryTab.OVERVIEW, -1))
+        assertNull(StoryTabPlanning.neighbor(StoryTab.AI, 1))
+    }
+
+    @Test
     fun `overview becomes about beside the hero pane`() {
         assertEquals("Overview", StoryTabPlanning.label(StoryTab.OVERVIEW, twoPane = false))
         assertEquals("About", StoryTabPlanning.label(StoryTab.OVERVIEW, twoPane = true))

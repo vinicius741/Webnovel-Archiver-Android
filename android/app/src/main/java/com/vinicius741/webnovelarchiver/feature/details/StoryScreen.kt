@@ -110,7 +110,14 @@ internal fun ScreenHost.storyScreen(
         // Without the hero, a running sync / cleanup / EPUB shows in a slim slot under the strip.
         if (hero == null) column.addView(buildOperationStrip(story.id))
         val body = storyTabBody(scrollable, hero.takeIf { !twoPane }) { block(frame) }
-        column.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        // Dragging the body sideways moves to the neighbouring tab, like the Library's pager.
+        val swipe =
+            StoryTabSwipeLayout(
+                context,
+                canSwipe = { step -> StoryTabPlanning.neighbor(tab, step) != null },
+                onCommit = { step -> StoryTabPlanning.neighbor(tab, step)?.let { switchStoryTab(story.id, it) } },
+            ).apply { addView(body, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT) }
+        column.addView(swipe, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         column.addView(footer)
         if (twoPane && hero != null) {
             val pane =
