@@ -12,6 +12,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,9 +25,13 @@ import kotlinx.coroutines.selects.select
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 
 /** What a sentence wait returns when the job was interrupted meanwhile. */
 private object Interrupt
+
+/** What a sentence wait returns when another sentence was answered meanwhile: there may be room to start the next. */
+private object Answered
 
 /** A chapter's spoken text as generation needs it. */
 internal data class NarrationChapterText(
@@ -234,8 +239,9 @@ internal class NarrationGenerator(
 
     /**
      * Writes every missing clip in order; null when all are there, else why it stopped. Up to the
-     * synthesizer's [NarrationSynthesizer.parallelism] sentences generate at once (a server with
-     * several model copies); clips are still written, and progress counted, in sentence order.
+     * synthesizer's [NarrationSynthesizer.parallelism] sentences generate at once (the slots of the
+     * computers sharing the chapter), further ahead than that while an earlier sentence is still
+     * generating ([ClipsAhead]); clips are still written, and progress counted, in sentence order.
      */
     @Suppress("LongParameterList", "CyclomaticComplexMethod") // One chapter's generation state, passed through rather than stored.
     private suspend fun writeClips(
@@ -254,18 +260,10 @@ internal class NarrationGenerator(
             val items =
                 listOfNotNull(recipe.title?.let { store.titleFile(versionDir) to it }) +
                     recipe.sentences.mapIndexed { index, sentence -> store.clipFile(versionDir, index) to sentence }
-            val ahead = HashMap<Int, Deferred<TtsPcmClip?>>()
-            var launchFrom = 0
-
-            fun needsSynthesis(index: Int): Boolean = !items[index].first.isFile && reuse[items[index].second] == null
-
-            fun launchAhead(from: Int) {
-                launchFrom = maxOf(launchFrom, from)
-                while (launchFrom < items.size && ahead.size < voice.parallelism) {
-                    val index = launchFrom++
-                    if (needsSynthesis(index)) ahead[index] = async { synthesize(voice, items[index].second, versionDir, index, stats) }
+            val ahead =
+                ClipsAhead(this, voice, items.size, { !items[it].first.isFile && reuse[items[it].second] == null }) { index ->
+                    synthesize(voice, items[index].second, versionDir, index, stats)
                 }
-            }
 
             fun stop(outcome: JobOutcome): JobOutcome {
                 this@coroutineScope.coroutineContext.cancelChildren()
@@ -302,17 +300,10 @@ internal class NarrationGenerator(
                 if (target.isFile) continue
                 if (done > 0 && done % REFIT_CHECK_CLIPS == 0) voice.fitToDevice()
                 val reused = reuse[sentence]?.let(store::readClip)
-                launchAhead(done)
+                ahead.fill(done)
                 // Started ahead unless a reusable clip was expected; one that turns out unreadable is generated now.
-                val pending =
-                    ahead.remove(done) ?: if (reused == null) async { synthesize(voice, sentence, versionDir, done, stats) } else null
-                val generated =
-                    pending?.let {
-                        select<Any?> {
-                            it.onAwait { clip -> clip }
-                            interrupted.onAwait { Interrupt }
-                        }
-                    }
+                val pending = ahead.take(done) ?: if (reused == null) ahead.start(done) else null
+                val generated = pending?.let { ahead.await(it, done, interrupted) }
                 if (generated === Interrupt) return@coroutineScope stop(JobOutcome.Interrupted)
                 val clip =
                     reused ?: generated as TtsPcmClip?
@@ -625,3 +616,75 @@ internal class NarrationGenerator(
 }
 
 private fun NarrationRecipe.characters(): Long = sentences.sumOf { it.length.toLong() } + (title?.length ?: 0)
+
+/**
+ * The sentences generating ahead of the one being written. At most [NarrationSynthesizer.parallelism]
+ * are unanswered at once, which is what the place takes. Finished clips wait here for their turn, up
+ * to [LOOKAHEAD_PER_SLOT] sentences per slot counted from the one being written, so a long sentence
+ * at the front does not leave the computers without work behind it. When finished clips counted
+ * against the slots, two computers sat idle for about a fifth of a chapter (measured 2026-11-14).
+ */
+private class ClipsAhead(
+    private val scope: CoroutineScope,
+    private val voice: NarrationSynthesizer,
+    private val count: Int,
+    private val needsSynthesis: (Int) -> Boolean,
+    private val synthesize: suspend (Int) -> TtsPcmClip?,
+) {
+    private val clips = HashMap<Int, Deferred<TtsPcmClip?>>()
+    private val unanswered = AtomicInteger()
+    private val answers = Channel<Unit>(Channel.CONFLATED)
+    private var next = 0
+
+    /** Starts the sentences there is room for, while the clip at [writing] is the next to be written. */
+    fun fill(writing: Int) {
+        next = maxOf(next, writing)
+        val end = minOf(count, writing + voice.parallelism * LOOKAHEAD_PER_SLOT)
+        while (next < end && unanswered.get() < voice.parallelism) {
+            val index = next++
+            if (needsSynthesis(index)) clips[index] = start(index)
+        }
+    }
+
+    /** The sentence at [index] when it was started ahead; it is the caller's from then on. */
+    fun take(index: Int): Deferred<TtsPcmClip?>? = clips.remove(index)
+
+    fun start(index: Int): Deferred<TtsPcmClip?> {
+        unanswered.incrementAndGet()
+        return scope.async {
+            try {
+                synthesize(index)
+            } finally {
+                unanswered.decrementAndGet()
+                answers.trySend(Unit)
+            }
+        }
+    }
+
+    /**
+     * The clip of [pending], the sentence at [writing], or [Interrupt] when [interrupted] completes
+     * first. Each answer that arrives meanwhile starts the next sentence, so a slot never waits for
+     * this one.
+     */
+    suspend fun await(
+        pending: Deferred<TtsPcmClip?>,
+        writing: Int,
+        interrupted: Deferred<*>,
+    ): Any? {
+        while (true) {
+            val result =
+                select<Any?> {
+                    pending.onAwait { it }
+                    interrupted.onAwait { Interrupt }
+                    answers.onReceive { Answered }
+                }
+            if (result !== Answered) return result
+            fill(writing)
+        }
+    }
+
+    private companion object {
+        /** Measured with real sentence lengths: 3 per slot keeps two computers busy 97% of the time, and more adds under 1%. */
+        const val LOOKAHEAD_PER_SLOT = 3
+    }
+}

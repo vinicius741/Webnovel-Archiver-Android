@@ -164,7 +164,7 @@ grouped `xxxx-xxxx-xxxx`, and compared case-insensitively.
 | `AndroidNarrationSynthesizers` | A Kokoro job goes to the chosen computers when there are any. `location(voice)` (`NarrationPlaces.locationKey`) changes when the choice, the fallback, or a chosen server's addresses or token change. Android-engine voices always generate on the phone. |
 | `NarrationPlacePool` | The chosen computers as one synthesizer (see [Several computers](#several-computers)). Its `parallelism` is the sum of their slots, so the generator keeps that many sentences in flight; each sentence goes to the computer with the most free slots. |
 | `RemoteKokoroPlace` (in `NarrationSynthesizers.kt`) | One computer in the pool. Prepares the text with `KokoroTextPlanning.spokenText`, as the phone does, and sends it. It uses the phone's voice key (`KokoroVoices.voiceKey`), so clips from the phone and the computers are interchangeable and mix within a chapter. One retry on a dropped connection, after finding the computer again through `reachServer` (so leaving home mid-chapter moves to Tailscale instead of failing over). Sentences that failed together reconnect once, and when that reconnection fails the others fail at once instead of each trying again. A `503` goes up to the pool. |
-| `NarrationGenerator` | Keeps `parallelism` sentences in flight and writes clips in order. At each sentence it checks the job and the place: choosing another place switches at the next sentence and keeps the clips. A `NarrationServerProblem` (unreachable, wrong token, wrong model) **pauses the queue** with the reason and `pausedForServer`, instead of failing every job. Choosing a place resumes it, and so does Resume. A 400 or 500 for one sentence is retried once, then fails only that chapter. Generation speed is recorded per place (`engine@serverId`). |
+| `NarrationGenerator` | Keeps `parallelism` sentences unanswered and writes clips in order. It starts sentences up to three per slot ahead of the one being written (`ClipsAhead`), so a finished clip waiting for its turn never holds a slot (see [Looking ahead](#looking-ahead)). At each sentence it checks the job and the place: choosing another place switches at the next sentence and keeps the clips. A `NarrationServerProblem` (unreachable, wrong token, wrong model) **pauses the queue** with the reason and `pausedForServer`, instead of failing every job. Choosing a place resumes it, and so does Resume. A 400 or 500 for one sentence is retried once, then fails only that chapter. Generation speed is recorded per place (`engine@serverId`). |
 | `NarrationProgress.waitingFor` | While every chosen computer has stopped for memory, the banner reads "Waiting for <name> · 40%" with the server's reason, and so do the queue row and the notification. While another computer still generates, nothing is shown. Fewer slots are not shown either: sentences just take turns. A computer stopped for 15 minutes counts as out, so with no other place left generation pauses with the reason (`pausedForServer`) and the phone does not stay awake polling for hours. Each computer's slots follow its `X-Slots` (slots + 1). |
 | `feature/narration/NarrationServersUi.kt` | The **Generate on** section of Audio generation: chips for "This phone" and each computer, any number of computers chosen at once (`NarrationServerPlanning.tapGenerateOn`), a row per computer with its online status (`ServerRows`, redrawn in place as checks return), Add / Edit / Test / Remove. The test sends one sentence per model copy at once and reports the total speed. The banner and queue rows read "Generating on <name>", or "Mac + Bazzite" while several share a chapter. Speeds are kept per computer and per combination (`kokoro@mac+bazzite`); a combination not measured yet adds up its computers' speeds for the estimate. |
 
@@ -174,6 +174,22 @@ Choose several computers and they share each chapter: `NarrationPlacePool` sends
 computer with a free slot, and the generator still writes clips in sentence order. Two computers at
 about 6x each generate about 11-12x in the app: a 20-minute chapter in about 1.8 minutes instead of
 3.5, a 30-chapter batch in under an hour.
+
+### Looking ahead
+
+Clips are written in order, so the sentence being written can be one that is still generating while
+later ones have finished. Until 2026-11-14 a finished clip counted against the slots until it was
+written: with 10 sentences outstanding for two computers, a long sentence at the front stopped new
+ones from being sent. Measured that day on a real batch from the phone (`/v1/status` sampled four
+times a second): Bazzite generated 5.4x of its 6.9x and had no sentence at all 14% of the time, the Mac
+6.0x of its 7.3x and 11%, 11.4x together. Both had memory to spare and four slots.
+
+The generator now counts only unanswered sentences against the slots, and starts sentences up to
+three per slot ahead of the one being written (30 with two computers). Finished clips wait in memory
+for their turn: a few MB. A simulation with the sentence lengths of real packs and the phone's
+measured network delay gave 11.0-11.4x for the old rule and about 13.6x for this one, of the 14.2x the
+two processors deliver; more than three per slot added under 1%. The app's speed with this change
+has not been measured yet.
 
 | What happens | What the pool does |
 |---|---|

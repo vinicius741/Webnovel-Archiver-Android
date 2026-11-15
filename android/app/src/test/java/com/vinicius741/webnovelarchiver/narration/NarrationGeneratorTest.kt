@@ -71,6 +71,10 @@ class NarrationGeneratorTest {
         var problemOn: String? = null
         var speakDelayMs = 0L
 
+        /** This sentence takes [slowMs] instead, like a long one among short ones. */
+        var slowOn: String? = null
+        var slowMs = 0L
+
         /** This sentence waits like one sent to a computer that stopped for memory: until cancelled. */
         var waitOn: String? = null
         val waiting = MutableStateFlow<String?>(null)
@@ -109,7 +113,8 @@ class NarrationGeneratorTest {
                     running++
                     maxRunning = maxOf(maxRunning, running)
                     try {
-                        if (speakDelayMs > 0) delay(speakDelayMs)
+                        val takes = if (text == slowOn) slowMs else speakDelayMs
+                        if (takes > 0) delay(takes)
                     } finally {
                         running--
                     }
@@ -506,6 +511,31 @@ class NarrationGeneratorTest {
             val pack = store.pack("s", "c")!!
             assertEquals(4, synthesizers.maxRunning)
             assertEquals(13, synthesizers.spoken.size)
+            val sizes = source.sentences.indices.map { store.readClip(store.clipFile(pack.dir, it))!!.pcm.size }
+            assertEquals(sizes.sorted(), sizes)
+            assertEquals(sizes.size, sizes.toSet().size)
+        }
+
+    @Test
+    fun aLongSentenceDoesNotHoldBackTheSentencesBehindIt() =
+        runTest {
+            source.title = null
+            source.sentences = (1..12).map { "Sentence ${"x".repeat(it * 10)}." }
+            synthesizers.where = "mac"
+            synthesizers.inFlight = 2
+            synthesizers.speakDelayMs = 100
+            synthesizers.slowOn = source.sentences.first()
+            synthesizers.slowMs = 1_000
+            var spokenBeforeTheLongOne = -1
+            synthesizers.onSpeak = { if (it == synthesizers.slowOn) spokenBeforeTheLongOne = synthesizers.spoken.size - 1 }
+            generator.runJob(enqueue())
+
+            // The other slot kept working while the first sentence generated, as far ahead as is allowed (3 per slot).
+            assertEquals(5, spokenBeforeTheLongOne)
+            assertEquals(2, synthesizers.maxRunning)
+            // 1,000 ms for the long sentence, then the last six two at a time; one pair at a time behind it would take 1,500.
+            assertEquals(1_300L, testScheduler.currentTime)
+            val pack = store.pack("s", "c")!!
             val sizes = source.sentences.indices.map { store.readClip(store.clipFile(pack.dir, it))!!.pcm.size }
             assertEquals(sizes.sorted(), sizes)
             assertEquals(sizes.size, sizes.toSet().size)
