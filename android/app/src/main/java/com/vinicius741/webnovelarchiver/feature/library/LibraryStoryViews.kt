@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
+import android.content.Context
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -127,7 +128,7 @@ internal fun ScreenHost.buildStoryCard(
     selected: Boolean?,
 ): LinearLayout {
     val colors = ThemeManager.colors
-    val row = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
+    val row = CoverTextRow(app)
     row.addView(storyCover(story, selected))
     val body =
         LinearLayout(app).apply {
@@ -171,6 +172,42 @@ internal fun ScreenHost.buildStoryCard(
         }
     row.addView(body, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { marginStart = dp(Spacing.MD + 2) })
     return row
+}
+
+/**
+ * The list card's cover/text row. A wrap-height LinearLayout sizes itself only from the children that don't
+ * fill its height, so with the text column at MATCH_PARENT the row stayed exactly as tall as the cover. That
+ * clipped the chapter count and bar off any card whose title, Patreon line, and tags ran taller. This row
+ * also counts each child's natural height, then lays them out at that height so the column's spacer still
+ * pins the coverage row to the bottom.
+ */
+private class CoverTextRow(
+    context: Context,
+) : LinearLayout(context) {
+    init {
+        orientation = HORIZONTAL
+    }
+
+    override fun onMeasure(
+        widthMeasureSpec: Int,
+        heightMeasureSpec: Int,
+    ) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) return
+        var tallest = 0
+        for (index in 0 until childCount) {
+            val child = getChildAt(index)
+            if (child.visibility == GONE) continue
+            child.measure(
+                MeasureSpec.makeMeasureSpec(child.measuredWidth, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+            )
+            val params = child.layoutParams as MarginLayoutParams
+            tallest = maxOf(tallest, child.measuredHeight + params.topMargin + params.bottomMargin)
+        }
+        val height = resolveSize(maxOf(measuredHeight, tallest + paddingTop + paddingBottom), heightMeasureSpec)
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY))
+    }
 }
 
 private fun formatLibraryPatreonStats(earnings: PatreonEarningsPlanning.PatreonEarnings): String {
