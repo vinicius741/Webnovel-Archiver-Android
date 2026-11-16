@@ -77,7 +77,6 @@ class RestoreCrashRecoveryTest {
     private val live get() = File(tmp.root, "live")
     private val snapshot get() = File(tmp.root, "snapshot")
     private val staged get() = File(tmp.root, "staged")
-    private val legacy get() = File(tmp.root, "legacy")
     private val journal get() = RestoreTransactionJournal(File(tmp.root, RestoreTransactionJournal.FILE_NAME))
 
     private val oldTree = mapOf("library.json" to "old", "novels/a/1.html" to "old-a1", "novels/b/1.html" to "old-b1")
@@ -162,7 +161,7 @@ class RestoreCrashRecoveryTest {
                     reset()
                     val files = DyingFiles(dieAt, live, renameIntoLive)
                     val committed = attempt(files, failure)
-                    RestoreStartupRecovery.recoverState(live, snapshot, legacy, journal)
+                    RestoreStartupRecovery.recoverState(live, snapshot, journal)
                     assertResolved("rename=$renameIntoLive failure=$failure dieAt=$dieAt", committed)
                     if (failure == Failure.INITIALIZATION) {
                         assertEquals("rollback must keep the old library", oldTree, contents(live))
@@ -184,13 +183,13 @@ class RestoreCrashRecoveryTest {
                         val committed = attempt(DyingFiles(restoreDieAt, live, renameIntoLive), failure)
                         val recoveryFiles = DyingFiles(recoveryDieAt, live, renameIntoLive)
                         try {
-                            RestoreStartupRecovery.recoverState(live, snapshot, legacy, journal, recoveryFiles)
+                            RestoreStartupRecovery.recoverState(live, snapshot, journal, recoveryFiles)
                         } catch (ignored: ProcessDeath) {
                             // The next startup runs recovery again.
                         } catch (ignored: IllegalStateException) {
                             // A failed move inside recovery fails closed; the next startup retries.
                         }
-                        RestoreStartupRecovery.recoverState(live, snapshot, legacy, journal)
+                        RestoreStartupRecovery.recoverState(live, snapshot, journal)
                         assertResolved(
                             "rename=$renameIntoLive failure=$failure restoreDieAt=$restoreDieAt recoveryDieAt=$recoveryDieAt",
                             committed,

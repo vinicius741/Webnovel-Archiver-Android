@@ -115,11 +115,10 @@ private fun ScreenHost.addHeroNotices(
     tab: StoryTab,
 ) {
     if (story.isArchived == true) {
-        // Only a legacy archive whose startup fold failed reaches here; the fold retries each start.
         column.addView(
             makeText(
                 app,
-                "Old archive copy: read-only until it merges into its novel",
+                "Old archive copy: read-only",
                 Type.LABEL_MEDIUM,
                 ThemeManager.colors.tertiary,
             ).apply {

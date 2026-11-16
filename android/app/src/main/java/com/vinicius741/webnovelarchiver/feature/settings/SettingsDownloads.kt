@@ -135,7 +135,7 @@ internal fun ScreenHost.showDownloadSettings() {
         val overrides = repository.sourceDownloadSettings.get()
         settingsGroup {
             SourceRegistry.all().forEach { provider ->
-                val override = DownloadPacePlanning.overrideFor(overrides, provider.id, provider.name)
+                val override = overrides[provider.id]
                 val summary = DownloadPacePlanning.overrideSummary(override)
                 navRow(
                     if (override != null) R.drawable.wna_tune else R.drawable.wna_globe,
@@ -168,7 +168,7 @@ private fun ScreenHost.showSourcePaceSheet(
 ) {
     val colors = ThemeManager.colors
     val base = defaults().range()
-    val saved = DownloadPacePlanning.overrideFor(repository.sourceDownloadSettings.get(), provider.id, provider.name)
+    val saved = repository.sourceDownloadSettings.get()[provider.id]
     var custom = saved != null
     var range = saved?.let { PaceRange(it.delay, maxOf(it.delay, it.delayMax)) } ?: base
     val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
@@ -266,7 +266,6 @@ private fun ScreenHost.showSourcePaceSheet(
                             DownloadPacePlanning.withOverride(
                                 repository.sourceDownloadSettings.get(),
                                 provider.id,
-                                provider.name,
                                 chosen,
                             )
                         repository.sourceDownloadSettings.save(next)

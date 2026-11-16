@@ -202,7 +202,6 @@ class AppStorage(
 
     @Synchronized
     fun getLibrary(): MutableList<Story> {
-        migrateLegacyAsyncStorageIfPresent()
         val ids = readLibraryIdsWithRecovery()
         return ids.mapNotNull { id -> readStory(storyFile(id)) }.toMutableList()
     }
@@ -358,51 +357,35 @@ class AppStorage(
 
     /**
      * One-pass startup library load: reads the index and every story file once, applying the
-     * same coercion + relative-path migration [readStory] applies per read, and reports which
-     * story documents changed so the caller persists only those instead of rewriting the library.
+     * same default coercion [readStory] applies per read, and reports which story documents
+     * changed so the caller persists only those instead of rewriting the library.
      */
-    internal class StartupLibraryMigration(
+    internal class StartupLibraryLoad(
         val stories: List<Story>,
         val changedStoryIds: Set<String>,
     )
 
     @Synchronized
-    internal fun loadLibraryForStartup(): StartupLibraryMigration {
+    internal fun loadLibraryForStartup(): StartupLibraryLoad {
         val ids = readLibraryIdsWithRecovery()
         val changed = mutableSetOf<String>()
         val stories =
             ids.mapNotNull { id ->
                 val raw = read<Story>(storyFile(id)) ?: return@mapNotNull null
                 val coerced = StoryNormalization.coerceDefaults(raw)
-                val migrated = migrateChapterPaths(coerced.story)
-                if (coerced.changed || migrated !== coerced.story) changed.add(id)
-                migrated
+                if (coerced.changed) changed.add(id)
+                coerced.story
             }
-        return StartupLibraryMigration(stories, changed)
+        return StartupLibraryLoad(stories, changed)
     }
 
-    /** Persists only the startup migrations' changed story documents; the index is untouched (R20/R21). */
+    /** Persists only the startup pass's changed story documents; the index is untouched (R20/R21). */
     @Synchronized
     internal fun persistStartupStories(stories: List<Story>) {
         stories.forEach { story ->
             ensureHealthyForWrite(storyFile(story.id))
             saveStoryOnly(story)
         }
-    }
-
-    /**
-     * One-time on-disk migration of legacy absolute chapter/epub paths to paths relative to [root]
-     * (R1.3). [migrateChapterPaths] converts paths on read but only persists them when something
-     * else re-saves the story — so without this pass, every cold start would re-run the migration for
-     * untouched stories forever. This walks the library once and re-saves any story that changed, so
-     * the per-read migration converges to a no-op. Safe to call repeatedly: it writes only when a
-     * story's paths actually changed.
-     */
-    @Synchronized
-    fun migrateChapterPathsToRelative() {
-        val load = loadLibraryForStartup()
-        if (load.changedStoryIds.isEmpty()) return
-        persistStartupStories(load.stories.filter { it.id in load.changedStoryIds })
     }
 
     @Synchronized
@@ -749,17 +732,10 @@ class AppStorage(
         return resolved.takeIf(File::exists)?.absolutePath
     }
 
-    /**
-     * On read, convert any legacy absolute chapter/epub path into a path relative to [root] so the
-     * on-disk model becomes portable. Non-existent absolute paths are left untouched (they may live
-     * under a different install's filesDir and will be re-derived on next download).
-     */
-    private fun migrateChapterPaths(story: Story): Story = migrateStoryPaths(story, root)
-
-    /** Read + coerce Gson defaults + relative-path migration for a story document. */
+    /** Read + coerce Gson defaults for a story document. */
     private fun readStory(file: File): Story? {
         val raw = read<Story>(file) ?: return null
-        return migrateChapterPaths(StoryNormalization.coerceDefaults(raw).story)
+        return StoryNormalization.coerceDefaults(raw).story
     }
 
     internal fun relativize(file: File): String = file.toRelativeString(root)
@@ -847,14 +823,6 @@ class AppStorage(
     }
 
     internal fun safeName(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120)
-
-    private fun migrateLegacyAsyncStorageIfPresent() {
-        if (libraryIndex.exists()) return
-        val legacy = File(context.filesDir.parentFile, "databases/RKStorage")
-        if (!legacy.exists()) return
-        // Any old AsyncStorage-style SQLite layout is intentionally not parsed here; JSON backups remain compatible.
-        write(libraryIndex, emptyList<String>())
-    }
 
     companion object {
         /** Former `AiChapterRewriteStore` tree; also skipped when restoring older full backups. */

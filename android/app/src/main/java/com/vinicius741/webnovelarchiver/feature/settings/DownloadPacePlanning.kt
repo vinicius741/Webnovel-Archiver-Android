@@ -18,8 +18,8 @@ internal data class PacePreset(
 
 /**
  * Download pace rules for Download settings: keeping the delay pair ordered while one stepper
- * moves, reading and writing a site's override (keyed by provider id, with the legacy name key
- * folded away), quick-fill presets, and the plain-language summaries.
+ * moves, writing a site's override (keyed by provider id), quick-fill presets, and the
+ * plain-language summaries.
  */
 internal object DownloadPacePlanning {
     val presets: List<PacePreset> =
@@ -41,25 +41,13 @@ internal object DownloadPacePlanning {
         maxMs: Long,
     ): PaceRange = PaceRange(minOf(range.minMs, maxMs), maxMs)
 
-    /** The override saved for a site, under its provider id or its legacy display-name key. */
-    fun overrideFor(
-        overrides: Map<String, SourceDownloadSettings>,
-        providerId: String,
-        providerName: String,
-    ): SourceDownloadSettings? = overrides[providerId] ?: overrides[providerName]
-
-    /**
-     * The overrides with this site's pace replaced: [range] null means "use the defaults". The
-     * legacy name key is always dropped so the site has exactly one entry, under its id.
-     */
+    /** The overrides with this site's pace replaced: [range] null means "use the defaults". */
     fun withOverride(
         overrides: Map<String, SourceDownloadSettings>,
         providerId: String,
-        providerName: String,
         range: PaceRange?,
     ): Map<String, SourceDownloadSettings> {
         val next = overrides.toMutableMap()
-        next.remove(providerName)
         if (range == null) {
             next.remove(providerId)
         } else {

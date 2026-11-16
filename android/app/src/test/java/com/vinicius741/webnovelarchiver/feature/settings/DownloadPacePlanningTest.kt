@@ -24,34 +24,21 @@ class DownloadPacePlanningTest {
     }
 
     @Test
-    fun overrideIsReadByIdThenLegacyName() {
-        val byName = mapOf("Royal Road" to SourceDownloadSettings(delay = 1_000, delayMax = 2_000))
-        assertEquals(1_000L, DownloadPacePlanning.overrideFor(byName, "royalroad", "Royal Road")?.delay)
-        val both = byName + ("royalroad" to SourceDownloadSettings(delay = 3_000, delayMax = 3_000))
-        assertEquals(3_000L, DownloadPacePlanning.overrideFor(both, "royalroad", "Royal Road")?.delay)
-        assertNull(DownloadPacePlanning.overrideFor(emptyMap(), "royalroad", "Royal Road"))
-    }
-
-    @Test
     fun savingACustomPaceStoresItUnderTheIdOnly() {
         val before =
             mapOf(
-                "Royal Road" to SourceDownloadSettings(delay = 1_000, delayMax = 2_000),
+                "royalroad" to SourceDownloadSettings(delay = 1_000, delayMax = 2_000),
                 "scribblehub" to SourceDownloadSettings(delay = 400, delayMax = 400),
             )
-        val after = DownloadPacePlanning.withOverride(before, "royalroad", "Royal Road", PaceRange(1_500, 4_200))
+        val after = DownloadPacePlanning.withOverride(before, "royalroad", PaceRange(1_500, 4_200))
         assertEquals(setOf("royalroad", "scribblehub"), after.keys)
         assertEquals(SourceDownloadSettings(concurrency = 1, delay = 1_500, delayMax = 4_200), after["royalroad"])
     }
 
     @Test
-    fun usingTheDefaultsRemovesBothKeys() {
-        val before =
-            mapOf(
-                "Royal Road" to SourceDownloadSettings(),
-                "royalroad" to SourceDownloadSettings(),
-            )
-        assertEquals(emptyMap<String, SourceDownloadSettings>(), DownloadPacePlanning.withOverride(before, "royalroad", "Royal Road", null))
+    fun usingTheDefaultsRemovesTheOverride() {
+        val before = mapOf("royalroad" to SourceDownloadSettings())
+        assertEquals(emptyMap<String, SourceDownloadSettings>(), DownloadPacePlanning.withOverride(before, "royalroad", null))
     }
 
     @Test

@@ -20,7 +20,7 @@ sealed interface RepositoryReadiness {
 }
 
 /**
- * Runs migration/recovery/hydration once on the supplied process scope. The scope determines the
+ * Runs load/recovery/hydration once on the supplied process scope. The scope determines the
  * dispatcher, so [AppContainer] can keep the complete startup transaction on Dispatchers.IO while
  * callers suspend without blocking the Android main thread.
  */

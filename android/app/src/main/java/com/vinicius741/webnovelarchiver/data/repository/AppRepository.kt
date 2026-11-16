@@ -12,7 +12,6 @@ import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.BackupChapterRecoveryResult
 import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
-import com.vinicius741.webnovelarchiver.data.storage.foldLegacyArchivesOnDisk
 import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
@@ -370,12 +369,7 @@ class AppRepository private constructor(
         storageTransaction {
             invalidateLibraryGeneration()
             try {
-                block().also {
-                    // Older backups can still hold archive snapshots; fold them like startup does.
-                    runCatching { requiredStorage.foldLegacyArchivesOnDisk(::storyChapterKey) }
-                        .onFailure { error -> Timber.w(error, "Could not fold archive snapshots after replacing the library") }
-                    refresh()
-                }
+                block().also { refresh() }
             } finally {
                 // Work started against the old published snapshot during maintenance is stale too.
                 invalidateLibraryGeneration()

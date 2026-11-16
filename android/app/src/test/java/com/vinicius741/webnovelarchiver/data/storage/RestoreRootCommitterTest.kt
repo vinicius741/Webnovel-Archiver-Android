@@ -98,7 +98,7 @@ class RestoreRootCommitterTest {
         assertEquals(RestoreTransactionJournal.Phase.COMMITTED, journal.read())
         assertTrue(committer.rollback())
         assertTrue(File(live, "new").isFile)
-        RestoreStartupRecovery.recoverState(live, snapshot, File(tmp.root, "legacy"), journal)
+        RestoreStartupRecovery.recoverState(live, snapshot, journal)
         assertTrue(File(live, "new").isFile)
         assertFalse(snapshot.exists())
         assertFalse(journal.exists())

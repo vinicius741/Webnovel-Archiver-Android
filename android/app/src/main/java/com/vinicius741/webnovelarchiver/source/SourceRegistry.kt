@@ -155,10 +155,6 @@ object SourceRegistry {
         return providers.firstOrNull { normalized in it.descriptor.normalizedHosts }
     }
 
-    fun sourceIdForPersistedKey(key: String): String? =
-        getById(key)?.id
-            ?: providers.firstOrNull { it.name.equals(key, ignoreCase = true) }?.id
-
     fun all(): List<SourceProvider> = providers
 }
 

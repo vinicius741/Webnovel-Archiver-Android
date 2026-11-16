@@ -86,7 +86,7 @@ object DownloadScheduler {
         val provider =
             SourceRegistry.getById(providerName)
                 ?: SourceRegistry.all().firstOrNull { it.name == providerName }
-        val override = provider?.let { sourceSettings[it.id] ?: sourceSettings[it.name] } ?: sourceSettings[providerName]
+        val override = provider?.let { sourceSettings[it.id] } ?: sourceSettings[providerName]
         val minDelay = (override?.delay ?: globalSettings.delay).coerceAtLeast(0)
         val maxDelay = override?.delayMax ?: globalSettings.delayMax
         val requestedConcurrency = override?.concurrency ?: globalSettings.concurrency.coerceAtLeast(1)
