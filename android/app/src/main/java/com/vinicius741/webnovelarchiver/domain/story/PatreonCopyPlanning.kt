@@ -35,6 +35,16 @@ object PatreonCopyPlanning {
     // A title that is just a number and a separated subtitle ("205 - Perspective", "12. Home").
     // The separator must be followed by a space, so "3:00 stream" and "1 week break!" stay announcements.
     private val leadingNumber = Regex("""^\s*#?(\d+(?:\.\d+)?)(?=\s*[-:|.)]\s|\s*$)""")
+
+    // A novel name followed only by a number ("Netherwitch - 90", "Netherwitch 91"). The name must be
+    // letters only, so "More chapters 8-24" and "Q&A 2026" stay announcements, and must not name a
+    // part, arc, or interlude, so "Interlude 2" or "Part 3" never reads as chapter 2 or 3.
+    private val trailingNumber = Regex("""^\s*(\p{L}[\p{L}'’\s]*?)\s*(?:[-:|#]\s*)?#?(\d+(?:\.\d+)?)\s*$""")
+    private val trailingNumberExcludedNames =
+        Regex(
+            """\b(?:part|pt|arc|book|volume|vol|season|act|interlude|side ?story|bonus|extra|update|poll|stream|q ?a)\b""",
+            RegexOption.IGNORE_CASE,
+        )
     private val bookToken = Regex("""\b(?:book|volume|vol\.?|b(?=\d))\s*(\d+)""", RegexOption.IGNORE_CASE)
     private val unnumberedChapterWords =
         Regex("""\b(?:prologue|epilogue|interlude|side ?story|bonus chapter|extra chapter)\b""", RegexOption.IGNORE_CASE)
@@ -49,7 +59,12 @@ object PatreonCopyPlanning {
     fun chapterKey(title: String): ChapterKey {
         val text = dashes(title)
         val chapter = chapterToken.find(text) ?: leadingNumber.find(text)
-        if (chapter == null) return ChapterKey(book = null, number = null, subtitle = normalize(text))
+        if (chapter == null) {
+            // "Netherwitch - 90": the name is the novel's, not a subtitle, so only the number counts.
+            val trailing =
+                trailingNumberMatch(text) ?: return ChapterKey(book = null, number = null, subtitle = normalize(text))
+            return ChapterKey(book = null, number = normalizeNumber(trailing.groupValues[2]), subtitle = "")
+        }
         // A book number only counts before the chapter token: "Chapter 62 (End of Book 1)" is book-less.
         val book =
             bookToken
@@ -83,7 +98,7 @@ object PatreonCopyPlanning {
     fun displayTitle(postTitle: String): String {
         val start =
             listOfNotNull(bookToken.find(postTitle)?.range?.first, chapterToken.find(postTitle)?.range?.first).minOrNull()
-                ?: return postTitle.trim()
+                ?: return trailingNumberMatch(dashes(postTitle))?.let { "Chapter ${it.groupValues[2]}" } ?: postTitle.trim()
         val prefix = postTitle.substring(0, start).trimEnd()
         val stripped = if (start > 0 && prefix.lastOrNull() in setOf('-', ':', '|', '–', '—')) postTitle.substring(start) else postTitle
         return stripped.trim()
@@ -93,6 +108,7 @@ object PatreonCopyPlanning {
     fun isChapterPost(title: String): Boolean =
         chapterToken.containsMatchIn(title) ||
             leadingNumber.containsMatchIn(dashes(title)) ||
+            trailingNumberMatch(dashes(title)) != null ||
             unnumberedChapterWords.containsMatchIn(title)
 
     /**
@@ -103,6 +119,7 @@ object PatreonCopyPlanning {
     fun titlePrefix(title: String): String {
         val text = dashes(title)
         if (leadingNumber.containsMatchIn(text)) return ""
+        if (!chapterToken.containsMatchIn(text)) trailingNumberMatch(text)?.let { return normalize(it.groupValues[1]) }
         val start =
             listOfNotNull(
                 bookToken.find(text)?.range?.first,
@@ -253,6 +270,11 @@ object PatreonCopyPlanning {
         val (unlinked, removed) = if (story.patreonEarlyAccess != null) relink(edited, null) else edited to emptyList()
         return unlinked.copy(patreonStats = null) to removed
     }
+
+    private fun trailingNumberMatch(text: String): MatchResult? =
+        trailingNumber.find(text)?.takeUnless {
+            trailingNumberExcludedNames.containsMatchIn(it.groupValues[1]) || unnumberedChapterWords.containsMatchIn(it.groupValues[1])
+        }
 
     private fun dashes(text: String): String = text.replace('–', '-').replace('—', '-')
 

@@ -60,6 +60,8 @@ class PatreonCopyPlanningTest {
         assertEquals("Chapter 5", PatreonCopyPlanning.displayTitle("Chapter 5"))
         assertEquals("Rebirth Chapter 5", PatreonCopyPlanning.displayTitle("Rebirth Chapter 5"))
         assertEquals("Announcement", PatreonCopyPlanning.displayTitle("Announcement"))
+        assertEquals("Chapter 90", PatreonCopyPlanning.displayTitle("Netherwitch - 90"))
+        assertEquals("Chapter 91", PatreonCopyPlanning.displayTitle("Netherwitch 91"))
     }
 
     @Test
@@ -85,6 +87,32 @@ class PatreonCopyPlanningTest {
         assertFalse(PatreonCopyPlanning.isChapterPost("More chapters 8-24"))
         assertFalse(PatreonCopyPlanning.isChapterPost("Whoops, sick again. More chapters next week"))
         assertFalse(PatreonCopyPlanning.isChapterPost("3:00 PM Q&A stream"))
+    }
+
+    @Test
+    fun `a novel name followed only by a number is a chapter`() {
+        assertEquals(ChapterKey(null, "90", ""), PatreonCopyPlanning.chapterKey("Netherwitch - 90"))
+        assertEquals(ChapterKey(null, "91", ""), PatreonCopyPlanning.chapterKey("Netherwitch 91"))
+        assertTrue(PatreonCopyPlanning.isChapterPost("Netherwitch - 90"))
+        assertTrue(PatreonCopyPlanning.isChapterPost("Netherwitch 91"))
+        assertTrue(
+            PatreonCopyPlanning.matches(
+                PatreonCopyPlanning.chapterKey("Netherwitch - 82"),
+                PatreonCopyPlanning.chapterKey("Chapter 82: The Duel"),
+            ),
+        )
+        assertTrue(
+            PatreonCopyPlanning.matches(
+                PatreonCopyPlanning.chapterKey("Netherwitch - 82"),
+                PatreonCopyPlanning.chapterKey("82 - The Duel"),
+            ),
+        )
+        assertEquals("netherwitch", PatreonCopyPlanning.titlePrefix("Netherwitch - 90"))
+        assertEquals("netherwitch", PatreonCopyPlanning.titlePrefix("Netherwitch 91"))
+        assertFalse(PatreonCopyPlanning.isChapterPost("Part 3"))
+        assertFalse(PatreonCopyPlanning.isChapterPost("Q&A 2026"))
+        assertFalse(PatreonCopyPlanning.isChapterPost("Poll 4"))
+        assertEquals(null, PatreonCopyPlanning.chapterKey("Interlude 2").number)
     }
 
     @Test

@@ -118,6 +118,9 @@ queued for download (`DownloadQueuePlanning` skips them).
 - `205 - Perspective` / `12. Home` → chapter 205 / 12: a title that starts with a number counts as
   a chapter when a separator and a space follow it, so `1 week break!`, `3:00 PM stream`, and
   `More chapters 8-24` stay announcements
+- `Netherwitch - 90` / `Netherwitch 91` → chapter 90 / 91, shown as `Chapter 90`: a letters-only
+  name followed by nothing but a number counts as a chapter, unless the name is a part, arc,
+  interlude, poll, stream, or similar (`Part 3`, `Poll 4` stay unnumbered)
 
 Two keys match when book and chapter agree; when only one side names the book (sources often
 restart numbering per book), the subtitle must agree too. Unnumbered titles (Prologue, Epilogue)

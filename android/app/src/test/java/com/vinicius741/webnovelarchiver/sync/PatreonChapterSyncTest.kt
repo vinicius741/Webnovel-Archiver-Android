@@ -42,6 +42,28 @@ class PatreonChapterSyncTest {
     }
 
     @Test
+    fun `selection reads posts titled with the novel name and a number`() {
+        val numbered =
+            listOf(
+                Chapter(id = "81", title = "Chapter 81", downloaded = true),
+                Chapter(id = "82", title = "Chapter 82", downloaded = true),
+            )
+        val posts =
+            listOf(
+                post("91", "Netherwitch 91"),
+                post("90", "Netherwitch - 90"),
+                post("83", "Netherwitch - 83"),
+                post("82", "Netherwitch - 82"),
+                post("81", "Netherwitch - 81"),
+            )
+
+        val selection = PatreonChapterPlanning.selectEarlyAccess(posts, PatreonCopyPlanning.publicKeys(numbered))
+
+        assertTrue(selection.anchorFound)
+        assertEquals(listOf("83", "90", "91"), selection.ahead.map { it.id })
+    }
+
+    @Test
     fun `selection without any public match adds nothing`() {
         val selection =
             PatreonChapterPlanning.selectEarlyAccess(
