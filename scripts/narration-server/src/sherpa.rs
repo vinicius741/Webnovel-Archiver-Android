@@ -1,11 +1,15 @@
-//! The sherpa-onnx C API (v1.12.21, the version the app ships), for Kokoro only.
+//! The sherpa-onnx C API (v1.12.21, the version the app ships), for the Kokoro exports only.
 //!
 //! One [Tts] holds one ONNX Runtime session. `Generate` is safe to call from several threads at
 //! once: sherpa-onnx serializes espeak-ng phonemization behind a mutex, and `Ort::Session::Run` is
 //! thread-safe. So every request shares one copy of the model's weights.
 
+use crate::models::{Kind, Synth, VoiceRef};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::Path;
+
+/// v1.0's US English lexicon: the app speaks American voices only, through this file.
+const LEXICON_V1: &str = "lexicon-us-en.txt";
 
 // Struct layouts copied from sherpa-onnx/c-api/c-api.h at v1.12.21. Unused models stay zeroed.
 #[repr(C)]
@@ -123,16 +127,21 @@ unsafe impl Sync for Tts {}
 
 impl Tts {
     /// Loads the model; takes about a second and ~400 MB. sherpa-onnx exits the process on a missing
-    /// file, so the files are checked first.
-    pub fn load(model_dir: &Path, threads: usize) -> Result<Tts, String> {
-        let files = ["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"];
-        for file in files {
+    /// file, so the files are checked first. v1.0 reads English through its US lexicon first and
+    /// espeak-ng only for words the lexicon lacks, as the app configures it.
+    pub fn load(kind: Kind, model_dir: &Path, threads: usize) -> Result<Tts, String> {
+        let mut files = vec!["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"];
+        if kind == Kind::KokoroV1 {
+            files.push(LEXICON_V1);
+        }
+        for file in &files {
             if !model_dir.join(file).exists() {
                 return Err(format!("{} is missing from {}", file, model_dir.display()));
             }
         }
         let path = |name: &str| CString::new(model_dir.join(name).to_string_lossy().as_bytes()).map_err(|e| e.to_string());
         let (model, voices, tokens, data) = (path(files[0])?, path(files[1])?, path(files[2])?, path(files[3])?);
+        let lexicon = if kind == Kind::KokoroV1 { Some(path(LEXICON_V1)?) } else { None };
         let provider = CString::new("cpu").unwrap();
         // SAFETY: an all-zero TtsConfig is valid (null strings and zero numbers mean "default").
         let mut config: TtsConfig = unsafe { std::mem::zeroed() };
@@ -141,6 +150,9 @@ impl Tts {
         config.model.kokoro.tokens = tokens.as_ptr();
         config.model.kokoro.data_dir = data.as_ptr();
         config.model.kokoro.length_scale = 1.0;
+        if let Some(lexicon) = &lexicon {
+            config.model.kokoro.lexicon = lexicon.as_ptr();
+        }
         config.model.num_threads = threads.max(1) as i32;
         config.model.provider = provider.as_ptr();
         // The phone's defaults (sherpa-onnx Kotlin API): one sentence per batch, silence scale 0.2.
@@ -153,10 +165,11 @@ impl Tts {
         }
         // SAFETY: raw is a live TTS object.
         let (sample_rate, speakers) = unsafe { (SherpaOnnxOfflineTtsSampleRate(raw), SherpaOnnxOfflineTtsNumSpeakers(raw)) };
-        if speakers != crate::http::SPEAKERS as i32 {
+        let expected = kind.speakers().unwrap_or(0) as i32;
+        if speakers != expected {
             // SAFETY: raw is live and not shared yet.
             unsafe { SherpaOnnxDestroyOfflineTts(raw) };
-            return Err(format!("{} is not kokoro-en-v0_19: it has {speakers} voices, not {}", model_dir.display(), crate::http::SPEAKERS));
+            return Err(format!("{} is not {}: it has {speakers} voices, not {expected}", model_dir.display(), kind.name()));
         }
         Ok(Tts { raw, sample_rate: sample_rate.max(0) as u32 })
     }
@@ -184,6 +197,13 @@ impl Tts {
         unsafe { SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio) };
         let rate = if result.0 == 0 { self.sample_rate } else { result.0 };
         Ok((rate, result.1))
+    }
+}
+
+impl Synth for Tts {
+    fn generate(&self, text: &str, voice: &VoiceRef) -> Result<(u32, Vec<u8>), String> {
+        let VoiceRef::Speaker(speaker) = voice else { return Err("Kokoro voices are chosen by speaker number".to_string()) };
+        Tts::generate(self, text, *speaker)
     }
 }
 

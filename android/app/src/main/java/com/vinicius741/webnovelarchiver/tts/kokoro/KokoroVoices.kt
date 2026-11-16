@@ -3,61 +3,46 @@ package com.vinicius741.webnovelarchiver.tts.kokoro
 import android.speech.tts.Voice
 import com.vinicius741.webnovelarchiver.tts.VoiceInfo
 
-/** One of the Kokoro model's speakers; [speakerId] is its index in the model's voices file. */
-internal data class KokoroVoice(
-    val speakerId: Int,
-    val code: String,
-    val name: String,
-    val language: String,
-)
-
 /**
- * The built-in Kokoro engine and its voices. The engine is stored in `TtsSettings.enginePackage`
- * under [ENGINE_ID], beside real TTS app packages, and a voice under its [identifier]: the model
- * version plus the voice's code, so a later model with other speakers cannot pick the wrong one.
+ * The built-in engines and their voices (see [BuiltInModel]). An engine is stored in
+ * `TtsSettings.enginePackage` under its [BuiltInModel.engineId], beside real TTS app packages, and a
+ * voice under its [identifier]: the model version plus the voice's code, so another model cannot
+ * pick the wrong speaker. The names without a model are the original Kokoro v0.19 engine's.
  */
 internal object KokoroVoices {
-    const val ENGINE_ID = "builtin:kokoro-en-v0_19"
-    const val ENGINE_LABEL = "Kokoro (built in)"
-    private const val ID_PREFIX = "kokoro-en-v0_19:"
-    private const val US = "en-US"
-    private const val UK = "en-GB"
+    val ENGINE_ID: String = BuiltInModel.KOKORO_V019.engineId
+    val ENGINE_LABEL: String = BuiltInModel.KOKORO_V019.engineLabel
 
-    /** Speaker order of kokoro-en-v0_19's voices.bin, as documented by sherpa-onnx. */
-    val all: List<KokoroVoice> =
-        listOf(
-            KokoroVoice(0, "af", "Default (American, female)", US),
-            KokoroVoice(1, "af_bella", "Bella (American, female)", US),
-            KokoroVoice(2, "af_nicole", "Nicole (American, female)", US),
-            KokoroVoice(3, "af_sarah", "Sarah (American, female)", US),
-            KokoroVoice(4, "af_sky", "Sky (American, female)", US),
-            KokoroVoice(5, "am_adam", "Adam (American, male)", US),
-            KokoroVoice(6, "am_michael", "Michael (American, male)", US),
-            KokoroVoice(7, "bf_emma", "Emma (British, female)", UK),
-            KokoroVoice(8, "bf_isabella", "Isabella (British, female)", UK),
-            KokoroVoice(9, "bm_george", "George (British, male)", UK),
-            KokoroVoice(10, "bm_lewis", "Lewis (British, male)", UK),
-        )
+    /** Kokoro v0.19's speakers, in its voices.bin order. */
+    val all: List<KokoroVoice> get() = BuiltInModel.KOKORO_V019.voices
 
     /** The voice used when none is chosen. */
-    val default: KokoroVoice get() = all.first()
+    val default: KokoroVoice get() = BuiltInModel.KOKORO_V019.defaultVoice
 
-    fun isEngine(enginePackage: String?): Boolean = enginePackage == ENGINE_ID
+    /** Whether [enginePackage] is one of the built-in engines (any [BuiltInModel]). */
+    fun isEngine(enginePackage: String?): Boolean = BuiltInModel.forEngine(enginePackage) != null
 
-    /**
-     * What a clip depends on besides its text: model, speaker and text preparation. The phone and a
-     * narration server running the same model produce interchangeable clips under the same key.
-     */
-    fun voiceKey(speakerId: Int): String = "$ENGINE_ID|speaker=$speakerId|text=${KokoroTextPlanning.VERSION}"
+    fun model(enginePackage: String?): BuiltInModel? = BuiltInModel.forEngine(enginePackage)
 
-    fun identifier(voice: KokoroVoice): String = ID_PREFIX + voice.code
+    /** Kokoro v0.19's key for [speakerId]; see [BuiltInModel.voiceKey]. */
+    fun voiceKey(speakerId: Int): String = BuiltInModel.KOKORO_V019.voiceKey(all.first { it.speakerId == speakerId })
 
-    fun isKokoroIdentifier(identifier: String?): Boolean = identifier?.startsWith(ID_PREFIX) == true
+    fun voiceKey(voice: KokoroVoice): String = voice.model.voiceKey(voice)
 
-    fun forIdentifier(identifier: String?): KokoroVoice? = all.firstOrNull { identifier(it) == identifier }
+    fun identifier(voice: KokoroVoice): String = voice.model.idPrefix + voice.code
 
-    fun voiceInfos(): List<VoiceInfo> =
-        all.map {
+    fun isKokoroIdentifier(identifier: String?): Boolean = BuiltInModel.entries.any { identifier?.startsWith(it.idPrefix) == true }
+
+    fun forIdentifier(identifier: String?): KokoroVoice? = BuiltInModel.forIdentifier(identifier)
+
+    /** [identifier]'s voice when it belongs to [model], else the model's default. */
+    fun voiceFor(
+        model: BuiltInModel,
+        identifier: String?,
+    ): KokoroVoice = forIdentifier(identifier)?.takeIf { it.model == model } ?: model.defaultVoice
+
+    fun voiceInfos(model: BuiltInModel = BuiltInModel.KOKORO_V019): List<VoiceInfo> =
+        model.voices.map {
             VoiceInfo(
                 identifier = identifier(it),
                 name = it.name,

@@ -7,7 +7,6 @@ import android.os.Debug
 import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
-import com.k2fsa.sherpa.onnx.OfflineTts
 import com.vinicius741.webnovelarchiver.BuildConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -35,14 +34,14 @@ import java.util.Locale
 internal class KokoroBenchmark(
     private val context: Context,
     private val files: KokoroModelFiles = KokoroModelFiles(context),
+    private val builtIn: BuiltInModel = files.builtIn,
 ) {
     /**
      * Runs every step of [KokoroBenchmarkPlanning.plan]. [shouldStop] ends the test early with what
      * it has so far; [onProgress] is called on a background thread.
      */
     suspend fun run(
-        speakerId: Int,
-        voiceName: String,
+        voice: KokoroVoice,
         listeningRate: Float,
         narrationModelLoaded: Boolean,
         shouldStop: () -> Boolean,
@@ -56,19 +55,20 @@ internal class KokoroBenchmark(
                     appVersion = BuildConfig.VERSION_NAME,
                     startedAt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
                     device = device,
-                    voiceName = voiceName,
+                    voiceName = voice.name,
                     listeningRate = listeningRate,
                     appThreads = KokoroRuntime.threads,
                     narrationModelLoaded = narrationModelLoaded,
                     atStart = headroom(),
+                    model = builtIn.dirName,
                 )
-            val steps = KokoroBenchmarkPlanning.plan(device.cores, KokoroRuntime.threads)
+            val steps = KokoroBenchmarkPlanning.plan(device.cores, KokoroRuntime.threads, builtIn.runtime == BuiltInRuntime.PHONON)
             val runs = mutableListOf<KokoroBenchmarkRun>()
             for ((index, step) in steps.withIndex()) {
                 if (shouldStop()) break
                 val label = KokoroBenchmarkRun(step.engines, step.threads).label
                 runs +=
-                    runStep(step, speakerId, shouldStop) { detail -> onProgress("Step ${index + 1} of ${steps.size} · $label\n$detail") }
+                    runStep(step, voice, shouldStop) { detail -> onProgress("Step ${index + 1} of ${steps.size} · $label\n$detail") }
             }
             KokoroBenchmarkResult(
                 setup = setup,
@@ -83,12 +83,12 @@ internal class KokoroBenchmark(
     @Suppress("TooGenericExceptionCaught")
     private suspend fun runStep(
         step: KokoroBenchmarkStep,
-        speakerId: Int,
+        voice: KokoroVoice,
         shouldStop: () -> Boolean,
         onProgress: (String) -> Unit,
     ): KokoroBenchmarkRun {
         val failed = KokoroBenchmarkRun(step.engines, step.threads)
-        val engines = ArrayList<OfflineTts>()
+        val engines = ArrayList<BuiltInEngine>()
         try {
             onProgress("Loading the model")
             val memoryBefore = Debug.getPss()
@@ -99,15 +99,15 @@ internal class KokoroBenchmark(
                 if (it > 0 && free < KokoroBenchmarkPlanning.PARALLEL_MIN_FREE_MB) {
                     return failed.copy(error = "skipped: only $free MB free for another copy")
                 }
-                engines += loadKokoroTts(files, step.threads) ?: return failed.copy(error = "the model failed to load")
+                engines += loadBuiltInEngine(files, step.threads) ?: return failed.copy(error = "the model failed to load")
             }
             val loadMs = SystemClock.elapsedRealtime() - loadStart
             val modelMemoryMb = ((Debug.getPss() - memoryBefore) / KB_PER_MB / step.engines).takeIf { it > 0L }
             onProgress("Warming up")
             val warmupStart = SystemClock.elapsedRealtime()
-            onEach(engines) { it.generate(KokoroBenchmarkPlanning.WARMUP_SENTENCE, speakerId, 1.0f) }
+            onEach(engines) { it.generate(builtIn.spokenText(KokoroBenchmarkPlanning.WARMUP_SENTENCE), voice) }
             val warmup = SystemClock.elapsedRealtime() - warmupStart
-            val measured = measure(engines, speakerId, shouldStop, onProgress)
+            val measured = measure(engines, voice, shouldStop, onProgress)
             val stopped = measured.sentences.size < KokoroBenchmarkPlanning.SENTENCES.size * step.engines
             return failed.copy(
                 loadMs = loadMs,
@@ -136,8 +136,8 @@ internal class KokoroBenchmark(
 
     /** Every engine speaks the test sentences at once while the CPU is sampled. */
     private suspend fun measure(
-        engines: List<OfflineTts>,
-        speakerId: Int,
+        engines: List<BuiltInEngine>,
+        voice: KokoroVoice,
         shouldStop: () -> Boolean,
         onProgress: (String) -> Unit,
     ): Measured =
@@ -160,7 +160,7 @@ internal class KokoroBenchmark(
                     for ((index, text) in KokoroBenchmarkPlanning.SENTENCES.withIndex()) {
                         if (shouldStop()) break
                         if (engine === engines.first()) onProgress("Sentence ${index + 1} of $total")
-                        timings += timeSentence(engine, text, speakerId)
+                        timings += timeSentence(engine, text, voice)
                     }
                     timings
                 }.flatten()
@@ -172,17 +172,17 @@ internal class KokoroBenchmark(
 
     /** Runs [block] on every engine at the same time, each on its own thread. */
     private suspend fun <T> onEach(
-        engines: List<OfflineTts>,
-        block: suspend (OfflineTts) -> T,
+        engines: List<BuiltInEngine>,
+        block: suspend (BuiltInEngine) -> T,
     ): List<T> = coroutineScope { engines.map { engine -> async(Dispatchers.IO) { block(engine) } }.awaitAll() }
 
     private fun timeSentence(
-        engine: OfflineTts,
+        engine: BuiltInEngine,
         text: String,
-        speakerId: Int,
+        voice: KokoroVoice,
     ): KokoroSentenceTiming {
         val start = SystemClock.elapsedRealtime()
-        val audio = engine.generate(text, speakerId, 1.0f)
+        val audio = engine.generate(builtIn.spokenText(text), voice) ?: KokoroAudio(FloatArray(0), 0)
         val generateMs = SystemClock.elapsedRealtime() - start
         val audioMs = if (audio.sampleRate > 0) audio.samples.size * MS_PER_SECOND / audio.sampleRate else 0L
         return KokoroSentenceTiming(text.length, audioMs, generateMs)

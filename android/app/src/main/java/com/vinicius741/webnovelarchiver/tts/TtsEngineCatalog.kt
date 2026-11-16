@@ -7,6 +7,7 @@ import android.content.pm.ResolveInfo
 import android.os.Build
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelFiles
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -31,21 +32,22 @@ internal object TtsEngineCatalog {
         )
     }
 
-    /** Everything the engine setting can offer: the built-in Kokoro voices first, then installed apps. */
-    fun choices(context: Context): List<TtsEngineInfo> =
-        if (KokoroModelFiles.isDeviceSupported) {
-            listOf(TtsEngineInfo(KokoroVoices.ENGINE_ID, KokoroVoices.ENGINE_LABEL)) + installed(context)
-        } else {
-            installed(context)
-        }
+    /**
+     * The built-in models, newest first. All are offered, even one this phone cannot run itself:
+     * chapters generate on the user's computers, and live speech then borrows a saved profile.
+     */
+    fun builtInChoices(): List<TtsEngineInfo> = BuiltInModel.entries.reversed().map { TtsEngineInfo(it.engineId, it.engineLabel) }
 
-    /** Engines that can speak right now: installed apps, plus Kokoro once its model is downloaded. */
+    /** Everything the engine setting can offer: the built-in voices first, then installed apps. */
+    fun choices(context: Context): List<TtsEngineInfo> = builtInChoices() + installed(context)
+
+    /** Engines that can speak right now: installed apps, plus each built-in model once it is downloaded ([builtInInstalled]). */
     fun usablePackages(
         context: Context,
-        kokoroInstalled: Boolean,
+        builtInInstalled: Set<String>,
     ): Set<String> {
         val packages = installed(context).mapTo(mutableSetOf()) { it.packageName }
-        if (KokoroModelFiles.isDeviceSupported && kokoroInstalled) packages += KokoroVoices.ENGINE_ID
+        packages += builtInInstalled.filter { id -> BuiltInModel.forEngine(id)?.let(KokoroModelFiles::isDeviceSupported) == true }
         return packages
     }
 
@@ -53,8 +55,8 @@ internal object TtsEngineCatalog {
     fun usableEngine(
         context: Context,
         requested: String?,
-        kokoroInstalled: Boolean,
-    ): String? = requested?.let { TtsEnginePlanning.resolve(it, usablePackages(context, kokoroInstalled)) }
+        builtInInstalled: Set<String>,
+    ): String? = requested?.let { TtsEnginePlanning.resolve(it, usablePackages(context, builtInInstalled)) }
 
     /** The engine chosen in the phone's text-to-speech settings, when Android says. */
     fun phoneDefault(context: Context): String? =
@@ -67,7 +69,7 @@ internal object TtsEngineCatalog {
         context: Context,
         enginePackage: String?,
     ): List<VoiceInfo>? {
-        if (KokoroVoices.isEngine(enginePackage)) return KokoroVoices.voiceInfos()
+        KokoroVoices.model(enginePackage)?.let { return KokoroVoices.voiceInfos(it) }
         return withTimeoutOrNull(VOICE_LOAD_TIMEOUT_MS) {
             suspendCancellableCoroutine { continuation ->
                 var tts: TextToSpeech? = null

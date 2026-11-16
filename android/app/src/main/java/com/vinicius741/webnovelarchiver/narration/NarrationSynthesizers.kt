@@ -11,9 +11,11 @@ import com.vinicius741.webnovelarchiver.tts.TtsPcmPlanning
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackError
 import com.vinicius741.webnovelarchiver.tts.TtsSettingsApplier
 import com.vinicius741.webnovelarchiver.tts.TtsWavWriter
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngines
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelFiles
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
-import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroTextPlanning
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoice
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import com.vinicius741.webnovelarchiver.tts.ttsVoiceKey
 import kotlinx.coroutines.CompletableDeferred
@@ -104,35 +106,37 @@ internal val NarrationServer.locationKey: String get() = "$id|$address|$tailscal
 
 internal class AndroidNarrationSynthesizers(
     private val context: Context,
-    private val kokoro: KokoroRuntime,
-    /** Where Kokoro chapters generate: the chosen computers, or none for this phone. */
+    private val builtIns: BuiltInEngines,
+    /** Where built-in chapters generate: the chosen computers, or none for this phone. */
     private val places: () -> NarrationPlaces = { NarrationPlaces() },
 ) : NarrationSynthesizerFactory {
     override suspend fun open(voice: NarrationVoice): NarrationSynthesizer {
-        if (!KokoroVoices.isEngine(voice.engine)) return openAndroid(voice)
+        val model = KokoroVoices.model(voice.engine) ?: return openAndroid(voice)
         val chosen = places()
-        return if (chosen.servers.isEmpty()) openKokoro(voice) else openRemote(voice, chosen)
+        return if (chosen.servers.isEmpty()) openKokoro(voice, model) else openRemote(voice, model, chosen)
     }
 
-    // Only Kokoro can run on a computer; other voices are Android apps on this phone.
+    // Only the built-in models can run on a computer; other voices are Android apps on this phone.
     override fun location(voice: NarrationVoice): String? = if (KokoroVoices.isEngine(voice.engine)) places().locationKey else null
 
     /** The chosen computers share each chapter; this phone stands in while none can generate, when allowed. */
     private suspend fun openRemote(
         voice: NarrationVoice,
+        model: BuiltInModel,
         chosen: NarrationPlaces,
     ): NarrationSynthesizer {
-        val speaker = kokoroSpeaker(voice)
+        val speaker = kokoroSpeaker(voice, model)
         val remotes =
             chosen.servers.map { server ->
-                RemoteKokoroPlace(server, speaker.speakerId) { reachServer(server) { client -> compatibleInfo(client, server) } }
+                RemoteKokoroPlace(server, speaker) { reachServer(server) { client -> compatibleInfo(client, server, speaker) } }
             }
         return NarrationPlacePool.open(
             voice = voice,
-            voiceKey = KokoroVoices.voiceKey(speaker.speakerId),
+            voiceKey = KokoroVoices.voiceKey(speaker),
             location = checkNotNull(chosen.locationKey),
             places = remotes,
-            phone = if (chosen.phoneFallback) ({ openKokoro(voice) }) else null,
+            // Standing in needs the model on this phone; without it, generation waits for a computer.
+            phone = if (chosen.phoneFallback && builtIns.isInstalled(model)) ({ openKokoro(voice, model) }) else null,
             scope = CoroutineScope(Dispatchers.IO),
         )
     }
@@ -140,26 +144,34 @@ internal class AndroidNarrationSynthesizers(
     private suspend fun compatibleInfo(
         client: NarrationServerClient,
         server: NarrationServer,
+        speaker: KokoroVoice,
     ): NarrationServerInfo =
-        client.info().also { info ->
-            NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
+        client.info(speaker.model.dirName).also { info ->
+            NarrationServerPlanning.incompatibility(info, server.name, speaker)?.let { throw NarrationServerProblem(it) }
         }
 
-    private fun kokoroSpeaker(voice: NarrationVoice) =
-        (if (voice.voiceId == null) KokoroVoices.default else KokoroVoices.forIdentifier(voice.voiceId))
-            ?: unavailable("Kokoro has no voice ${voice.voiceId}")
+    private fun kokoroSpeaker(
+        voice: NarrationVoice,
+        model: BuiltInModel,
+    ): KokoroVoice =
+        (if (voice.voiceId == null) model.defaultVoice else KokoroVoices.forIdentifier(voice.voiceId)?.takeIf { it.model == model })
+            ?: unavailable("${model.family} has no voice ${voice.voiceId}")
 
-    private suspend fun openKokoro(voice: NarrationVoice): NarrationSynthesizer {
-        if (!kokoro.isModelInstalled) unavailable("The Kokoro model is not installed")
-        val speaker = kokoroSpeaker(voice)
-        if (!kokoro.acquireFor(KokoroModelFiles(context)) { true }) {
-            unavailable("The Kokoro model could not load")
+    private suspend fun openKokoro(
+        voice: NarrationVoice,
+        model: BuiltInModel,
+    ): NarrationSynthesizer {
+        val runtime = builtIns.runtime(model)
+        if (!runtime.isModelInstalled) unavailable("The ${model.family} model is not installed")
+        val speaker = kokoroSpeaker(voice, model)
+        if (!runtime.acquireFor(KokoroModelFiles(context, model)) { true }) {
+            unavailable("The ${model.family} model could not load")
         }
-        return KokoroNarrationSynthesizer(kokoro, voice, speaker.speakerId)
+        return KokoroNarrationSynthesizer(runtime, voice, speaker)
     }
 
     private suspend fun openAndroid(voice: NarrationVoice): NarrationSynthesizer {
-        val usable = TtsEngineCatalog.usableEngine(context, voice.engine, kokoro.isModelInstalled)
+        val usable = TtsEngineCatalog.usableEngine(context, voice.engine, builtIns.installedEngines)
         if (usable != voice.engine) unavailable("The speech engine ${voice.engine} is not installed")
         val synthesizer = AndroidEngineSynthesizer(voice)
         val engine =
@@ -192,9 +204,9 @@ internal class AndroidNarrationSynthesizers(
 private class KokoroNarrationSynthesizer(
     private val runtime: KokoroRuntime,
     override val voice: NarrationVoice,
-    private val speakerId: Int,
+    private val speaker: KokoroVoice,
 ) : NarrationSynthesizer {
-    override val voiceKey: String = KokoroVoices.voiceKey(speakerId)
+    override val voiceKey: String = KokoroVoices.voiceKey(speaker)
     override val inferenceThreads: Int? get() = runtime.loadedThreads
 
     override suspend fun fitToDevice() {
@@ -208,7 +220,7 @@ private class KokoroNarrationSynthesizer(
         output: File,
     ): TtsPcmClip? {
         currentCoroutineContext().ensureActive()
-        val audio = runtime.generate(KokoroTextPlanning.spokenText(text), speakerId) ?: return null
+        val audio = runtime.generate(speaker.model.spokenText(text), speaker) ?: return null
         currentCoroutineContext().ensureActive()
         return TtsWavWriter.pcm16(audio.samples, audio.sampleRate)
     }
@@ -221,13 +233,13 @@ private class KokoroNarrationSynthesizer(
 }
 
 /**
- * Kokoro on one of the user's computers, as one place of a [NarrationPlacePool]. The server runs the
- * same model, so its clips share the phone's voice key and the two can be mixed within a chapter. The
- * text is prepared here, exactly as for the phone, so the server only speaks it.
+ * A built-in model on one of the user's computers, as one place of a [NarrationPlacePool]. The server
+ * runs the same model, so its clips share the phone's voice key and the two can be mixed within a
+ * chapter. The text is prepared here, exactly as for the phone, so the server only speaks it.
  */
 private class RemoteKokoroPlace(
     private val server: NarrationServer,
-    private val speakerId: Int,
+    private val speaker: KokoroVoice,
     /** Connects to the computer, local network first, then Tailscale. */
     private val reach: suspend () -> NarrationServerReached<NarrationServerInfo>,
 ) : NarrationPlace {
@@ -274,14 +286,14 @@ private class RemoteKokoroPlace(
     }
 
     override suspend fun synthesize(text: String): TtsPcmClip? {
-        val spoken = KokoroTextPlanning.spokenText(text)
-        // Nothing left to say (only marks): the same empty clip the phone's Kokoro gives.
+        val spoken = speaker.model.spokenText(text)
+        // Nothing left to say (only marks): the same empty clip the phone gives.
         if (spoken.isBlank()) return TtsPcmClip(REMOTE_SAMPLE_RATE, ByteArray(0))
         var retriedTransient = false
         while (true) {
             val current = client ?: throw NarrationServerProblem("Not connected to ${server.name}", transient = true)
             try {
-                return current.synthesize(spoken, speakerId)
+                return current.synthesize(spoken, speaker)
             } catch (busy: NarrationServerBusy) {
                 // The pool decides when to ask again, and may send the sentence elsewhere meanwhile.
                 throw busy

@@ -38,7 +38,7 @@ internal class TtsOutputs(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val renderScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val fileSynthesizer = TtsFileSynthesizer { host.engine }
-    private val kokoroSynthesizer = KokoroSynthesizer(host.kokoro) { host.kokoroSpeaker }
+    private val kokoroSynthesizer = KokoroSynthesizer(host::runtime) { host.kokoroSpeaker }
     private val synthesizer =
         TtsSpeechSynthesizer { text, output ->
             if (host.isBuiltin) kokoroSynthesizer.synthesize(text, output) else fileSynthesizer.synthesize(text, output)

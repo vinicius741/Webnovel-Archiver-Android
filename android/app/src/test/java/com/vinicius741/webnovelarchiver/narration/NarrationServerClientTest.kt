@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.narration
 
 import com.vinicius741.webnovelarchiver.tts.TtsWavWriter
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -133,7 +134,20 @@ class NarrationServerClientTest {
             assertEquals(960, clip.pcm.size)
             val request = requests.single()
             assertTrue(request.startsWith("POST /v1/synthesize HTTP/1.1"))
-            assertTrue(request.endsWith("""{"text":"\"Go home.\"","speakerId":1}"""))
+            assertTrue(request.endsWith("""{"text":"\"Go home.\"","model":"kokoro-en-v0_19","speakerId":1}"""))
+        }
+
+    @Test
+    fun eachModelIsNamedAndPhononVoicesGoByName() =
+        runBlocking {
+            val wav = TtsWavWriter.mono16(FloatArray(480) { 0.25f }, 24_000)
+            serve { Triple(200, "audio/wav", wav) }
+            val heart = BuiltInModel.KOKORO_V1.voices.first { it.code == "af_heart" }
+            assertNotNull(client().synthesize("Hello.", heart))
+            assertNotNull(client().synthesize("Hello.", BuiltInModel.PHONON.defaultVoice))
+            val (kokoro, phonon) = requests
+            assertTrue(kokoro.endsWith("""{"text":"Hello.","model":"kokoro-multi-lang-v1_0","speakerId":3}"""))
+            assertTrue(phonon.endsWith("""{"text":"Hello.","model":"phonon-31m-en","voice":"Harper"}"""))
         }
 
     @Test

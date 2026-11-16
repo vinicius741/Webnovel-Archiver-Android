@@ -80,7 +80,9 @@ internal fun ScreenHost.showTtsSettings(keepDraft: Boolean = false) {
                 showTtsSettings()
             }
         }
-    val subtitle = "${engineLabel.removeSuffix(" (built in)")} · ${ttsVoiceLabel(saved.voiceIdentifier).substringBefore(" (")}"
+    val subtitle = "${engineLabel.removeSuffix(
+        " (built in)",
+    )} · ${ttsVoiceLabel(saved.voiceIdentifier, saved.enginePackage).substringBefore(" (")}"
     screen(route = AppRoute.TtsSettings, title = "Voice & Speech", subtitle = subtitle, fullWidthBody = true) {
         scrollWithDockedBar(this, bar) {
             addSavedSessionCard(this)
@@ -89,14 +91,18 @@ internal fun ScreenHost.showTtsSettings(keepDraft: Boolean = false) {
             section("Voice")
             settingsGroup {
                 valueRow("Engine", engineLabel, R.drawable.wna_speaker) { showTtsEnginePicker(engines, phoneEngine, current) }
-                valueRow("Voice", ttsVoiceLabel(saved.voiceIdentifier), R.drawable.wna_record_voice) { showTtsVoicePicker(current) }
+                valueRow(
+                    "Voice",
+                    ttsVoiceLabel(saved.voiceIdentifier, saved.enginePackage),
+                    R.drawable.wna_record_voice,
+                ) { showTtsVoicePicker(current) }
                 groupStepper("Rate", "Speaking speed", current().rate.toDouble(), RATE_SPEC) { value ->
                     update { it.copy(rate = value.toFloat()) }
                     null
                 }
-                // Kokoro has no pitch control, so a stepper would do nothing.
+                // The built-in models have no pitch control, so a stepper would do nothing.
                 if (KokoroVoices.isEngine(saved.enginePackage)) {
-                    infoRow("Pitch", "Not available for Kokoro voices")
+                    infoRow("Pitch", "Not available for built-in voices")
                 } else {
                     groupStepper("Pitch", null, current().pitch.toDouble(), PITCH_SPEC) { value ->
                         update { it.copy(pitch = value.toFloat()) }
@@ -104,9 +110,9 @@ internal fun ScreenHost.showTtsSettings(keepDraft: Boolean = false) {
                     }
                 }
             }
-            if (showsKokoroCard(saved)) {
+            modelCards(saved).forEach { model ->
                 addView(
-                    kokoroModelCard().apply {
+                    kokoroModelCard(model).apply {
                         (layoutParams as LinearLayout.LayoutParams).topMargin = dp(Spacing.MD)
                     },
                 )

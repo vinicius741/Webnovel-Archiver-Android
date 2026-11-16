@@ -12,8 +12,8 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
 import com.vinicius741.webnovelarchiver.tts.TtsNarrationPlanning
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngines
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroCpu
-import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +41,7 @@ import java.util.UUID
 class NarrationCoordinator internal constructor(
     private val context: Context,
     private val repository: AppRepository,
-    private val kokoro: KokoroRuntime,
+    private val builtIns: BuiltInEngines,
     root: File = File(context.filesDir, ROOT_DIR),
     /** Starts the foreground service that keeps generation alive; false if Android refused. */
     private val startService: () -> Boolean = { false },
@@ -59,7 +59,7 @@ class NarrationCoordinator internal constructor(
             store = store,
             queue = queue,
             source = source,
-            synthesizers = AndroidNarrationSynthesizers(context, kokoro) { queue.state.value.places },
+            synthesizers = AndroidNarrationSynthesizers(context, builtIns) { queue.state.value.places },
             onPublished = ::onPublished,
             generationAllowed = generationAllowed,
         )
@@ -132,9 +132,10 @@ class NarrationCoordinator internal constructor(
                 requested != null -> requested
                 else -> TtsEngineCatalog.phoneDefault(context) ?: GOOGLE_TTS
             }
-        if (KokoroVoices.isEngine(engine)) {
-            val voice = KokoroVoices.forIdentifier(settings.voiceIdentifier) ?: KokoroVoices.default
-            return NarrationVoice(engine, KokoroVoices.identifier(voice), 1f, "${voice.name.substringBefore(" (")} · Kokoro")
+        val model = KokoroVoices.model(engine)
+        if (model != null) {
+            val voice = KokoroVoices.voiceFor(model, settings.voiceIdentifier)
+            return NarrationVoice(engine, KokoroVoices.identifier(voice), 1f, "${voice.name.substringBefore(" (")} · ${model.family}")
         }
         val voiceId = settings.voiceIdentifier?.takeUnless(KokoroVoices::isKokoroIdentifier)
         val engineLabel = TtsEngineCatalog.installed(context).firstOrNull { it.packageName == engine }?.label ?: engine
@@ -452,12 +453,14 @@ class NarrationCoordinator internal constructor(
      */
     suspend fun testServer(server: NarrationServer): Result<String> {
         var route: NarrationServerRoute? = null
+        // The voice chapters use now, when it is a built-in one: that is the model the computer must have.
+        val voice = KokoroVoices.forIdentifier(currentVoice().voiceId) ?: KokoroVoices.default
         val result =
             runCatching {
                 val reached =
                     reachServer(server) { client ->
-                        client.info().also { info ->
-                            NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
+                        client.info(voice.model.dirName).also { info ->
+                            NarrationServerPlanning.incompatibility(info, server.name, voice)?.let { throw NarrationServerProblem(it) }
                         }
                     }
                 route = reached.route
@@ -470,7 +473,7 @@ class NarrationCoordinator internal constructor(
                         coroutineScope {
                             (0 until info.workers.coerceIn(1, NarrationServerPlanning.MAX_IN_FLIGHT))
                                 .map { index ->
-                                    async { client.synthesize(TEST_SENTENCES[index % TEST_SENTENCES.size], KokoroVoices.default.speakerId) }
+                                    async { client.synthesize(TEST_SENTENCES[index % TEST_SENTENCES.size], voice) }
                                 }.awaitAll()
                         }
                     if (clips.any { it == null }) throw NarrationServerProblem("${server.name} connected but could not generate audio")
@@ -479,6 +482,7 @@ class NarrationCoordinator internal constructor(
                         reached.route,
                         clips.sumOf { it!!.durationMs },
                         System.currentTimeMillis() - started,
+                        voice.model.dirName,
                     )
                 } finally {
                     client.close()

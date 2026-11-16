@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.narration
 
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -33,6 +35,31 @@ class NarrationServerPlanningTest {
         assertNull(NarrationServerPlanning.incompatibility(good, "Mac"))
         assertNotNull(NarrationServerPlanning.incompatibility(good.copy(model = "kokoro-multi-lang-v1_0"), "Mac"))
         assertNotNull(NarrationServerPlanning.incompatibility(good.copy(protocol = 2), "Mac"))
+    }
+
+    @Test
+    fun aServerMustHaveTheVoicesModel() {
+        val heart = BuiltInModel.KOKORO_V1.defaultVoice
+        val harper = BuiltInModel.PHONON.defaultVoice
+        // A server before 3.0 lists no models and runs only kokoro-en-v0_19.
+        val old = NarrationServerInfo(protocol = 1, model = "kokoro-en-v0_19", workers = 4)
+        assertNull(NarrationServerPlanning.incompatibility(old, "Mac", KokoroVoices.default))
+        assertNotNull(NarrationServerPlanning.incompatibility(old, "Mac", heart))
+        val all =
+            old.copy(
+                models =
+                    listOf(
+                        NarrationServerModel("kokoro-en-v0_19"),
+                        NarrationServerModel("kokoro-multi-lang-v1_0"),
+                        NarrationServerModel("phonon-31m-en", listOf("Everly", "Harper")),
+                    ),
+            )
+        assertNull(NarrationServerPlanning.incompatibility(all, "Mac", heart))
+        assertNull(NarrationServerPlanning.incompatibility(all, "Mac", harper))
+        val juniper = BuiltInModel.PHONON.voices.first { it.code == "Juniper" }
+        assertNotNull(NarrationServerPlanning.incompatibility(all, "Mac", juniper))
+        // A 3.0 server without the v0.19 model cannot generate the original voice.
+        assertNotNull(NarrationServerPlanning.incompatibility(all.copy(models = all.models!!.drop(1)), "Mac", KokoroVoices.default))
     }
 
     @Test

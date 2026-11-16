@@ -1,9 +1,11 @@
 package com.vinicius741.webnovelarchiver.tts.kokoro
 
+import android.system.Os
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
+import com.vinicius741.webnovelarchiver.tts.phonon.PhononTTS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -18,22 +20,37 @@ internal class KokoroAudio(
     val sampleRate: Int,
 )
 
+/** A loaded built-in model's native engine: sherpa-onnx's Kokoro, or Phonon's runtime. */
+internal interface BuiltInEngine {
+    /** Speaks [text] as [voice] at 1x. */
+    fun generate(
+        text: String,
+        voice: KokoroVoice,
+    ): KokoroAudio?
+
+    fun release()
+}
+
 /**
- * The loaded Kokoro model, shared by everything that speaks with it (playback and the settings
- * sample), since each copy holds several hundred MB; `AppContainer` owns the one instance. It loads
- * on the first [acquire] and is freed when the last user releases it. All access is serialized: the
- * native engine is not re-entrant, and freeing it mid-sentence would crash.
+ * A loaded built-in model ([builtIn]), shared by everything that speaks with it (playback, narration
+ * and the settings sample), since each copy holds up to several hundred MB; `AppContainer` owns one
+ * instance per model. It loads on the first [acquire] and is freed when the last user releases it.
+ * All access is serialized: the native engines are not re-entrant, and freeing one mid-sentence
+ * would crash.
  */
-class KokoroRuntime(
+class KokoroRuntime internal constructor(
     /** Whether the model is downloaded, answered from memory (see `KokoroModelInstaller.isInstalled`). */
-    private val modelInstalled: () -> Boolean = { false },
+    private val modelInstalled: () -> Boolean,
+    internal val builtIn: BuiltInModel,
 ) {
+    constructor(modelInstalled: () -> Boolean = { false }) : this(modelInstalled, BuiltInModel.KOKORO_V019)
+
     internal val isModelInstalled: Boolean get() = modelInstalled()
 
     /** Freeing waits for a sentence in progress, so it never runs on the caller's (main) thread. */
     private val releaser = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "kokoro-release") }
     private val lock = Any()
-    private var tts: OfflineTts? = null
+    private var tts: BuiltInEngine? = null
     private var users = 0
     private var loadedFiles: KokoroModelFiles? = null
 
@@ -46,7 +63,9 @@ class KokoroRuntime(
     internal fun acquire(files: KokoroModelFiles): Boolean =
         synchronized(lock) {
             if (tts == null) {
-                val count = KokoroThreads.forNow()
+                // Phonon's runtime sizes its pool once per process: always the same count, so the
+                // number reported is the one it really uses.
+                val count = if (builtIn.runtime == BuiltInRuntime.PHONON) PHONON_THREADS else KokoroThreads.forNow()
                 tts = load(files, count) ?: return false
                 loadedFiles = files
                 loadedThreads = count
@@ -90,17 +109,16 @@ class KokoroRuntime(
         }
     }
 
-    /** Speaks [text] as [speakerId] at 1x; null if the model is not loaded or the engine failed. */
+    /** Speaks [text] as [voice] at 1x; null if the model is not loaded or the engine failed. */
     internal fun generate(
         text: String,
-        speakerId: Int,
+        voice: KokoroVoice,
     ): KokoroAudio? =
         synchronized(lock) {
             val engine = tts ?: return null
-            runCatching { engine.generate(text, speakerId, 1.0f) }
-                .onFailure { Timber.w(it, "Kokoro generation failed") }
+            runCatching { engine.generate(text, voice) }
+                .onFailure { Timber.w(it, "%s generation failed", builtIn.dirName) }
                 .getOrNull()
-                ?.let { KokoroAudio(it.samples, it.sampleRate) }
         }
 
     /** Whether narration or the settings sample currently holds the model in memory. */
@@ -118,7 +136,8 @@ class KokoroRuntime(
             val files = loadedFiles ?: return false
             val previous = loadedThreads ?: return false
             val wanted = KokoroThreads.forNow()
-            if (wanted == previous) return false
+            // Phonon's runtime sizes its thread pool once per process, so a reload would change nothing.
+            if (wanted == previous || builtIn.runtime == BuiltInRuntime.PHONON) return false
             // One copy at a time: two would need over a gigabyte at once.
             engine.release()
             val reloaded = load(files, wanted)
@@ -131,7 +150,7 @@ class KokoroRuntime(
     private fun load(
         files: KokoroModelFiles,
         count: Int,
-    ): OfflineTts? = loadKokoroTts(files, count)
+    ): BuiltInEngine? = loadBuiltInEngine(files, count)
 
     internal companion object {
         /**
@@ -144,9 +163,86 @@ class KokoroRuntime(
 }
 
 /**
- * Loads a Kokoro engine that computes on [numThreads] threads (seconds; off the main thread); null
- * if it cannot load. An UnsatisfiedLinkError, on a device without the native code, must surface as
- * "cannot load", not a crash.
+ * Loads [files]' model on [numThreads] threads (seconds; off the main thread); null if it cannot
+ * load. An UnsatisfiedLinkError, on a device without the native code, must surface as "cannot load",
+ * not a crash.
+ */
+@Suppress("TooGenericExceptionCaught")
+internal fun loadBuiltInEngine(
+    files: KokoroModelFiles,
+    numThreads: Int,
+): BuiltInEngine? =
+    when (files.builtIn.runtime) {
+        BuiltInRuntime.SHERPA_KOKORO -> loadKokoroTts(files, numThreads)?.let(::SherpaKokoroEngine)
+        BuiltInRuntime.PHONON ->
+            try {
+                // A CPU without the library's instructions would crash the whole process.
+                if (!KokoroModelFiles.isDeviceSupported(BuiltInModel.PHONON)) return null
+                // Read once, when the runtime first builds its thread pool; later loads keep that size,
+                // so it is always set to one per fast core (the speed test's other counts are ignored).
+                Os.setenv("RAYON_NUM_THREADS", PHONON_THREADS.toString(), true)
+                PhononEngine(PhononTTS(files.dir.absolutePath, "en"))
+            } catch (error: Throwable) {
+                Timber.e(error, "Phonon model failed to load")
+                null
+            }
+    }
+
+private class SherpaKokoroEngine(
+    private val tts: OfflineTts,
+) : BuiltInEngine {
+    override fun generate(
+        text: String,
+        voice: KokoroVoice,
+    ): KokoroAudio {
+        val audio = tts.generate(text, voice.speakerId, 1.0f)
+        return KokoroAudio(audio.samples, audio.sampleRate)
+    }
+
+    override fun release() = tts.release()
+}
+
+/** Phonon through its C library. Its voice is part of the loaded handle, so it is switched only on change. */
+private class PhononEngine(
+    private val tts: PhononTTS,
+) : BuiltInEngine {
+    private var voice: String? = null
+
+    override fun generate(
+        text: String,
+        voice: KokoroVoice,
+    ): KokoroAudio {
+        // Nothing to say (only marks): the same empty clip a server gives.
+        if (text.isBlank()) return KokoroAudio(FloatArray(0), PHONON_SAMPLE_RATE)
+        if (this.voice != voice.code) {
+            tts.setVoice(voice.code)
+            this.voice = voice.code
+        }
+        val chunks = mutableListOf<FloatArray>()
+        tts.speak(text) { pcm ->
+            chunks += pcm
+            true
+        }
+        val samples = FloatArray(chunks.sumOf { it.size })
+        var at = 0
+        chunks.forEach { chunk ->
+            chunk.copyInto(samples, at)
+            at += chunk.size
+        }
+        return KokoroAudio(samples, PHONON_SAMPLE_RATE)
+    }
+
+    override fun release() = tts.close()
+
+    private companion object {
+        /** Phonon always speaks at 24 kHz (ptts.h). */
+        const val PHONON_SAMPLE_RATE = 24_000
+    }
+}
+
+/**
+ * Loads a sherpa-onnx Kokoro engine that computes on [numThreads] threads (seconds; off the main
+ * thread); null if it cannot load. Kokoro v1.0 reads English through its US lexicon first.
  */
 @Suppress("TooGenericExceptionCaught")
 internal fun loadKokoroTts(
@@ -166,6 +262,7 @@ internal fun loadKokoroTts(
                                     voices = files.voices.absolutePath,
                                     tokens = files.tokens.absolutePath,
                                     dataDir = files.dataDir.absolutePath,
+                                    lexicon = if (files.builtIn == BuiltInModel.KOKORO_V1) files.lexicon.absolutePath else "",
                                 ),
                             numThreads = numThreads,
                             debug = false,
@@ -177,3 +274,9 @@ internal fun loadKokoroTts(
         Timber.e(error, "Kokoro model failed to load")
         null
     }
+
+/**
+ * Phonon's compute threads: one per fast core of the phone. Its runtime reads this once per process
+ * (`RAYON_NUM_THREADS`), so it is fixed rather than refitted to the cores Android allows at the moment.
+ */
+internal val PHONON_THREADS: Int by lazy { KokoroThreads.forThisPhone }

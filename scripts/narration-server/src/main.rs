@@ -1,13 +1,15 @@
-//! Kokoro narration server: generates chapter audio for the Webnovel Archiver app over LAN or
-//! Tailscale, with the model the app runs on the phone (sherpa-onnx 1.12.21, kokoro-en-v0_19).
+//! Narration server: generates chapter audio for the Webnovel Archiver app over LAN or Tailscale,
+//! with the models the app runs on the phone: Kokoro v0.19 and v1.0 (sherpa-onnx 1.12.21) and
+//! Phonon 31M (ptts 0.7.1).
 //!
-//! One shared model serves several sentences at once, and a memory governor shrinks, recycles or
-//! unloads it as the machine runs low. Protocol 1, every request but /health needs
-//! `Authorization: Bearer <token>`:
-//!   GET  /health         -> {"ok": true}
-//!   GET  /v1/info        -> {protocol, model, sampleRate, workers, threadsPerWorker, name, server, version, memory}
-//!   GET  /v1/status      -> memory, model and work counters
-//!   POST /v1/synthesize  -> body {"text", "speakerId"}; 200 audio/wav (mono 16-bit PCM)
+//! Each installed model is shared by several sentences at once, loads when a chapter first asks for
+//! it, and unloads after idling; a memory governor shrinks, recycles or unloads models as the machine
+//! runs low. Protocol 1, every request but /health needs `Authorization: Bearer <token>`:
+//!   GET  /health                -> {"ok": true}
+//!   GET  /v1/info[?model=NAME]  -> {protocol, model, models, sampleRate, workers, threadsPerWorker, name, server, version, memory}
+//!   GET  /v1/status             -> memory, model and work counters, and per model under `models`
+//!   POST /v1/synthesize         -> body {"text", "model", "speakerId" (Kokoro) or "voice" (Phonon)};
+//!                                  200 audio/wav (mono 16-bit PCM). No model means kokoro-en-v0_19.
 //! Errors are JSON {"error"}: 400 bad request, 401 bad token, 500 generation failed, and 503 with
 //! `Retry-After` while memory is short. See docs/tts/remote-narration-servers.md.
 
@@ -15,17 +17,21 @@ mod bench_text;
 mod engine;
 mod http;
 mod memory;
+mod models;
+mod phonon;
 mod sherpa;
 
 use engine::{log, Engine, Settings};
 use memory::{Policy, MIB};
+use models::{Kind, VoiceRef};
 use std::net::{TcpListener, UdpSocket};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const USAGE: &str = "Usage: narration-server [options]
-  --model-dir DIR        kokoro-en-v0_19 folder (default: ../models/kokoro-en-v0_19 next to the binary)
+  --models-dir DIR       folder with one subfolder per model (default: ../models next to the binary)
+  --model-dir DIR        kokoro-en-v0_19 folder, if it is elsewhere
   --token-file FILE      token file (default: ../token next to the binary)
   --host ADDR            listen address (default 0.0.0.0)
   --port N               port (default 8790)
@@ -37,10 +43,13 @@ const USAGE: &str = "Usage: narration-server [options]
   --idle-unload-s N      unload the model after this many idle seconds (default 300; 0 = never)
   --verbose              log every request
   --addresses            print this machine's addresses and exit
-  --bench [ROUNDS]       measure speed and memory at each slot count, then exit";
+  --bench [ROUNDS]       measure speed and memory at each slot count, then exit
+  --model NAME           the model --bench measures (default kokoro-en-v0_19)";
 
 struct Args {
-    model_dir: PathBuf,
+    models_dir: PathBuf,
+    legacy_dir: Option<PathBuf>,
+    bench_model: Kind,
     token_file: PathBuf,
     host: String,
     port: u16,
@@ -63,7 +72,9 @@ fn parse_args() -> Result<Args, String> {
         .unwrap_or_else(|| PathBuf::from("."));
     let (threads, slots) = default_layout();
     let mut args = Args {
-        model_dir: home.join("models").join(http::MODEL_NAME),
+        models_dir: home.join("models"),
+        legacy_dir: None,
+        bench_model: http::LEGACY_MODEL,
         token_file: home.join("token"),
         host: "0.0.0.0".into(),
         port: 8790,
@@ -82,7 +93,12 @@ fn parse_args() -> Result<Args, String> {
         let mut value = |name: &str| raw.next().ok_or(format!("{name} needs a value"));
         let number = |text: String, name: &str| text.parse::<u64>().map_err(|_| format!("{name} needs a number"));
         match flag.as_str() {
-            "--model-dir" => args.model_dir = PathBuf::from(value(&flag)?),
+            "--models-dir" => args.models_dir = PathBuf::from(value(&flag)?),
+            "--model-dir" => args.legacy_dir = Some(PathBuf::from(value(&flag)?)),
+            "--model" => {
+                let name = value(&flag)?;
+                args.bench_model = Kind::from_name(&name).ok_or(format!("No model {name}"))?;
+            }
             "--token-file" => args.token_file = PathBuf::from(value(&flag)?),
             "--host" => args.host = value(&flag)?,
             "--port" => args.port = number(value(&flag)?, &flag)?.try_into().map_err(|_| "Bad port")?,
@@ -226,6 +242,15 @@ fn output_within(command: &mut std::process::Command, limit: Duration) -> Option
     }
 }
 
+impl Args {
+    fn model_dir(&self, kind: Kind) -> PathBuf {
+        match (&self.legacy_dir, kind) {
+            (Some(dir), Kind::KokoroV019) => dir.clone(),
+            _ => self.models_dir.join(kind.name()),
+        }
+    }
+}
+
 fn policy(args: &Args) -> Policy {
     let total = memory::snapshot().total;
     let mut policy = Policy::for_machine(total, args.max_slots);
@@ -254,6 +279,8 @@ fn main() {
         return;
     }
     memory::tune_allocator();
+    // Phonon's runtime computes on its own pool; one thread per performance core, like Kokoro.
+    xn::set_num_threads(args.threads);
     if let Some(rounds) = args.bench {
         bench(&args, rounds);
         return;
@@ -265,21 +292,30 @@ fn main() {
     if token.len() < 8 {
         fail("The token must be at least 8 characters.");
     }
-    if !args.model_dir.join("model.onnx").is_file() {
-        fail(&format!("Model not found in {}. Run setup.sh first.", args.model_dir.display()));
-    }
     let policy = policy(&args);
-    let settings = Settings {
-        model_dir: args.model_dir.clone(),
-        threads: args.threads,
-        policy,
-        idle_unload: if args.idle_unload == 0 { Duration::MAX } else { Duration::from_secs(args.idle_unload) },
-        verbose: args.verbose,
-    };
+    let installed: Vec<Kind> = Kind::ALL.into_iter().filter(|kind| kind.installed(&args.model_dir(*kind))).collect();
+    if installed.is_empty() {
+        fail(&format!("No model found in {}. Run setup.sh first.", args.models_dir.display()));
+    }
+    let engines: Vec<Engine> = installed
+        .iter()
+        .map(|kind| {
+            Engine::new(Settings {
+                kind: *kind,
+                model_dir: args.model_dir(*kind),
+                threads: args.threads,
+                policy,
+                idle_unload: if args.idle_unload == 0 { Duration::MAX } else { Duration::from_secs(args.idle_unload) },
+                verbose: args.verbose,
+            })
+        })
+        .collect();
+    let phonon_voices = Kind::Phonon.named_voices(&args.model_dir(Kind::Phonon));
     let listener = TcpListener::bind((args.host.as_str(), args.port))
         .unwrap_or_else(|error| fail(&format!("Cannot listen on port {}: {error}", args.port)));
     let shared = Arc::new(http::Shared {
-        engine: Engine::new(settings),
+        engines,
+        phonon_voices,
         token,
         name: args.name.clone(),
         threads: args.threads,
@@ -290,14 +326,20 @@ fn main() {
     std::thread::Builder::new()
         .name("governor".into())
         .spawn(move || loop {
-            governed.engine.govern();
+            let snapshot = memory::snapshot();
+            let loaded: Vec<bool> = governed.engines.iter().map(|engine| engine.is_loaded()).collect();
+            for (index, engine) in governed.engines.iter().enumerate() {
+                let others_loaded = loaded.iter().enumerate().any(|(other, &is)| other != index && is);
+                engine.govern_with(snapshot, others_loaded);
+            }
             std::thread::sleep(Duration::from_secs(1));
         })
         .unwrap_or_else(|_| fail("Could not start the memory governor"));
     log(&format!(
-        "Narration server '{}' ready on port {} (sherpa-onnx {}, up to {} sentences at once x {} threads; reserve {} MB, stop below {} MB; model loads on first use)",
+        "Narration server '{}' ready on port {} with {} (sherpa-onnx {}, ptts 0.7.1; up to {} sentences at once x {} threads; reserve {} MB, stop below {} MB; models load on first use)",
         args.name,
         args.port,
+        installed.iter().map(|kind| kind.name()).collect::<Vec<_>>().join(", "),
         sherpa::version(),
         policy.max_slots,
         args.threads,
@@ -322,8 +364,20 @@ fn fail(message: &str) -> ! {
 /// Speed and peak memory at 1..=max slots on one shared model, to pick --max-slots and --threads.
 fn bench(args: &Args, rounds: usize) {
     use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+    let kind = args.bench_model;
+    let dir = args.model_dir(kind);
+    let voice = match kind {
+        Kind::KokoroV019 => VoiceRef::Speaker(1),
+        Kind::KokoroV1 => VoiceRef::Speaker(3),
+        Kind::Phonon => match kind.named_voices(&dir).into_iter().next() {
+            Some(name) => VoiceRef::Named(name),
+            None => fail(&format!("No voices in {}", dir.display())),
+        },
+    };
     println!(
-        "sherpa-onnx {}, {} threads, {} round(s) of {} sentences",
+        "{} ({:?}), sherpa-onnx {}, {} threads, {} round(s) of {} sentences",
+        kind.name(),
+        voice,
         sherpa::version(),
         args.threads,
         rounds,
@@ -333,14 +387,15 @@ fn bench(args: &Args, rounds: usize) {
     println!("slots  speed   peak MB");
     for slots in 1..=args.max_slots {
         let before = memory::snapshot().own;
-        let tts = match sherpa::Tts::load(&args.model_dir, args.threads) {
-            Ok(tts) => Arc::new(tts),
+        let tts = match kind.load(&dir, args.threads) {
+            Ok(tts) => tts,
             Err(error) => fail(&error),
         };
-        let _ = tts.generate("Warm up.", 0);
+        let _ = tts.generate("Warm up.", &voice);
         let next = AtomicUsize::new(0);
         let samples = AtomicU64::new(0);
         let peak = AtomicU64::new(0);
+        let sample_rate = AtomicU64::new(24_000);
         let done = AtomicBool::new(false);
         let started = Instant::now();
         std::thread::scope(|scope| {
@@ -349,8 +404,9 @@ fn bench(args: &Args, rounds: usize) {
                     scope.spawn(|| loop {
                         let index = next.fetch_add(1, Ordering::SeqCst);
                         let Some(text) = work.get(index) else { break };
-                        if let Ok((_, pcm)) = tts.generate(text, 1) {
+                        if let Ok((rate, pcm)) = tts.generate(text, &voice) {
                             samples.fetch_add(pcm.len() as u64 / 2, Ordering::SeqCst);
+                            sample_rate.store(u64::from(rate), Ordering::SeqCst);
                         }
                     })
                 })
@@ -366,7 +422,7 @@ fn bench(args: &Args, rounds: usize) {
             }
             done.store(true, Ordering::SeqCst);
         });
-        let audio = samples.load(Ordering::SeqCst) as f64 / f64::from(tts.sample_rate.max(1));
+        let audio = samples.load(Ordering::SeqCst) as f64 / sample_rate.load(Ordering::SeqCst).max(1) as f64;
         let speed = audio / started.elapsed().as_secs_f64();
         println!("{slots:>5}  {speed:>5.2}x  {:>7}", peak.load(Ordering::SeqCst).saturating_sub(before) / MIB + before / MIB);
         drop(tts);

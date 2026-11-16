@@ -36,6 +36,8 @@ internal data class KokoroBenchmarkSetup(
     /** Whether narration already held its own copy of the model, which competes for memory. */
     val narrationModelLoaded: Boolean,
     val atStart: KokoroHeadroom,
+    /** The model measured, by its folder name (see [BuiltInModel.dirName]). */
+    val model: String = KokoroModel.DIR_NAME,
 )
 
 internal data class KokoroSentenceTiming(
@@ -144,9 +146,13 @@ internal object KokoroBenchmarkPlanning {
     fun plan(
         cores: Int,
         appThreads: Int,
+        fixedThreads: Boolean = false,
     ): List<KokoroBenchmarkStep> {
         val usable = cores.coerceAtLeast(1)
         val app = KokoroBenchmarkStep(1, appThreads)
+        // Phonon's runtime sizes its thread pool once per app process, so other thread counts would
+        // only repeat the first one under another name: its own setting, two copies, then it again.
+        if (fixedThreads) return listOfNotNull(app, KokoroBenchmarkStep(2, appThreads).takeIf { usable >= 4 }, app)
         val others = CANDIDATE_THREADS.filter { it <= usable && it != appThreads }.map { KokoroBenchmarkStep(1, it) }
         val parallel = (usable / 2).coerceAtMost(MAX_PARALLEL_THREADS).takeIf { it >= 1 && usable >= 4 }?.let { KokoroBenchmarkStep(2, it) }
         val between = others + listOfNotNull(parallel)
@@ -201,10 +207,11 @@ internal object KokoroBenchmarkPlanning {
     fun verdict(
         run: KokoroBenchmarkRun?,
         rate: Float,
+        family: String = "Kokoro",
     ): String {
         if (run == null || !run.completed) return "No result: the test did not finish a run with the app's setting."
         val needed = rate.toDouble()
-        val made = "With ${run.threads} threads (the app's setting), Kokoro makes audio ${times(run.speed)} as fast as it plays."
+        val made = "With ${run.threads} threads (the app's setting), $family makes audio ${times(run.speed)} as fast as it plays."
         return when {
             run.speed < needed ->
                 "$made At your ${times(needed)} listening speed it needs ${times(needed)}, so playback " +

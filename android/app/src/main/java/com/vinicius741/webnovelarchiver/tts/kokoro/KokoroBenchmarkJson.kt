@@ -25,7 +25,7 @@ internal object KokoroBenchmarkJson {
                     .put("cores", device.cores)
                     .put("coreMaxMhz", JSONArray(device.coreMaxMhz))
                     .put("totalRamMb", device.totalRamMb),
-            ).put("model", KokoroModel.DIR_NAME)
+            ).put("model", setup.model)
             .put("voice", setup.voiceName)
             .put("listeningRate", setup.listeningRate.toDouble())
             .put("appThreads", setup.appThreads)

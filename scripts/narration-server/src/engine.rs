@@ -1,4 +1,5 @@
-//! One shared Kokoro model, its generation slots, and the memory governor that sizes them.
+//! One shared model, its generation slots, and the memory governor that sizes them. The server has
+//! one [Engine] per installed model (see `models.rs`); each loads, shrinks and unloads on its own.
 //!
 //! Requests take a slot ([Engine::acquire]) and generate on the shared model. The governor
 //! ([Engine::govern], once a second) reads the machine's memory and sets how many slots exist:
@@ -11,14 +12,11 @@
 //! An idle model is unloaded too, so a server nobody uses holds a few MB.
 
 use crate::memory::{self, Budget, Level, Policy, Snapshot, MIB};
-use crate::sherpa::Tts;
+use crate::models::{Kind, Synth};
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-/// Memory a freshly loaded model needs before its first sentence, measured: ~400 MB weights and
-/// session, ~450 MB more for the first sentence's working memory.
-const DEFAULT_LOAD_COST: u64 = 900 * MIB;
 /// After a critical stop, memory must stay out of the critical zone this long before loading again.
 /// It doubles (up to [MAX_COOLDOWN]) each time a reload is followed by another critical stop within
 /// [RELOAD_REGRET], so a machine hovering at the line is not hit by a reload every few seconds.
@@ -33,6 +31,7 @@ const LOW_BEFORE_SHRINK: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug)]
 pub struct Settings {
+    pub kind: Kind,
     pub model_dir: PathBuf,
     pub threads: usize,
     pub policy: Policy,
@@ -63,7 +62,7 @@ pub struct Counters {
 }
 
 struct State {
-    tts: Option<Arc<Tts>>,
+    tts: Option<Arc<dyn Synth>>,
     loading: bool,
     load_error: Option<String>,
     active: usize,
@@ -101,11 +100,11 @@ pub struct Engine {
 /// A slot on the model; dropping it frees the slot.
 pub struct Lease<'a> {
     engine: &'a Engine,
-    tts: Option<Arc<Tts>>,
+    tts: Option<Arc<dyn Synth>>,
 }
 
 impl Lease<'_> {
-    pub fn tts(&self) -> &Tts {
+    pub fn tts(&self) -> &dyn Synth {
         self.tts.as_deref().expect("a live lease holds the model")
     }
 }
@@ -130,6 +129,7 @@ impl Engine {
     pub fn new(settings: Settings) -> Engine {
         let snapshot = memory::snapshot();
         let budget = memory::decide(&snapshot, &settings.policy, Level::Normal, 0, memory::DEFAULT_SLOT_COST);
+        let load_cost = settings.kind.default_load_cost();
         Engine {
             settings,
             state: Mutex::new(State {
@@ -146,7 +146,7 @@ impl Engine {
                 before_load: 0,
                 peak: 0,
                 slot_cost: memory::DEFAULT_SLOT_COST,
-                load_cost: DEFAULT_LOAD_COST,
+                load_cost,
                 critical_since: None,
                 low_since: None,
                 cooldown: CRITICAL_COOLDOWN,
@@ -270,14 +270,14 @@ impl Engine {
         drop(state);
         let before = memory::snapshot().own;
         let started = Instant::now();
-        let loaded = Tts::load(&self.settings.model_dir, self.settings.threads);
+        let loaded = self.settings.kind.load(&self.settings.model_dir, self.settings.threads);
         let own = memory::snapshot().own;
         let mut state = self.lock();
         state.loading = false;
         match loaded {
             Ok(tts) => {
-                log(&format!("Model loaded in {} ms ({} MB in use)", started.elapsed().as_millis(), own / MIB));
-                state.tts = Some(Arc::new(tts));
+                log(&format!("{} loaded in {} ms ({} MB in use)", self.name(), started.elapsed().as_millis(), own / MIB));
+                state.tts = Some(tts);
                 state.load_error = None;
                 state.load_failures = 0;
                 state.before_load = before;
@@ -290,10 +290,11 @@ impl Engine {
                 // Costs are re-learned from this load's peaks, so one unusual chapter does not
                 // lower the slot count forever.
                 state.slot_cost = ((state.slot_cost + memory::DEFAULT_SLOT_COST) / 2).max(memory::DEFAULT_SLOT_COST);
-                state.load_cost = ((state.load_cost + DEFAULT_LOAD_COST) / 2).max(DEFAULT_LOAD_COST);
+                let default = self.settings.kind.default_load_cost();
+                state.load_cost = ((state.load_cost + default) / 2).max(default);
             }
             Err(error) => {
-                log(&format!("Model failed to load: {error}"));
+                log(&format!("{} failed to load: {error}", self.name()));
                 state.load_error = Some(error);
                 state.load_failures += 1;
             }
@@ -327,17 +328,46 @@ impl Engine {
         drop(tts);
         memory::release_free_heap();
         let own = memory::snapshot().own;
-        log(&format!("Model unloaded ({why}); {} MB in use", own / MIB));
+        log(&format!("{} unloaded ({why}); {} MB in use", self.name(), own / MIB));
         self.changed.notify_all();
     }
 
-    /// One governor step: read memory, set the slots, recycle or unload when needed.
+    pub fn name(&self) -> &'static str {
+        self.settings.kind.name()
+    }
+
+    /// One governor step on a fresh memory reading, for a server with one model.
+    #[allow(dead_code)]
     pub fn govern(&self) {
-        let snapshot = memory::snapshot();
+        self.govern_with(memory::snapshot(), false);
+    }
+
+    /// Whether this engine holds its model, or is loading it.
+    pub fn is_loaded(&self) -> bool {
+        let state = self.lock();
+        state.tts.is_some() || state.loading
+    }
+
+    /// Unloads the model if nothing is using or waiting for it: another model is about to be needed,
+    /// and two copies would share one machine's memory. Returns whether it unloaded.
+    pub fn unload_if_idle(&self, why: &str) -> bool {
+        let state = self.lock();
+        if state.tts.is_none() || state.loading || state.active > 0 || state.waiting > 0 {
+            return false;
+        }
+        drop(state);
+        self.unload(why);
+        true
+    }
+
+    /// One governor step: given the machine's memory, set the slots, recycle or unload when needed.
+    /// The process's memory is shared by every model, so while [others_loaded] it cannot tell what
+    /// this model costs, and does not learn.
+    pub fn govern_with(&self, snapshot: Snapshot, others_loaded: bool) {
         let mut state = self.lock();
         let previous = state.budget;
         state.snapshot = snapshot;
-        if state.tts.is_some() {
+        if state.tts.is_some() && !others_loaded {
             state.peak = state.peak.max(snapshot.own);
             // Learn what loading and each extra slot really cost here, from the peak since loading.
             let grown_by = state.peak.saturating_sub(state.before_load);
@@ -381,7 +411,8 @@ impl Engine {
         drop(state);
         if previous != budget {
             log(&format!(
-                "Memory {}: {} MB available, {} MB in use, {} slot(s)",
+                "{} memory {}: {} MB available, {} MB in use, {} slot(s)",
+                self.name(),
                 budget.level.name(),
                 snapshot.available / MIB,
                 snapshot.own / MIB,
@@ -431,6 +462,7 @@ impl Engine {
                 "limitRoomMb": state.snapshot.limit_room.map(|room| room / MIB),
             },
             "model": {
+                "name": self.name(),
                 "loaded": state.tts.is_some(),
                 "loading": state.loading,
                 "active": state.active,
@@ -462,7 +494,14 @@ mod tests {
 
     fn engine() -> Engine {
         let policy = Policy { reserve: 4096 * MIB, critical: 1024 * MIB, max_slots: 4 };
-        Engine::new(Settings { model_dir: PathBuf::from("/nonexistent"), threads: 1, policy, idle_unload: Duration::MAX, verbose: false })
+        Engine::new(Settings {
+            kind: Kind::KokoroV019,
+            model_dir: PathBuf::from("/nonexistent"),
+            threads: 1,
+            policy,
+            idle_unload: Duration::MAX,
+            verbose: false,
+        })
     }
 
     #[test]
@@ -470,7 +509,8 @@ mod tests {
         let engine = engine();
         let mut state = engine.lock();
         state.before_load = 20 * MIB;
-        state.snapshot = Snapshot { total: 16384 * MIB, available: 3000 * MIB, own: 1220 * MIB, ..Snapshot::default() };
+        // The model and its grown slots: 1280 MB above what the process held before loading.
+        state.snapshot = Snapshot { total: 16384 * MIB, available: 3000 * MIB, own: 1300 * MIB, ..Snapshot::default() };
         assert!(engine.reload_would_fit(&state));
         // Just above the critical line: only what the unload itself gives back makes room.
         state.snapshot.available = 1100 * MIB;

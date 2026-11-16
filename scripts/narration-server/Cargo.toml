@@ -1,13 +1,21 @@
 [package]
 name = "narration-server"
-version = "2.0.0"
+version = "3.0.0"
 edition = "2021"
-description = "Kokoro narration server for Webnovel Archiver: one shared model, memory-aware"
+description = "Narration server for Webnovel Archiver: Kokoro and Phonon models, loaded on demand, memory-aware"
 publish = false
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Phonon's runtime: the Rust library behind the app's libptts_ffi.so, pinned to the same release.
+# `hf` brings its tokenizer. On a Mac, Apple's Accelerate speeds up the full-precision weights.
+ptts = { version = "=0.7.1", default-features = false, features = ["hf"] }
+# Phonon's tensor library, for its thread count.
+xn = "=0.2.14"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+ptts = { version = "=0.7.1", default-features = false, features = ["hf", "accelerate"] }
 
 [profile.release]
 opt-level = 3

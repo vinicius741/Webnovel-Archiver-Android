@@ -73,8 +73,8 @@ android {
         }
     }
 
-    // The built-in Kokoro voices ship native code (sherpa-onnx + ONNX Runtime), which is almost all
-    // of the APK's size. Every build type ships both phone ABIs, arm64 and 32-bit ARM: an APK with
+    // The built-in voices ship native code (sherpa-onnx + ONNX Runtime, and Phonon's libptts_ffi.so
+    // for 64-bit only, so Phonon is hidden on 32-bit phones), which is almost all of the APK's size. Every build type ships both phone ABIs, arm64 and 32-bit ARM: an APK with
     // native code cannot install on a device matching none of its ABIs, so never drop one of them.
     // Only debug and instrumentation, the builds that run on the x86_64 emulator, also ship x86_64;
     // that one ABI is about 23 MB. Release and beta are phone builds and leave it out.
@@ -241,6 +241,9 @@ dependencies {
     // sherpa-onnx — runs the built-in Kokoro neural voices on the device (GitHub release AAR, see
     // settings.gradle). Its Kotlin config classes are read by JNI, so proguard-rules.pro keeps them.
     implementation 'com.k2fsa:sherpa-onnx:1.12.21@aar'
+    // JNA — calls Phonon's C library (libptts_ffi.so in src/main/jniLibs, built by
+    // scripts/phonon/build-android-lib.sh) from tts/phonon/PhononTTS.kt. proguard-rules.pro keeps it.
+    implementation 'net.java.dev.jna:jna:5.17.0@aar'
     // Commons Compress — unpacks the Kokoro model, published only as a .tar.bz2.
     implementation 'org.apache.commons:commons-compress:1.28.0'
     testImplementation 'junit:junit:4.13.2'
