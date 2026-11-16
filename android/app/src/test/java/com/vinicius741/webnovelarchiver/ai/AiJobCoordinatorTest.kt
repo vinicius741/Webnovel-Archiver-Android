@@ -204,9 +204,11 @@ class AiJobCoordinatorTest {
             }
 
             coordinator.cancelAll("test")
+            // The job records its cancellation before the coordinator releases the slot, so wait
+            // for both — asserting isBusy() right after `cancelled` fills races the release.
             withContext(Dispatchers.Default.limitedParallelism(1)) {
                 withTimeout(10_000) {
-                    while (cancelled.isEmpty()) kotlinx.coroutines.delay(10)
+                    while (cancelled.isEmpty() || coordinator.isBusy()) kotlinx.coroutines.delay(10)
                 }
             }
             assertTrue(coordinator.queue.value.isEmpty())
