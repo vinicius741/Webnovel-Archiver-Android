@@ -3,7 +3,7 @@ package com.vinicius741.webnovelarchiver.tts
 import android.content.Context
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
-import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngines
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,7 +21,7 @@ import kotlinx.coroutines.withContext
  */
 internal class TtsSamplePreview(
     context: Context,
-    kokoro: KokoroRuntime,
+    builtIns: BuiltInEngines,
     private val onPlayingChanged: (Boolean) -> Unit,
     private val onFailed: (TtsSampleFailure) -> Unit,
 ) {
@@ -35,7 +35,7 @@ internal class TtsSamplePreview(
             scope = scope,
             stateMutex = stateMutex,
             listeners = TtsEventListeners(),
-            kokoro = kokoro,
+            builtIns = builtIns,
             onReady = ::loadLocked,
             onFailed = { endLocked(TtsSampleFailure.Engine) },
         )
@@ -92,7 +92,7 @@ internal class TtsSamplePreview(
                     else -> {
                         pending = Sample(TtsTimeline(items, settings.phrasePauseMs), settings)
                         onPlayingChanged(true)
-                        speech.selectEngine(settings.enginePackage)
+                        speech.selectEngine(settings)
                         speech.ensureEngine()
                         if (speech.initialized) loadLocked() else speech.watchInit()
                     }

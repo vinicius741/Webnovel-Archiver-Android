@@ -2,7 +2,7 @@ package com.vinicius741.webnovelarchiver.tts.kokoro
 
 import java.io.File
 
-/** Where the Kokoro install stands; [KokoroModelInstaller.state] publishes it. */
+/** Where a built-in model's install stands; [KokoroModelInstaller.state] publishes it. */
 internal sealed interface KokoroModelState {
     /** [downloadedBytes] of a stopped download are kept, and the next try continues from there. */
     data class NotInstalled(
@@ -51,23 +51,43 @@ internal object KokoroInstallPlanning {
         return if (inside.isEmpty()) target else File(target, inside.joinToString(File.separator))
     }
 
-    /** Bytes the install still needs: the rest of the download, the unpacked files, and a margin. */
-    fun bytesNeeded(downloadedBytes: Long): Long =
-        (KokoroModel.ARCHIVE_BYTES - downloadedBytes).coerceAtLeast(0L) + KokoroModel.UNPACKED_BYTES + FREE_SPACE_MARGIN_BYTES
+    /**
+     * Bytes the install still needs: the rest of the download, the unpacked files, and a margin. An
+     * archive is unpacked beside itself; separate files are the install, so they count once.
+     */
+    fun bytesNeeded(
+        downloadedBytes: Long,
+        pkg: ModelPackage = BuiltInModel.KOKORO_V019.modelPackage,
+    ): Long {
+        val rest = (pkg.downloadBytes - downloadedBytes).coerceAtLeast(0L)
+        val unpacked = if (pkg is ModelPackage.Archive) pkg.unpackedBytes else 0L
+        return rest + unpacked + FREE_SPACE_MARGIN_BYTES
+    }
 
     /** Downloaded bytes the install can keep: a partial or complete archive, but never an oversized one. */
-    fun reusableBytes(partialBytes: Long): Long = if (partialBytes in 1..KokoroModel.ARCHIVE_BYTES) partialBytes else 0L
+    fun reusableBytes(
+        partialBytes: Long,
+        totalBytes: Long = KokoroModel.ARCHIVE_BYTES,
+    ): Long = if (partialBytes in 1..totalBytes) partialBytes else 0L
 
-    /** A partial download is only worth resuming while it is shorter than the whole archive. */
-    fun resumeFrom(partialBytes: Long): Long = if (partialBytes in 1 until KokoroModel.ARCHIVE_BYTES) partialBytes else 0L
+    /** A partial download is only worth resuming while it is shorter than the whole file. */
+    fun resumeFrom(
+        partialBytes: Long,
+        totalBytes: Long = KokoroModel.ARCHIVE_BYTES,
+    ): Long = if (partialBytes in 1 until totalBytes) partialBytes else 0L
 
-    fun describe(state: KokoroModelState): String =
+    fun describe(
+        state: KokoroModelState,
+        pkg: ModelPackage = BuiltInModel.KOKORO_V019.modelPackage,
+    ): String =
         when (state) {
             is KokoroModelState.NotInstalled ->
                 if (state.downloadedBytes > 0L) {
-                    "Download paused at ${megabytes(state.downloadedBytes)} of ${megabytes(KokoroModel.ARCHIVE_BYTES)}."
+                    "Download paused at ${megabytes(state.downloadedBytes)} of ${megabytes(pkg.downloadBytes)}."
                 } else {
-                    "Not downloaded. The voices need a one-time ${megabytes(KokoroModel.ARCHIVE_BYTES)} download."
+                    "Not on this phone. Chapters generate on your computers; a ${megabytes(
+                        pkg.downloadBytes,
+                    )} download lets this phone generate too."
                 }
             is KokoroModelState.Downloading -> {
                 val done = percent(state.bytes, state.total)

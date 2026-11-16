@@ -2,8 +2,8 @@
 //! bounded reads so a stray client cannot make it buffer much.
 
 use crate::engine::{log, Busy, Engine};
-
 use crate::memory::Level;
+use crate::models::Kind;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -11,12 +11,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub const PROTOCOL: u32 = 1;
-pub const MODEL_NAME: &str = "kokoro-en-v0_19";
+/// The model a request without `model` means: the only one apps before 3.0 knew.
+pub const LEGACY_MODEL: Kind = Kind::KokoroV019;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 64 * 1024;
 const MAX_TEXT_CHARS: usize = 5000;
-/// kokoro-en-v0_19's voices.
-pub const SPEAKERS: i64 = 11;
 const MAX_CONNECTIONS: usize = 32;
 /// An idle keep-alive connection is closed after this long.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(75);
@@ -24,7 +23,10 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(75);
 const SLOT_PATIENCE: Duration = Duration::from_secs(60);
 
 pub struct Shared {
-    pub engine: Engine,
+    /// One per installed model, in [Kind::ALL] order.
+    pub engines: Vec<Engine>,
+    /// Phonon's voice names, from its folder.
+    pub phonon_voices: Vec<String>,
     pub token: String,
     pub name: String,
     pub threads: usize,
@@ -188,10 +190,10 @@ fn authorized(header: &str, token: &str) -> bool {
 
 fn handle(request: Request, shared: &Arc<Shared>, out: &mut TcpStream) -> io::Result<()> {
     let keep = request.keep_alive;
-    if shared.engine.settings().verbose {
+    if shared.verbose() {
         log(&format!("{} {} ({} bytes)", request.method, request.path, request.body.len()));
     }
-    let path = request.path.split('?').next().unwrap_or("");
+    let (path, query) = request.path.split_once('?').unwrap_or((request.path.as_str(), ""));
     if request.method == "GET" && path == "/health" {
         return respond_json(out, 200, &serde_json::json!({"ok": true}), keep, &[]);
     }
@@ -200,15 +202,38 @@ fn handle(request: Request, shared: &Arc<Shared>, out: &mut TcpStream) -> io::Re
     }
     match (request.method.as_str(), path) {
         ("GET", "/v1/info") => {
-            // The app asks for this before its first sentence: load the model meanwhile.
-            let preload = shared.clone();
-            let _ = std::thread::Builder::new().name("preload".into()).spawn(move || preload.engine.preload());
-            let status = shared.engine.status();
+            // The app asks for this before its first sentence (`?model=` names the one it will use;
+            // apps before 3.0 send none): load that model meanwhile.
+            // An unknown name preloads nothing.
+            let wanted = match query_value(query, "model") {
+                Some(name) => Kind::from_name(name),
+                None => Some(LEGACY_MODEL),
+            };
+            if let Some(index) = wanted.and_then(|kind| shared.index_of(kind)) {
+                let preload = shared.clone();
+                let _ = std::thread::Builder::new().name("preload".into()).spawn(move || {
+                    preload.make_room_for(index);
+                    preload.engines[index].preload();
+                });
+            }
+            let primary = shared.primary();
+            let status = primary.status();
+            let models: Vec<serde_json::Value> = shared
+                .engines
+                .iter()
+                .map(|engine| {
+                    let kind = engine.settings().kind;
+                    let voices = if kind == Kind::Phonon { shared.phonon_voices.clone() } else { Vec::new() };
+                    serde_json::json!({"name": kind.name(), "voices": voices})
+                })
+                .collect();
             let info = serde_json::json!({
                 "protocol": PROTOCOL,
-                "model": MODEL_NAME,
+                // Apps before 3.0 accept only kokoro-en-v0_19 here.
+                "model": primary.name(),
+                "models": models,
                 "sampleRate": shared.sample_rate,
-                "workers": shared.engine.settings().policy.max_slots,
+                "workers": primary.settings().policy.max_slots,
                 "threadsPerWorker": shared.threads,
                 "name": shared.name,
                 "server": "rust",
@@ -217,7 +242,7 @@ fn handle(request: Request, shared: &Arc<Shared>, out: &mut TcpStream) -> io::Re
             });
             respond_json(out, 200, &info, keep, &[])
         }
-        ("GET", "/v1/status") => respond_json(out, 200, &shared.engine.status(), keep, &[]),
+        ("GET", "/v1/status") => respond_json(out, 200, &shared.status(), keep, &[]),
         ("POST", "/v1/synthesize") => synthesize(&request.body, shared, out, keep),
         _ => respond_json(out, 404, &serde_json::json!({"error": "Not found"}), keep, &[]),
     }
@@ -227,22 +252,39 @@ fn handle(request: Request, shared: &Arc<Shared>, out: &mut TcpStream) -> io::Re
 #[serde(rename_all = "camelCase")]
 struct SynthesizeRequest {
     text: String,
-    speaker_id: i64,
+    /// Kokoro's speaker number.
+    speaker_id: Option<i64>,
+    /// Absent from apps before 3.0, which mean kokoro-en-v0_19.
+    model: Option<String>,
+    /// Phonon's voice name.
+    voice: Option<String>,
 }
 
 fn synthesize(body: &[u8], shared: &Shared, out: &mut TcpStream, keep: bool) -> io::Result<()> {
+    let bad = |out: &mut TcpStream, message: String| respond_json(out, 400, &serde_json::json!({"error": message}), keep, &[]);
     let Ok(request) = serde_json::from_slice::<SynthesizeRequest>(body) else {
-        return respond_json(out, 400, &serde_json::json!({"error": "Expected JSON {text, speakerId}"}), keep, &[]);
+        return bad(out, "Expected JSON {text, model, speakerId or voice}".to_string());
     };
     if request.text.trim().is_empty() || request.text.chars().count() > MAX_TEXT_CHARS {
-        return respond_json(out, 400, &serde_json::json!({"error": "Text is empty or too long"}), keep, &[]);
+        return bad(out, "Text is empty or too long".to_string());
     }
-    if !(0..SPEAKERS).contains(&request.speaker_id) {
-        return respond_json(out, 400, &serde_json::json!({"error": format!("No speaker {}", request.speaker_id)}), keep, &[]);
-    }
+    let model = request.model.as_deref().unwrap_or(LEGACY_MODEL.name());
+    let Some(engine) = Kind::from_name(model).and_then(|kind| shared.engine(kind)) else {
+        return bad(out, format!("{} does not have {model}", shared.name));
+    };
+    let kind = engine.settings().kind;
+    let voice = match kind.voice(request.speaker_id, request.voice.as_deref(), &shared.phonon_voices) {
+        Ok(voice) => voice,
+        Err(message) => return bad(out, message),
+    };
     shared.keep_awake.touch();
+    if !engine.is_loaded() {
+        if let Some(index) = shared.index_of(kind) {
+            shared.make_room_for(index);
+        }
+    }
     let queued = Instant::now();
-    let lease = match shared.engine.acquire(SLOT_PATIENCE) {
+    let lease = match engine.acquire(SLOT_PATIENCE) {
         Ok(lease) => lease,
         Err(busy) => return respond_busy(out, &busy, shared, keep),
     };
@@ -251,14 +293,14 @@ fn synthesize(body: &[u8], shared: &Shared, out: &mut TcpStream, keep: bool) -> 
         return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "The client hung up while waiting"));
     }
     let started = Instant::now();
-    let result = lease.tts().generate(&request.text, request.speaker_id as u32);
+    let result = lease.tts().generate(&request.text, &voice);
     drop(lease);
     let generate_ms = started.elapsed().as_millis() as u64;
     match result {
         Ok((rate, pcm)) => {
             let audio_ms = (pcm.len() as u64 / 2) * 1000 / rate.max(1) as u64;
-            shared.engine.record(audio_ms, generate_ms, true);
-            let slots = shared.engine.slots_now().to_string();
+            engine.record(audio_ms, generate_ms, true);
+            let slots = engine.slots_now().to_string();
             let generate = generate_ms.to_string();
             let queue = (started - queued).as_millis().to_string();
             let headers = [
@@ -271,7 +313,7 @@ fn synthesize(body: &[u8], shared: &Shared, out: &mut TcpStream, keep: bool) -> 
             respond(out, 200, &headers, &[&header, &pcm], keep)
         }
         Err(error) => {
-            shared.engine.record(0, generate_ms, false);
+            engine.record(0, generate_ms, false);
             respond_json(out, 500, &serde_json::json!({"error": format!("Generation failed: {error}")}), keep, &[])
         }
     }
@@ -291,6 +333,62 @@ fn respond_busy(out: &mut TcpStream, busy: &Busy, shared: &Shared, keep: bool) -
         "stopped": busy.level == Level::Critical,
     });
     respond_json(out, 503, &body, keep, &[("Retry-After", seconds.as_str())])
+}
+
+impl Shared {
+    pub fn engine(&self, kind: Kind) -> Option<&Engine> {
+        self.engines.iter().find(|engine| engine.settings().kind == kind)
+    }
+
+    fn index_of(&self, kind: Kind) -> Option<usize> {
+        self.engines.iter().position(|engine| engine.settings().kind == kind)
+    }
+
+    /// Unloads the other models that sit idle before engine [index] loads, so a switch of voice
+    /// (Phonon to Kokoro v1.0, say) does not hold both until the idle timer runs out.
+    pub fn make_room_for(&self, index: usize) {
+        for (other, engine) in self.engines.iter().enumerate() {
+            if other != index {
+                engine.unload_if_idle("another model is needed");
+            }
+        }
+    }
+
+    fn verbose(&self) -> bool {
+        self.engines.first().is_some_and(|engine| engine.settings().verbose)
+    }
+
+    /// The engine that speaks for the server in fields apps before 3.0 read: the legacy model
+    /// when installed, else the first one.
+    pub fn primary(&self) -> &Engine {
+        self.engine(LEGACY_MODEL).unwrap_or(&self.engines[0])
+    }
+
+    /// `/v1/status`: memory from the engine that is working (it has the up-to-date slot count),
+    /// the legacy fields from the primary engine, and every model under `models`.
+    fn status(&self) -> serde_json::Value {
+        let working = self.engines.iter().find(|engine| engine.status()["model"]["loaded"] == true).unwrap_or(self.primary());
+        let mut status = self.primary().status();
+        status["memory"] = working.status()["memory"].clone();
+        let models: serde_json::Map<String, serde_json::Value> = self
+            .engines
+            .iter()
+            .map(|engine| {
+                let one = engine.status();
+                (
+                    engine.name().to_string(),
+                    serde_json::json!({"model": one["model"], "work": one["work"], "slots": one["memory"]["slots"]}),
+                )
+            })
+            .collect();
+        status["models"] = serde_json::Value::Object(models);
+        status
+    }
+}
+
+/// The value of [name] in a query string such as `model=phonon-31m-en&x=1`.
+fn query_value<'a>(query: &'a str, name: &str) -> Option<&'a str> {
+    query.split('&').find_map(|pair| pair.split_once('=').filter(|(key, _)| *key == name).map(|(_, value)| value))
 }
 
 /// True when the client has hung up (the app cancelled: paused, reordered, changed place), so a
@@ -405,6 +503,13 @@ mod tests {
         assert!(!authorized("Bearer abcd-efgh-jkm", "abcd-efgh-jkmn"));
         assert!(!authorized("Bearer abcd-efgh-jkmnp", "abcd-efgh-jkmn"));
         assert!(!authorized("", "abcd-efgh-jkmn"));
+    }
+
+    #[test]
+    fn reads_query_values() {
+        assert_eq!(query_value("model=phonon-31m-en", "model"), Some("phonon-31m-en"));
+        assert_eq!(query_value("a=1&model=x", "model"), Some("x"));
+        assert_eq!(query_value("", "model"), None);
     }
 
     #[test]

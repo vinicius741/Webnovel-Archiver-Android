@@ -52,6 +52,7 @@
 -keep class com.vinicius741.webnovelarchiver.narration.NarrationPackIndex { <init>(...); <fields>; }
 -keep class com.vinicius741.webnovelarchiver.narration.NarrationServer { <init>(...); <fields>; }
 -keep class com.vinicius741.webnovelarchiver.narration.NarrationServerInfo { <init>(...); <fields>; }
+-keep class com.vinicius741.webnovelarchiver.narration.NarrationServerModel { <init>(...); <fields>; }
 -keep enum com.vinicius741.webnovelarchiver.narration.NarrationOrigin { *; }
 -keep enum com.vinicius741.webnovelarchiver.narration.NarrationJobState { *; }
 
@@ -73,3 +74,10 @@
 -dontwarn org.tukaani.xz.**
 -dontwarn org.objectweb.asm.**
 -dontwarn org.osgi.**
+
+# Phonon (tts/phonon/PhononTTS.kt) calls libptts_ffi.so through JNA, which finds the C functions by the
+# names of the interface's methods and reads Structure fields by name: keep both, and JNA itself.
+-keep class com.sun.jna.** { *; }
+-keep class * implements com.sun.jna.** { *; }
+-keep class com.vinicius741.webnovelarchiver.tts.phonon.** { *; }
+-dontwarn java.awt.**

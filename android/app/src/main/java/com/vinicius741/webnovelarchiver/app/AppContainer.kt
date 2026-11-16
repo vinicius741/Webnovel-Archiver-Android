@@ -31,9 +31,10 @@ import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityStore
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.sync.storyChapterKey
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngines
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelInstaller
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelState
-import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -211,22 +212,24 @@ class AppContainer internal constructor(
         }
 
     /**
-     * Downloads and unpacks the Kokoro model on demand; the files stay on the device. The offline
-     * simulation's guarded client denies the download, so QA sessions never fetch it.
+     * Downloads and installs each built-in model on demand; the files stay on the device. The offline
+     * simulation's guarded client denies the download, so QA sessions never fetch one.
      */
-    internal val kokoroModel: KokoroModelInstaller =
-        simulation?.aiClient()?.let { KokoroModelInstaller(appContext, applicationScope, it) }
-            ?: KokoroModelInstaller(appContext, applicationScope)
+    internal val modelInstallers: Map<BuiltInModel, KokoroModelInstaller> =
+        BuiltInModel.entries.associateWith { model ->
+            simulation?.aiClient()?.let { KokoroModelInstaller(appContext, applicationScope, it, model) }
+                ?: KokoroModelInstaller(appContext, applicationScope, builtIn = model)
+        }
 
-    /** The built-in Kokoro voice model, loaded once and shared by playback and the settings sample. */
-    val kokoroRuntime: KokoroRuntime = KokoroRuntime(modelInstalled = { kokoroModel.isInstalled })
+    /** The built-in voice models, each loaded once while in use and shared by playback, narration and the settings sample. */
+    val builtIns: BuiltInEngines = BuiltInEngines(modelInstallers)
 
     /** Generated chapter audio: the queue, the background generator and the packs chapters play from. */
     val narration: NarrationCoordinator =
         NarrationCoordinator(
             context = appContext,
             repository = repository,
-            kokoro = kokoroRuntime,
+            builtIns = builtIns,
             startService = { NarrationForegroundService.start(appContext) },
         )
 
@@ -238,15 +241,17 @@ class AppContainer internal constructor(
                 repositoryStartup.awaitReady()
                 narration.awaitLoaded()
             },
-            kokoro = kokoroRuntime,
+            builtIns = builtIns,
             narration = narration,
         )
 
     /** Starts load/recovery/hydration on the process IO scope without blocking Application. */
     fun init() {
-        // A chapter that started while Kokoro was still downloading switches to it once installed.
-        applicationScope.launch {
-            kokoroModel.state.collect { if (it is KokoroModelState.Installed) ttsEngine.refreshEngine() }
+        // A chapter that started while a built-in model was still downloading switches to it once installed.
+        modelInstallers.values.forEach { installer ->
+            applicationScope.launch {
+                installer.state.collect { if (it is KokoroModelState.Installed) ttsEngine.refreshEngine() }
+            }
         }
         runCatching {
             (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)

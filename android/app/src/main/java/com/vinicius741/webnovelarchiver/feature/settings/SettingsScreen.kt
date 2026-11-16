@@ -243,7 +243,7 @@ private fun ScreenHost.layoutModeRow(): LinearLayout {
 private fun ScreenHost.voiceSummary(): String {
     val tts = repository.ttsSettings.get()
     val engine = TtsEnginePlanning.label(tts.enginePackage, TtsEngineCatalog.choices(app), TtsEngineCatalog.phoneDefault(app))
-    return SettingsHubPlanning.voiceSummary(engine, ttsVoiceLabel(tts.voiceIdentifier), tts.rate)
+    return SettingsHubPlanning.voiceSummary(engine, ttsVoiceLabel(tts.voiceIdentifier, tts.enginePackage), tts.rate)
 }
 
 private fun ScreenHost.aiSummary(): String {

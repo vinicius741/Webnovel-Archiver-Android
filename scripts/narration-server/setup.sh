@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Builds and installs the Kokoro narration server for this user (macOS or Linux) and, with --service,
-# starts it at login and keeps it running. Re-running rebuilds the server and keeps the model and token.
+# Builds and installs the narration server for this user (macOS or Linux) and, with --service,
+# starts it at login and keeps it running. Re-running rebuilds the server, adds models it lacks, and
+# keeps the models and token it has. Models: Kokoro v0.19 and v1.0 (sherpa-onnx) and Phonon 31M.
 #
 #   scripts/narration-server/setup.sh             install, then print how to start it
 #   scripts/narration-server/setup.sh --service   install and run it as a background service
@@ -13,7 +14,22 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODEL=kokoro-en-v0_19
-MODEL_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/${MODEL}.tar.bz2"
+SHERPA_MODELS="https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models"
+MODEL_V1=kokoro-multi-lang-v1_0
+# Phonon 31M and its voices, at the revisions and SHA-256 sums the app pins
+# (android/app/src/main/java/.../tts/kokoro/BuiltInModels.kt).
+PHONON=phonon-31m-en
+PHONON_REPO="https://huggingface.co/gradium/phonon-31m-en/resolve/92741c5b07d085ff840e26fea8ce43110b87852f"
+PHONON_VOICES_REPO="https://huggingface.co/gradium/phonon-voices/resolve/da6c9ec0d47be8df5c87c730a3aa97187f3229c3/voices"
+PHONON_FILES="config.json:b5d0f88353638370d94035b7d73d7d6577c0554d78f8d7ecfd40490aae39ae85
+tokenizer.json:691a00068fa7b989f2f3e5ae5daa2d1a5bb319f2d5360deafcfb19a8bb6e7936
+model.safetensors:8a04cf833cfe69b67c2ec968b2d31244655b9accc84ade9c0ebcc176f2074607"
+# Name:catalog id:SHA-256.
+PHONON_VOICES="Harper:4SZHfMpw-p46Ywgs:6b3da6e2d796a20c51af892c482bd6509fb88267a221aff83c870843dee2a123
+Everly:vjFyp2BcCyTlUmYb:958ea94da14f46dd48c7f64adac11ed2ad2aa45f7ccd165dfebab5272664402e
+Bryony:gfP44RlHwr2kEwk7:bcc207a73b7885e45b49ab633d3377a10158292e3a7cef9cd6764ad107f1cb9b
+Hadley:bXwrkHhURL1VFJdG:a879938aa9a2df0a8220bdadef88137929f71e887bd91e7db205bd5fa11661d2
+Juniper:NIWIOv5vTi5eRMj8:444378eb06b7c492b86e8fc7d13e4db1a3c0cf3e68891a960bf6f0a41a13ef35"
 # The sherpa-onnx the app ships (android/app/build.gradle), so clips match the phone's.
 SHERPA_VERSION=1.12.21
 SHERPA_RELEASES="https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_VERSION}"
@@ -105,12 +121,43 @@ else
   rm -rf "$DATA/venv" "$DATA/narration_server.py" "$DATA/requirements.txt"
 fi
 
-if [ ! -f "$DATA/models/$MODEL/model.onnx" ]; then
-  echo "Downloading $MODEL (about 330 MB)..."
-  curl -fL --progress-bar -o "$DATA/models/$MODEL.tar.bz2" "$MODEL_URL"
-  tar -xjf "$DATA/models/$MODEL.tar.bz2" -C "$DATA/models"
-  rm -f "$DATA/models/$MODEL.tar.bz2"
-fi
+# A sherpa-onnx Kokoro export, unpacked into models/<name>.
+sherpa_model() {
+  local name="$1" size="$2"
+  if [ ! -f "$DATA/models/$name/model.onnx" ]; then
+    echo "Downloading $name (about $size)..."
+    curl -fL --progress-bar -o "$DATA/models/$name.tar.bz2" "$SHERPA_MODELS/$name.tar.bz2"
+    tar -xjf "$DATA/models/$name.tar.bz2" -C "$DATA/models"
+    rm -f "$DATA/models/$name.tar.bz2"
+  fi
+}
+sherpa_model "$MODEL" "330 MB"
+sherpa_model "$MODEL_V1" "350 MB"
+
+# Phonon: a ptts checkpoint folder, voices named as the app asks for them (voices/<Name>.safetensors).
+# Each file is checked against its pinned SHA-256; a file that does not match is fetched again, and
+# goes in under a temporary name, so an interrupted download is never taken for a complete one.
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+fetch() {
+  local url="$1" target="$2" sum="$3"
+  [ -f "$target" ] && [ "$(sha256 "$target")" = "$sum" ] && return 0
+  curl -fL --progress-bar -o "$target.part" "$url"
+  if [ "$(sha256 "$target.part")" != "$sum" ]; then
+    rm -f "$target.part"
+    echo "The download of $(basename "$target") was damaged. Run setup.sh again." >&2
+    exit 1
+  fi
+  mv -f "$target.part" "$target"
+}
+mkdir -p "$DATA/models/$PHONON/voices"
+if [ ! -s "$DATA/models/$PHONON/model.safetensors" ]; then echo "Downloading $PHONON (about 100 MB)..."; fi
+for entry in $PHONON_FILES; do
+  fetch "$PHONON_REPO/${entry%%:*}" "$DATA/models/$PHONON/${entry%%:*}" "${entry#*:}"
+done
+for entry in $PHONON_VOICES; do
+  name="${entry%%:*}"; rest="${entry#*:}"
+  fetch "$PHONON_VOICES_REPO/${rest%%:*}.safetensors" "$DATA/models/$PHONON/voices/$name.safetensors" "${rest#*:}"
+done
 
 if [ ! -s "$DATA/token" ]; then
   # 12 characters from an alphabet without look-alikes (no 0/O, 1/I/L), grouped for typing on a phone.
@@ -122,7 +169,7 @@ if [ ! -s "$DATA/token" ]; then
   (umask 077; echo "${raw:0:4}-${raw:4:4}-${raw:8:4}" > "$DATA/token")
 fi
 
-RUN=("$BIN" --model-dir "$DATA/models/$MODEL" --token-file "$DATA/token" --port "$PORT")
+RUN=("$BIN" --models-dir "$DATA/models" --token-file "$DATA/token" --port "$PORT")
 
 if [ "${1:-}" = "--service" ]; then
   if [ "$OS" = mac ]; then
@@ -165,7 +212,7 @@ if [ "${1:-}" = "--service" ]; then
     # and it can never grow past 35% of RAM. Nice keeps games and the desktop responsive.
     cat > "$SERVICE_FILE" <<EOF
 [Unit]
-Description=Webnovel Archiver Kokoro narration server
+Description=Webnovel Archiver narration server
 After=network-online.target
 
 [Service]

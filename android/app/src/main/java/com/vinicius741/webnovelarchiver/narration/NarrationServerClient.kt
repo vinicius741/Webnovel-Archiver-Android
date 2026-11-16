@@ -5,6 +5,9 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.vinicius741.webnovelarchiver.tts.TtsPcmClip
 import com.vinicius741.webnovelarchiver.tts.TtsPcmPlanning
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInRuntime
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoice
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -56,7 +59,7 @@ internal data class NarrationServerEndpoint(
     }
 }
 
-/** What `GET /v1/info` reports. */
+/** What `GET /v1/info` reports. [models] is absent from servers before 3.0, which run only [model]. */
 internal data class NarrationServerInfo(
     val protocol: Int = 0,
     val model: String = "",
@@ -64,6 +67,13 @@ internal data class NarrationServerInfo(
     val workers: Int = 0,
     val threadsPerWorker: Int = 0,
     val name: String = "",
+    val models: List<NarrationServerModel>? = null,
+)
+
+/** One model a server has installed; [voices] are Phonon's voice names. */
+internal data class NarrationServerModel(
+    val name: String = "",
+    val voices: List<String>? = null,
 )
 
 /**
@@ -138,8 +148,9 @@ internal class NarrationServerClient(
     var serverSlots: Int? = null
         private set
 
-    suspend fun info(): NarrationServerInfo {
-        val response = request("GET", "/v1/info", null)
+    /** The server's description. Naming the [model] about to be used has a 3.0 server load it meanwhile. */
+    suspend fun info(model: String? = null): NarrationServerInfo {
+        val response = request("GET", if (model == null) "/v1/info" else "/v1/info?model=$model", null)
         if (response.status != HTTP_OK) throw problem(response)
         return runCatching { Gson().fromJson(response.body.toString(Charsets.UTF_8), NarrationServerInfo::class.java) }
             .getOrNull() ?: throw NarrationServerProblem("$name did not answer like a narration server")
@@ -160,16 +171,25 @@ internal class NarrationServerClient(
         }.getOrNull().orEmpty()
     }
 
-    /**
-     * Speaks [text] as [speakerId] at 1x. Null when the server could not generate this one sentence
-     * (the caller retries, then fails the chapter); throws [NarrationServerBusy] while the server
-     * holds back for memory, and [NarrationServerProblem] when the server itself is unusable.
-     */
+    /** Speaks [text] as Kokoro v0.19's [speakerId]; see the other [synthesize]. */
     suspend fun synthesize(
         text: String,
         speakerId: Int,
+    ): TtsPcmClip? = synthesize(text, KokoroVoices.all.first { it.speakerId == speakerId })
+
+    /**
+     * Speaks [text] as [voice] at 1x, with the voice's model. Null when the server could not generate
+     * this one sentence (the caller retries, then fails the chapter); throws [NarrationServerBusy]
+     * while the server holds back for memory, and [NarrationServerProblem] when the server itself is
+     * unusable.
+     */
+    suspend fun synthesize(
+        text: String,
+        voice: KokoroVoice,
     ): TtsPcmClip? {
-        val body = Gson().toJson(mapOf("text" to text, "speakerId" to speakerId)).toByteArray(Charsets.UTF_8)
+        val fields = mutableMapOf<String, Any>("text" to text, "model" to voice.model.dirName)
+        if (voice.model.runtime == BuiltInRuntime.PHONON) fields["voice"] = voice.code else fields["speakerId"] = voice.speakerId
+        val body = Gson().toJson(fields).toByteArray(Charsets.UTF_8)
         val response = request("POST", "/v1/synthesize", body)
         return when {
             response.status == HTTP_OK -> TtsPcmPlanning.parseWav(response.body)

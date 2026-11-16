@@ -11,7 +11,7 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
 import com.vinicius741.webnovelarchiver.narration.NarrationPack
-import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngines
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,8 +35,8 @@ class TtsEngine(
     private val context: Context,
     private val repository: AppRepository,
     private val awaitRepositoryReady: suspend () -> Unit = {},
-    /** The shared built-in Kokoro model (see `AppContainer`). */
-    kokoro: KokoroRuntime = KokoroRuntime(),
+    /** The shared built-in models (see `AppContainer`). */
+    builtIns: BuiltInEngines = BuiltInEngines.none(),
     /** Generated chapter audio; chapters play only from it. Null in tests that play descriptions. */
     private val narration: NarrationCoordinator? = null,
     /**
@@ -78,7 +78,7 @@ class TtsEngine(
             scope = scope,
             stateMutex = stateMutex,
             listeners = listeners,
-            kokoro = kokoro,
+            builtIns = builtIns,
             onReady = {
                 if (output == TtsOutputPhase.WaitingForEngine) loadOutputLocked()
             },
@@ -254,7 +254,7 @@ class TtsEngine(
                 }
                 val newVoice = previous != null && TtsProfilePlanning.soundsDifferent(previous, settings)
                 // A chapter keeps the voice it was generated in; only a description speaks with the settings.
-                if (loaded.hasChapter && loaded.speaksLive && (newVoice || speech.needsRestart(settings.enginePackage))) {
+                if (loaded.hasChapter && loaded.speaksLive && (newVoice || speech.needsRestart(settings))) {
                     reloadVoiceLocked(settings)
                 } else {
                     emitState(isPlaying = isAudibleLocked())
@@ -271,7 +271,7 @@ class TtsEngine(
         scope.launch {
             stateMutex.withLock {
                 val settings = activeSettings ?: return@withLock
-                if (loaded.hasChapter && loaded.speaksLive && speech.needsRestart(settings.enginePackage)) reloadVoiceLocked(settings)
+                if (loaded.hasChapter && loaded.speaksLive && speech.needsRestart(settings)) reloadVoiceLocked(settings)
             }
         }
     }
@@ -280,7 +280,7 @@ class TtsEngine(
     private fun reloadVoiceLocked(settings: TtsSettings) {
         val point = pointLocked()
         outputs.stopActive()
-        speech.selectEngine(settings.enginePackage)
+        speech.selectEngine(settings)
         loaded.currentItem = point.item
         loaded.currentOffsetMs = point.offsetMs
         if (output.wantsAudio) loadOutputLocked() else emitState(isPlaying = false)
@@ -401,7 +401,7 @@ class TtsEngine(
         renderAheadStarted = false
         loaded.load(prepared)
         if (loaded.speaksLive) {
-            speech.selectEngine(prepared.settings.enginePackage)
+            speech.selectEngine(prepared.settings)
             speech.ensureEngine()
         } else {
             // A chapter plays generated audio: no engine, and no model held in memory.

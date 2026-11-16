@@ -9,6 +9,7 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.narration.GenerateOnChoice
 import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument
@@ -69,7 +70,15 @@ private fun LinearLayout.generateOnSection(
 ): ServerRows {
     listenSectionLabel("Generate on")
     val colors = ThemeManager.colors
-    val kokoro = KokoroVoices.isEngine(host.narration.currentVoice().engine)
+    val model = KokoroVoices.model(host.narration.currentVoice().engine)
+    val kokoro = model != null
+    // A built-in model that is not on this phone can only generate on a computer.
+    val missingOnPhone =
+        model
+            ?.takeUnless {
+                host.app.appContainer.builtIns
+                    .isInstalled(it)
+            }?.family
     val choice = document.generateOnChoice
     val card =
         makeCard(context).apply {
@@ -83,7 +92,7 @@ private fun LinearLayout.generateOnSection(
                 spacer(Space.SM + 2)
             }
             text(
-                generateOnHint(kokoro, document.servers.isEmpty(), document.generateOnServers, choice),
+                generateOnHint(kokoro, document.servers.isEmpty(), document.generateOnServers, choice, missingOnPhone),
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             )
@@ -172,11 +181,17 @@ private fun generateOnHint(
     noServers: Boolean,
     chosen: List<NarrationServer>,
     choice: GenerateOnChoice,
+    /** The current built-in model's name when it is not downloaded to this phone. */
+    missingOnPhone: String?,
 ): String =
     when {
-        !kokoro -> "Only Kokoro voices can generate on a computer. Your current voice generates on this phone."
+        !kokoro -> "Only the built-in voices (Kokoro, Phonon) can generate on a computer. Your current voice generates on this phone."
+        missingOnPhone != null && noServers ->
+            "$missingOnPhone is not on this phone. Add one of your computers to generate with it, or download it in Voice & Speech."
+        missingOnPhone != null && chosen.isEmpty() ->
+            "$missingOnPhone is not on this phone. Choose a computer to generate with it, or download it in Voice & Speech."
         noServers -> "Generating on this phone. Add one of your computers to generate faster over Wi-Fi or Tailscale."
-        chosen.isEmpty() -> "Uses the Kokoro voice on this phone. Choose one or more computers to generate faster."
+        chosen.isEmpty() -> "Uses the built-in voice on this phone. Choose one or more computers to generate faster."
         else -> {
             val who =
                 if (chosen.size == 1) {
@@ -185,7 +200,9 @@ private fun generateOnHint(
                     "${chosen.joinToString(" and ") { it.name }} share each chapter, so it generates faster."
                 }
             val fallback =
-                if (choice.phoneFallback) {
+                if (choice.phoneFallback && missingOnPhone != null) {
+                    " This phone can take over only after $missingOnPhone is downloaded in Voice & Speech."
+                } else if (choice.phoneFallback) {
                     " This phone takes over while ${if (chosen.size == 1) "it can't generate" else "none of them can generate"}."
                 } else {
                     ""

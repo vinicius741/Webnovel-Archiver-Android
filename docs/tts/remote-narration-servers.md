@@ -22,6 +22,22 @@ continuously. A computer stays about 3.5x ahead, and the phone stays cool. GPUs 
 model: CoreML rejects its dynamic shapes, MLX ships only Kokoro v1.0 (a different voice), and the
 Bazzite iGPU runs only a PyTorch v1.0 build. So the server runs on CPU.
 
+## Models (server 3.0, 2026-11-16)
+
+The server runs every model it has installed under `models/`: `kokoro-en-v0_19`,
+`kokoro-multi-lang-v1_0` (sherpa-onnx, US lexicon) and `phonon-31m-en` (Gradium's ptts 0.7.1, the
+library behind the app's `libptts_ffi.so`, with voices in `voices/<Name>.safetensors`). Each model
+is its own `Engine` (`src/models.rs`): it loads when a chapter first asks for it, has its own slots,
+and unloads after 5 idle minutes, so a server with all three holds none of them until asked. Before
+a model loads, the others that sit idle are unloaded (`Shared::make_room_for`), and while another
+model is loaded an engine does not learn its memory costs, since the process's memory is shared.
+`setup.sh` checks Phonon's files against the same SHA-256 sums the app pins.
+Measured on Bazzite: about 11 MB before any model loads; after Phonon and Kokoro v1.0 were used and
+unloaded, about 80 MB (Phonon's runtime keeps its thread pool for the life of the process).
+`--bench --model NAME` measures one model; on Bazzite, four slots: Kokoro v1.0 7.7x (1.0 GB peak),
+Phonon 20.4x (0.75 GB). Apps before 3.0 send no `model` and keep getting `kokoro-en-v0_19`. See
+`built-in-models.md` for the app side.
+
 ## The server (`scripts/narration-server/`)
 
 A Rust program (since 2026-11-12; it replaced a Python server with one model copy per worker process).
@@ -31,10 +47,11 @@ library as the phone's. The Python server ran the PyPI build 1.12.26.
 | File | Role |
 |---|---|
 | `src/sherpa.rs` | FFI to the sherpa-onnx C API (struct layouts from its `c-api.h` at v1.12.21). PCM conversion matches `TtsWavWriter` exactly (clamp, ×32767, round half up). |
-| `src/engine.rs` | **One shared model** and its generation slots: load on first use, recycle, unload when idle or short of memory. |
+| `src/engine.rs` | **One shared model** and its generation slots: load on first use, recycle, unload when idle or short of memory. One engine per installed model. |
+| `src/models.rs`, `src/phonon.rs` | The models the server knows, how each is checked, loaded and addressed (Kokoro by speaker number, Phonon by voice name); Phonon through the `ptts` crate. |
 | `src/memory.rs` | Memory probes (Linux: `/proc/meminfo`, PSI, cgroup v2 limits; macOS: `host_statistics64`, the kernel's memory-pressure level, own footprint) and the pure `decide` policy. |
 | `src/http.rs` | HTTP/1.1 with keep-alive, one thread per connection, bounded reads. |
-| `setup.sh` | Installs into one folder per user: Rust (rustup) when missing, the sherpa-onnx 1.12.21 shared libraries (`lib/`), the built server (`bin/narration-server`), the model (downloaded once) and a token. `--service` adds a launchd agent (macOS) or a systemd user unit (Linux). `--uninstall` removes the service. Re-running it upgrades a Python install in place and keeps the token; without `--service` it leaves the Python files alone while a service still runs them. |
+| `setup.sh` | Installs into one folder per user: Rust (rustup) when missing, the sherpa-onnx 1.12.21 shared libraries (`lib/`), the built server (`bin/narration-server`), the models (each downloaded once; re-running adds missing ones, Phonon's files at pinned revisions) and a token. `--service` adds a launchd agent (macOS) or a systemd user unit (Linux). `--uninstall` removes the service. Re-running it upgrades a Python install in place and keeps the token; without `--service` it leaves the Python files alone while a service still runs them. |
 
 Data folders: `~/Library/Application Support/WebnovelNarration` on macOS,
 `~/.local/share/webnovel-narration` on Linux. Logs: `server.log` there on macOS,
@@ -173,12 +190,16 @@ Unchanged for existing apps; the additions are optional. Every request carries
 `Authorization: Bearer <token>`. Tokens are 12 characters from `23456789abcdefghjkmnpqrstuvwxyz`,
 grouped `xxxx-xxxx-xxxx`, and compared case-insensitively.
 
-- `GET /v1/info`: `{protocol, model, sampleRate, workers, threadsPerWorker, name, server, version, memory}`.
+- `GET /v1/info[?model=NAME]`: `{protocol, model, models, sampleRate, workers, threadsPerWorker, name, server, version, memory}`.
+  `models` (3.0) lists the installed models, with Phonon's voice names; `model` stays
+  `kokoro-en-v0_19` for older apps. `?model=` preloads that model.
   `workers` is the most sentences at once (the app keeps one more in flight; the rest wait in the
   server for a slot, up to 60 s).
-- `POST /v1/synthesize` with `{"text", "speakerId"}`: `audio/wav`, mono 16-bit PCM, at 1x. Headers
+- `POST /v1/synthesize` with `{"text", "model", "speakerId"}` (Kokoro) or `{"text", "model", "voice"}`
+  (Phonon); no `model` means `kokoro-en-v0_19`. A model or voice the server lacks is a 400.
+  Answers `audio/wav`, mono 16-bit PCM, at 1x. Headers
   `X-Generate-Ms`, `X-Queue-Ms`, `X-Slots`.
-- `GET /v1/status`: memory level and thresholds, slots, model loaded or not, counters.
+- `GET /v1/status`: memory level and thresholds, slots, model loaded or not, counters; per model under `models`.
 - Errors are JSON `{"error"}`: 400 bad request, 401 wrong token, 500 generation failed, and **503** while
   memory is short: `Retry-After` plus `{"retryAfterMs", "memory", "stopped"}`.
 - Connections are kept alive (HTTP/1.1), closed after 75 s idle. `GET /health` needs no token.

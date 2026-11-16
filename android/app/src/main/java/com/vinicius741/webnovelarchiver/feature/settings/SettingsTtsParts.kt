@@ -199,7 +199,7 @@ internal fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
                 val player =
                     preview ?: TtsSamplePreview(
                         context = app,
-                        kokoro = app.appContainer.kokoroRuntime,
+                        builtIns = app.appContainer.builtIns,
                         onPlayingChanged = { isPlaying ->
                             playing = isPlaying
                             playButton.showSampleState(isPlaying)

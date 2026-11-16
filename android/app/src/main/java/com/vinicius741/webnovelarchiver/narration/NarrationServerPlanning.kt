@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.narration
 
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInRuntime
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoice
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import java.util.Locale
 
@@ -51,22 +53,34 @@ internal data class GenerateOnChoice(
 internal object NarrationServerPlanning {
     const val PROTOCOL = 1
 
-    /** The model the server must run for its clips to match the phone's ([KokoroVoices.ENGINE_ID]). */
+    /** The original built-in model, the only one servers before 3.0 run ([KokoroVoices.ENGINE_ID]). */
     val MODEL: String = KokoroVoices.ENGINE_ID.substringAfter("builtin:")
 
     /** Upper bound on sentences in flight, whatever the server reports. */
     const val MAX_IN_FLIGHT = 9
 
-    /** Why audio from this server would not match the phone's, or null when it is usable. */
+    /**
+     * Why this server cannot generate [voice] with the phone's model, or null when it can. A server
+     * before 3.0 lists no `models` and runs only its `model`.
+     */
     fun incompatibility(
         info: NarrationServerInfo,
         name: String,
-    ): String? =
-        when {
+        voice: KokoroVoice = KokoroVoices.default,
+    ): String? {
+        val wanted = voice.model.dirName
+        val offered = info.models?.firstOrNull { it.name == wanted }
+        val runsIt = offered != null || (info.models == null && info.model == wanted)
+        return when {
             info.protocol != PROTOCOL -> "$name runs another version of the narration server; update it with setup.sh"
-            info.model != MODEL -> "$name runs ${info.model.ifBlank { "an unknown model" }}, not $MODEL"
+            !runsIt && info.models == null ->
+                "$name runs ${info.model.ifBlank { "an unknown model" }}, not $wanted; update it with setup.sh"
+            !runsIt -> "$name does not have $wanted; run setup.sh on it to add it"
+            offered?.voices != null && voice.model.runtime == BuiltInRuntime.PHONON && voice.code !in offered.voices ->
+                "$name does not have the voice ${voice.code}; run setup.sh on it to add it"
             else -> null
         }
+    }
 
     /**
      * One sentence per model copy, plus one waiting on the server so a copy never idles while the
@@ -227,12 +241,13 @@ internal object NarrationServerPlanning {
     /** Tokens are typed by hand from the computer's screen; case does not matter in the generated ones. */
     fun normalizeToken(token: String): String = token.trim().lowercase(Locale.ROOT)
 
-    /** A one-line summary of a successful connection test. */
+    /** A one-line summary of a successful connection test that spoke with [model]. */
     fun testSummary(
         info: NarrationServerInfo,
         route: NarrationServerRoute,
         audioMs: Long,
         realMs: Long,
+        model: String = info.model,
     ): String {
         val copies = if (info.workers == 1) "1 model copy" else "${info.workers} model copies"
         val speed =
@@ -242,7 +257,7 @@ internal object NarrationServerPlanning {
                 ""
             }
         val via = if (route.route == NarrationRoute.TAILSCALE) " over Tailscale" else " on the local network"
-        return "Connected to ${info.name.ifBlank { route.endpoint.display }}$via · ${info.model} · $copies$speed"
+        return "Connected to ${info.name.ifBlank { route.endpoint.display }}$via · $model · $copies$speed"
     }
 
     private const val MIN_TOKEN_CHARS = 8

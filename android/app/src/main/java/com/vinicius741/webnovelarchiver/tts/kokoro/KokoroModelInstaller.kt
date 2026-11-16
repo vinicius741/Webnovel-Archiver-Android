@@ -26,16 +26,20 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /**
- * Downloads, checks and unpacks the Kokoro model into app files. One install runs at a time on the
- * app scope, so it survives leaving the settings screen; a stopped download resumes where it left
- * off. The model only becomes visible once fully unpacked and checked (see [KokoroModelFiles]).
+ * Downloads, checks and installs one built-in model ([builtIn]) into app files: a sherpa-onnx archive
+ * is unpacked, Phonon's separate files are each checked. One install runs at a time on the app scope,
+ * so it survives leaving the settings screen; a stopped download resumes where it left off. The model
+ * only becomes visible once complete and checked (see [KokoroModelFiles]).
  */
+@Suppress("TooManyFunctions") // One installer for both kinds of package, archive and separate files.
 internal class KokoroModelInstaller(
     context: Context,
     private val scope: CoroutineScope,
     private val client: OkHttpClient = defaultClient(),
+    val builtIn: BuiltInModel = BuiltInModel.KOKORO_V019,
 ) {
-    private val files = KokoroModelFiles(context)
+    private val files = KokoroModelFiles(context, builtIn)
+    private val pkg = builtIn.modelPackage
     private val _state = MutableStateFlow(currentState())
     val state: StateFlow<KokoroModelState> get() = _state
 
@@ -63,8 +67,8 @@ internal class KokoroModelInstaller(
                             if (job === self) _state.value = currentState()
                             throw error
                         }
-                        Timber.w(error, "Kokoro model install failed")
-                        _state.value = KokoroModelState.Failed(failureText(error))
+                        Timber.w(error, "%s model install failed", builtIn.dirName)
+                        _state.value = KokoroModelState.Failed(failureText(error, builtIn))
                     }
             }
     }
@@ -94,34 +98,106 @@ internal class KokoroModelInstaller(
         if (files.isInstalled) {
             KokoroModelState.Installed(files.installedBytes())
         } else {
-            KokoroModelState.NotInstalled(files.partialArchive.length())
+            KokoroModelState.NotInstalled(downloadedBytes())
+        }
+
+    /** What a stopped download kept: the partial archive, or the files already in staging. */
+    private fun downloadedBytes(): Long =
+        when (pkg) {
+            is ModelPackage.Archive -> files.partialArchive.length()
+            is ModelPackage.Files ->
+                files.staging
+                    .walkBottomUp()
+                    .filter { it.isFile }
+                    .sumOf { it.length() }
         }
 
     private suspend fun installNow() {
         files.modelsDir.mkdirs()
-        val partialBytes = files.partialArchive.length()
-        val resumeFrom = KokoroInstallPlanning.resumeFrom(partialBytes)
-        val needed = KokoroInstallPlanning.bytesNeeded(KokoroInstallPlanning.reusableBytes(partialBytes))
+        val downloaded = downloadedBytes()
+        val needed = KokoroInstallPlanning.bytesNeeded(KokoroInstallPlanning.reusableBytes(downloaded, pkg.downloadBytes), pkg)
         if (files.modelsDir.usableSpace < needed) {
-            throw InstallException("Not enough free space. Kokoro needs about ${KokoroInstallPlanning.megabytes(needed)} free to install.")
+            throw InstallException(
+                "Not enough free space. ${builtIn.family} needs about ${KokoroInstallPlanning.megabytes(needed)} free to install.",
+            )
         }
-        // A complete archive left by an interrupted unpack is checked and reused, not fetched again.
-        if (files.partialArchive.length() != KokoroModel.ARCHIVE_BYTES) download(resumeFrom)
-        _state.value = KokoroModelState.Verifying
-        if (sha256(files.partialArchive) != KokoroModel.ARCHIVE_SHA256) {
-            files.partialArchive.delete()
-            throw InstallException("The download was damaged. Try again.")
+        when (pkg) {
+            is ModelPackage.Archive -> installArchive(pkg)
+            is ModelPackage.Files -> installFiles(pkg)
         }
-        unpack()
-        files.partialArchive.delete()
         _state.value = currentState()
     }
 
-    private suspend fun download(resumeFrom: Long) {
+    private suspend fun installArchive(archive: ModelPackage.Archive) {
+        val resumeFrom = KokoroInstallPlanning.resumeFrom(files.partialArchive.length(), archive.downloadBytes)
+        // A complete archive left by an interrupted unpack is checked and reused, not fetched again.
+        if (files.partialArchive.length() != archive.downloadBytes) {
+            download(archive.url, files.partialArchive, resumeFrom, archive.downloadBytes, archive.downloadBytes, 0L)
+        }
+        _state.value = KokoroModelState.Verifying
+        if (sha256(files.partialArchive) != archive.sha256) {
+            files.partialArchive.delete()
+            throw InstallException("The download was damaged. Try again.")
+        }
+        unpack(archive)
+        files.partialArchive.delete()
+    }
+
+    /**
+     * Downloads each file into staging (a stopped one resumes), checks it, then marks the folder
+     * complete and swaps it in. Files already complete in staging are checked, not fetched again.
+     */
+    private suspend fun installFiles(set: ModelPackage.Files) {
+        files.staging.mkdirs()
+        var done = 0L
+        for (file in set.files) {
+            val target = fetch(file, set.downloadBytes, done)
+            if (sha256(target) != file.sha256) {
+                target.delete()
+                throw InstallException("The download was damaged. Try again.")
+            }
+            done += file.bytes
+            _state.value = KokoroModelState.Downloading(done, set.downloadBytes)
+        }
+        _state.value = KokoroModelState.Verifying
+        File(files.staging, KokoroModelFiles.INSTALLED_MARKER).writeText(set.files.joinToString("\n") { it.sha256 })
+        files.dir.deleteRecursively()
+        if (!files.staging.renameTo(files.dir)) throw InstallException("Could not finish installing. Try again.")
+    }
+
+    /** [file] in staging, downloaded unless already complete there; a stopped download resumes. */
+    private suspend fun fetch(
+        file: ModelFile,
+        total: Long,
+        before: Long,
+    ): File {
+        val target = File(files.staging, file.path)
+        if (target.length() == file.bytes) return target
+        target.delete()
+        target.parentFile?.mkdirs()
+        val partial = File(files.staging, "${file.path}.part")
+        val resumeFrom = KokoroInstallPlanning.resumeFrom(partial.length(), file.bytes)
+        if (partial.length() != file.bytes) download(file.url, partial, resumeFrom, file.bytes, total, before)
+        if (!partial.renameTo(target)) throw InstallException("Could not save the download. Try again.")
+        return target
+    }
+
+    /**
+     * Fetches [url] into [target] from [resumeFrom] until it holds [expected] bytes, reporting progress
+     * as part of an install of [total] bytes of which [before] were already done.
+     */
+    private suspend fun download(
+        url: String,
+        target: File,
+        resumeFrom: Long,
+        expected: Long,
+        total: Long,
+        before: Long,
+    ) {
         val request =
             Request
                 .Builder()
-                .url(KokoroModel.ARCHIVE_URL)
+                .url(url)
                 .apply { if (resumeFrom > 0L) header("Range", "bytes=$resumeFrom-") }
                 .build()
         val call = client.newCall(request)
@@ -134,33 +210,33 @@ internal class KokoroModelInstaller(
                 // A server that ignores the range sends the whole file again.
                 val append = response.code == HTTP_PARTIAL && resumeFrom > 0L
                 written = if (append) resumeFrom else 0L
-                FileOutputStream(files.partialArchive, append).use { out ->
+                FileOutputStream(target, append).use { out ->
                     copyWithProgress(response.body.byteStream(), out) { count ->
                         written += count
-                        _state.value = KokoroModelState.Downloading(written, KokoroModel.ARCHIVE_BYTES)
+                        _state.value = KokoroModelState.Downloading(before + written, total)
                     }
                 }
             }
         } finally {
             abort?.dispose()
         }
-        if (written != KokoroModel.ARCHIVE_BYTES) throw InstallException("The download stopped early. Try again to continue it.")
+        if (written != expected) throw InstallException("The download stopped early. Try again to continue it.")
     }
 
-    private suspend fun unpack() {
+    private suspend fun unpack(archive: ModelPackage.Archive) {
         val staging = files.staging
         staging.deleteRecursively()
         staging.mkdirs()
         var unpacked = 0L
-        _state.value = KokoroModelState.Unpacking(0L, KokoroModel.UNPACKED_BYTES)
-        val archive = BufferedInputStream(files.partialArchive.inputStream(), BUFFER_BYTES)
+        _state.value = KokoroModelState.Unpacking(0L, archive.unpackedBytes)
+        val input = BufferedInputStream(files.partialArchive.inputStream(), BUFFER_BYTES)
         try {
-            TarArchiveInputStream(BZip2CompressorInputStream(archive)).use { tar ->
+            TarArchiveInputStream(BZip2CompressorInputStream(input)).use { tar ->
                 while (true) {
                     val entry = tar.nextEntry ?: break
                     unpackEntry(tar, entry, staging) { count ->
                         unpacked += count
-                        _state.value = KokoroModelState.Unpacking(unpacked, KokoroModel.UNPACKED_BYTES)
+                        _state.value = KokoroModelState.Unpacking(unpacked, archive.unpackedBytes)
                     }
                 }
             }
@@ -169,7 +245,7 @@ internal class KokoroModelInstaller(
             staging.deleteRecursively()
             throw InstallException("Unpacking failed. Make sure the phone has free space, then try again.", error)
         }
-        finishUnpack(staging)
+        finishUnpack(staging, archive)
     }
 
     private suspend fun unpackEntry(
@@ -179,7 +255,7 @@ internal class KokoroModelInstaller(
         onProgress: (Int) -> Unit,
     ) {
         val target =
-            KokoroInstallPlanning.entryTarget(staging, entry.name)
+            KokoroInstallPlanning.entryTarget(staging, entry.name, builtIn.dirName)
                 ?: throw InstallException("The download contained unexpected files.")
         when {
             entry.isDirectory -> target.mkdirs()
@@ -193,9 +269,12 @@ internal class KokoroModelInstaller(
     }
 
     /** Checks the unpacked files, marks them complete, and swaps them in for any older copy. */
-    private fun finishUnpack(staging: File) {
-        if (KokoroModel.requiredFiles.any { !File(staging, it).isFile }) throw InstallException("The download was incomplete. Try again.")
-        File(staging, KokoroModelFiles.INSTALLED_MARKER).writeText(KokoroModel.ARCHIVE_SHA256)
+    private fun finishUnpack(
+        staging: File,
+        archive: ModelPackage.Archive,
+    ) {
+        if (archive.requiredFiles.any { !File(staging, it).isFile }) throw InstallException("The download was incomplete. Try again.")
+        File(staging, KokoroModelFiles.INSTALLED_MARKER).writeText(archive.sha256)
         files.dir.deleteRecursively()
         if (!staging.renameTo(files.dir)) throw InstallException("Could not finish installing. Try again.")
     }
@@ -234,11 +313,14 @@ private class InstallException(
     cause: Throwable? = null,
 ) : Exception(message, cause)
 
-private fun failureText(error: Throwable): String =
+private fun failureText(
+    error: Throwable,
+    model: BuiltInModel,
+): String =
     when (error) {
         is InstallException -> error.message.orEmpty()
         is IOException -> "The download was interrupted. Check the connection and try again to continue it."
-        else -> "Kokoro could not be installed. Try again."
+        else -> "${model.family} could not be installed. Try again."
     }
 
 /** Copies until the end, checking for cancellation between buffers and reporting progress in steps. */

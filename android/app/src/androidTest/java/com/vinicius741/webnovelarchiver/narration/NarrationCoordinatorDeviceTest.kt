@@ -10,7 +10,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.simulation.SimulationContext
 import com.vinicius741.webnovelarchiver.tts.TtsPcmClip
-import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngines
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,7 +37,7 @@ class NarrationCoordinatorDeviceTest {
                     chapters = mutableListOf(Chapter(id = "chapter", content = "<p>Original sentence.</p>", downloaded = true)),
                 )
             repository.addOrUpdateStory(story)
-            val coordinator = NarrationCoordinator(context, repository, KokoroRuntime())
+            val coordinator = NarrationCoordinator(context, repository, BuiltInEngines.none())
             coordinator.init {}
             coordinator.awaitLoaded()
             coordinator.awaitQueueLoaded()

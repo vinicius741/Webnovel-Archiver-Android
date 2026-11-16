@@ -28,13 +28,13 @@ internal object KokoroBenchmarkReport {
     private fun StringBuilder.appendHeader(result: KokoroBenchmarkResult) {
         val setup = result.setup
         val device = setup.device
-        appendLine("Kokoro speed test")
+        appendLine("${family(setup.model)} speed test")
         appendLine("App ${setup.appVersion} · ${setup.startedAt}")
         appendLine(
             "Phone: ${device.manufacturer} ${device.model}${device.soc?.let { " ($it)" }.orEmpty()} · " +
                 "Android ${device.androidRelease} (API ${device.sdk}) · ${device.cores} cores · ${gigabytes(device.totalRamMb)} RAM",
         )
-        appendLine("Model: ${KokoroModel.DIR_NAME} · voice ${setup.voiceName} · listening speed ${times(setup.listeningRate.toDouble())}")
+        appendLine("Model: ${setup.model} · voice ${setup.voiceName} · listening speed ${times(setup.listeningRate.toDouble())}")
         appendLine("Narration model also loaded during the test: ${if (setup.narrationModelLoaded) "yes" else "no"}")
         appendLine("Took ${seconds(result.totalMs)}${if (result.cancelled) " (stopped early)" else ""}")
     }
@@ -42,7 +42,7 @@ internal object KokoroBenchmarkReport {
     private fun StringBuilder.appendConclusion(result: KokoroBenchmarkResult) {
         val setup = result.setup
         val app = result.runs.firstOrNull { it.engines == 1 && it.threads == setup.appThreads && it.completed }
-        appendLine(KokoroBenchmarkPlanning.verdict(app, setup.listeningRate))
+        appendLine(KokoroBenchmarkPlanning.verdict(app, setup.listeningRate, family(setup.model)))
         val best = KokoroBenchmarkPlanning.fastest(result.runs)
         if (best != null && app != null && best.label != app.label && app.speed > 0.0) {
             appendLine(
@@ -129,3 +129,6 @@ internal object KokoroBenchmarkReport {
 
     private fun gigabytes(mb: Long): String = String.format(Locale.US, "%.1f GB", mb / 1024.0)
 }
+
+/** The model's short name for the report, from its folder name; reports from before 2026-11 are Kokoro's. */
+private fun family(model: String): String = BuiltInModel.entries.firstOrNull { it.dirName == model }?.family ?: "Kokoro"
