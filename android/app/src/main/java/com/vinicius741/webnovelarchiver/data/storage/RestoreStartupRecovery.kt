@@ -82,7 +82,7 @@ internal class RestoreTransactionJournal(
  * | PREPARED        | missing | present  | the old root moved before the phase write; as OLD_ROOT_MOVED   |
  * | PREPARED        | missing | missing  | nothing left to recover; clear journal so restore can run      |
  * | none            | any     | present  | durable snapshot without a journal; fail closed                |
- * | none            | any     | missing  | legacy cache-snapshot rules ([recoverLegacyState])             |
+ * | none            | any     | missing  | nothing to recover                                             |
  *
  * Each step that moves data writes the next phase first, so re-running recovery after a death
  * inside recovery lands on a later row of the same table. `RestoreCrashRecoveryTest` kills the
@@ -96,9 +96,8 @@ internal object RestoreStartupRecovery {
         val appContext = context.applicationContext
         val liveRoot = File(appContext.filesDir, "webnovel_archiver")
         val durableSnapshot = File(appContext.filesDir, SNAPSHOT_DIR_NAME)
-        val legacyCacheSnapshot = File(appContext.cacheDir, SNAPSHOT_DIR_NAME)
         val journal = RestoreTransactionJournal(File(appContext.filesDir, RestoreTransactionJournal.FILE_NAME))
-        recoverSafely(liveRoot, durableSnapshot, legacyCacheSnapshot, journal)
+        recoverSafely(liveRoot, durableSnapshot, journal)
         if (!journal.exists()) {
             sweepOrphanedStaging(appContext.filesDir, File(appContext.cacheDir, RESTORE_WORK_DIR_NAME))
         }
@@ -112,16 +111,15 @@ internal object RestoreStartupRecovery {
     internal fun recoverSafely(
         liveRoot: File,
         durableSnapshot: File,
-        legacyCacheSnapshot: File,
         journal: RestoreTransactionJournal,
     ) {
         val startedAt = System.nanoTime() / 1_000_000L
-        runCatching { recoverState(liveRoot, durableSnapshot, legacyCacheSnapshot, journal) }
+        runCatching { recoverState(liveRoot, durableSnapshot, journal) }
             .onFailure { failure ->
                 Timber.e(failure, "Restore startup recovery failed; failing closed")
                 LocalDiagnostics.record(Log.ERROR, failure)
                 LocalDiagnostics.recordOperation(
-                    operation = "restore_recovery_failed_" + (journal.read()?.name?.lowercase() ?: "legacy"),
+                    operation = "restore_recovery_failed_" + (journal.read()?.name?.lowercase() ?: "unjournaled"),
                     durationMillis = System.nanoTime() / 1_000_000L - startedAt,
                     failed = true,
                 )
@@ -148,7 +146,6 @@ internal object RestoreStartupRecovery {
     internal fun recoverState(
         liveRoot: File,
         durableSnapshot: File,
-        legacyCacheSnapshot: File,
         journal: RestoreTransactionJournal,
         files: RestoreFileOperations = DefaultRestoreFileOperations,
     ) {
@@ -159,7 +156,6 @@ internal object RestoreStartupRecovery {
                 // New data is authoritative; a leftover snapshot is cleanup debris, not a rollback.
                 check(liveRoot.isDirectory) { "Committed restore root is missing; preserving recovery data" }
                 check(files.deleteTree(durableSnapshot)) { "Could not clean the committed restore snapshot" }
-                check(files.deleteTree(legacyCacheSnapshot)) { "Could not clean the legacy restore snapshot" }
                 journal.clear()
                 Timber.i("Recovered an interrupted restore: committed root kept, leftover snapshot removed")
             }
@@ -187,7 +183,7 @@ internal object RestoreStartupRecovery {
                     Timber.i("Recovered an interrupted restore: it died before the swap; live root untouched")
                 }
             }
-            null -> recoverLegacyState(liveRoot, durableSnapshot, legacyCacheSnapshot)
+            null -> check(!durableSnapshot.exists()) { "Durable restore snapshot has no journal; preserving it for recovery" }
         }
     }
 
@@ -228,42 +224,6 @@ internal object RestoreStartupRecovery {
         journal.clear()
         Timber.w("Recovered an interrupted restore: pre-restore snapshot moved back into place")
     }
-
-    /** Pre-journal builds left the snapshot under cacheDir with no phase record. */
-    private fun recoverLegacyState(
-        liveRoot: File,
-        durableSnapshot: File,
-        legacyCacheSnapshot: File,
-    ) {
-        check(!durableSnapshot.exists()) { "Durable restore snapshot has no journal; preserving it for recovery" }
-        if (!legacyCacheSnapshot.exists()) return
-        val contents = legacyCacheSnapshot.listFiles().orEmpty()
-        if (contents.isEmpty()) {
-            legacyCacheSnapshot.deleteRecursively()
-            return
-        }
-        if (liveRoot.exists()) {
-            // Old flow order: install new root, then clean the snapshot — so a leftover snapshot
-            // beside a live root means the commit had completed.
-            legacyCacheSnapshot.deleteRecursively()
-            Timber.i("Recovered a legacy restore state: committed root kept, leftover cache snapshot removed")
-        } else {
-            // The swap died between moving the old root and installing the new one.
-            check(legacyCacheSnapshot.renameTo(liveRoot) || copyBack(legacyCacheSnapshot, liveRoot)) {
-                "Could not restore the legacy pre-restore snapshot; failing closed"
-            }
-            legacyCacheSnapshot.deleteRecursively()
-            Timber.w("Recovered a legacy restore state: snapshot moved back into place")
-        }
-    }
-
-    private fun copyBack(
-        snapshot: File,
-        liveRoot: File,
-    ): Boolean =
-        runCatching {
-            check(snapshot.copyRecursively(liveRoot, overwrite = false)) { "snapshot copy failed" }
-        }.isSuccess
 
     private const val SNAPSHOT_DIR_NAME = "webnovel_restore_snapshot"
 

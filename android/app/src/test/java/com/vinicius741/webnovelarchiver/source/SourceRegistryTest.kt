@@ -59,12 +59,4 @@ class SourceRegistryTest {
             ),
         )
     }
-
-    @Test
-    fun legacyDisplaySettingKeysResolveToStableIds() {
-        assertEquals("royal_road", SourceRegistry.sourceIdForPersistedKey("RoyalRoad"))
-        assertEquals("scribble_hub", SourceRegistry.sourceIdForPersistedKey("Scribble Hub"))
-        assertEquals("space_battles", SourceRegistry.sourceIdForPersistedKey("space_battles"))
-        assertNull(SourceRegistry.sourceIdForPersistedKey("future_source"))
-    }
 }

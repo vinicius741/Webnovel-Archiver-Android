@@ -19,8 +19,6 @@ import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogLibraryStats
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
-import com.vinicius741.webnovelarchiver.data.storage.foldLegacyArchives
-import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
@@ -155,33 +153,26 @@ class AppContainer internal constructor(
     val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)
     private val repositoryStartup =
         RepositoryStartup {
-            // One storage monitor guards the whole migration/recovery/hydration transaction; concurrent file APIs wait on it.
-            // R20: the library is read exactly once — path coercion, source-identity backfill, and
+            // One storage monitor guards the whole load/recovery/hydration transaction; concurrent file APIs wait on it.
+            // R20: the library is read exactly once — default coercion, Patreon reconciliation, and
             // hydration all operate on that one pass's list, and only changed story documents are
             // written back. Phase timings below are the R30 startup evidence.
             synchronized(storage) {
                 val startedAt = System.currentTimeMillis()
                 val load = storage.loadLibraryForStartup()
+                val stories = load.stories
                 val loadFinishedAt = System.currentTimeMillis()
 
-                val changedBySourceId =
-                    storage.migrateSourceIdentities(
-                        library = load.stories,
-                        sourceIdForUrl = { url -> SourceRegistry.getProvider(url)?.id },
-                        sourceIdForSettingKey = SourceRegistry::sourceIdForPersistedKey,
-                    )
                 // Stats fetched through a link naming no creator belong to another page; drop them.
                 val changedByCreatorless = mutableSetOf<String>()
                 PatreonCreatorPlanning
-                    .clearCreatorlessStats(load.stories, changedByCreatorless)
+                    .clearCreatorlessStats(stories, changedByCreatorless)
                     .forEach(storage::stripPatreonHistory)
-                val changedByPatreonCreator = PatreonCreatorPlanning.reconcileLibrary(load.stories)
-                val changedIds = load.changedStoryIds + changedBySourceId + changedByCreatorless + changedByPatreonCreator
+                val changedByPatreonCreator = PatreonCreatorPlanning.reconcileLibrary(stories)
+                val changedIds = load.changedStoryIds + changedByCreatorless + changedByPatreonCreator
                 if (changedIds.isNotEmpty()) {
-                    storage.persistStartupStories(load.stories.filter { it.id in changedIds })
+                    storage.persistStartupStories(stories.filter { it.id in changedIds })
                 }
-                // Legacy archive snapshots become removed-from-source chapters of their live story.
-                val stories = storage.foldLegacyArchives(load.stories, ::storyChapterKey)
                 val migrationsFinishedAt = System.currentTimeMillis()
 
                 storage.recoverInterruptedDownloads()
@@ -196,14 +187,11 @@ class AppContainer internal constructor(
                     readyAt - migrationsFinishedAt,
                     readyAt - startedAt,
                 )
-                val loaded = ActivityLogLibraryStats.of(load.stories)
                 val ready = ActivityLogLibraryStats.of(stories)
                 ActivityLog.recordAll(
                     ActivityCategory.APP,
                     "startup_library_loaded",
                     listOf(
-                        "legacyArchivesLoaded" to loaded.legacyArchives,
-                        "legacyArchivesLeft" to ready.legacyArchives,
                         "changedOnLoad" to changedIds.size,
                         "totalMs" to readyAt - startedAt,
                     ) + ready.fields("ready"),
@@ -254,7 +242,7 @@ class AppContainer internal constructor(
             narration = narration,
         )
 
-    /** Starts migration/recovery/hydration on the process IO scope without blocking Application. */
+    /** Starts load/recovery/hydration on the process IO scope without blocking Application. */
     fun init() {
         // A chapter that started while Kokoro was still downloading switches to it once installed.
         applicationScope.launch {

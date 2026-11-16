@@ -9,7 +9,6 @@ data class ActivityLogLibraryStats(
     val downloaded: Int,
     val removedFlagged: Int,
     val patreonCopies: Int,
-    val legacyArchives: Int,
 ) {
     fun fields(prefix: String): List<Pair<String, Any?>> =
         listOf(
@@ -27,7 +26,6 @@ data class ActivityLogLibraryStats(
                 downloaded = library.sumOf { story -> story.chapters.count { it.downloaded } },
                 removedFlagged = library.sumOf { story -> story.chapters.count { it.isRemovedFromSource } },
                 patreonCopies = library.sumOf { story -> story.chapters.count { it.isPatreonCopy } },
-                legacyArchives = library.count { it.isArchived == true },
             )
     }
 }
