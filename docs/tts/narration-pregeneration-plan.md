@@ -54,7 +54,8 @@ stay. Only the source of each sentence's audio changes. A chapter plays from its
 no `TextToSpeech`, no rendering, no cache.
 
 Description narration (Details) and the Voice & Speech "Try it" sample keep real-time rendering.
-They are a paragraph long and are not chapters.
+They are a paragraph long and are not chapters. The exception: a sample in a built-in model that is
+not on the phone generates on the user's computers first, then plays (see `built-in-models.md`).
 
 ## 1. Storage: the chapter pack
 

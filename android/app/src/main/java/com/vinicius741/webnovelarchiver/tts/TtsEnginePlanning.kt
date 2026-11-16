@@ -23,7 +23,7 @@ internal object TtsEnginePlanning {
     ): String? = requested?.takeIf { it in installed }
 
     /**
-     * What live speech (descriptions, the Voice & Speech sample) uses while the chosen engine cannot
+     * What live speech (story descriptions) uses while the chosen engine cannot
      * speak on this phone: a built-in model whose files are not here, since chapters generate on the
      * user's computers. A saved profile that speaks with an Android engine lends its engine, voice and
      * pitch, Google's first; the listening speed and pauses stay the user's. Without one, the phone's

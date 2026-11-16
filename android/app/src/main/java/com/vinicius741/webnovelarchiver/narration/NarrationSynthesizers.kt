@@ -101,6 +101,21 @@ internal fun interface NarrationSynthesizerFactory {
     fun location(voice: NarrationVoice): String? = null
 }
 
+/**
+ * Connects to [server] (see [reachServer]) and checks that it can speak as [speaker]: it runs that
+ * model and voice. Throws [NarrationServerProblem] when it cannot.
+ */
+internal suspend fun reachCompatibleServer(
+    server: NarrationServer,
+    speaker: KokoroVoice,
+    readTimeoutMs: Int = NarrationServerClient.READ_TIMEOUT_MS,
+): NarrationServerReached<NarrationServerInfo> =
+    reachServer(server, readTimeoutMs) { client ->
+        client.info(speaker.model.dirName).also { info ->
+            NarrationServerPlanning.incompatibility(info, server.name, speaker)?.let { throw NarrationServerProblem(it) }
+        }
+    }
+
 /** Identifies a server's current settings, so editing its addresses or token reconnects. */
 internal val NarrationServer.locationKey: String get() = "$id|$address|$tailscaleAddress|$token"
 
@@ -128,7 +143,7 @@ internal class AndroidNarrationSynthesizers(
         val speaker = kokoroSpeaker(voice, model)
         val remotes =
             chosen.servers.map { server ->
-                RemoteKokoroPlace(server, speaker) { reachServer(server) { client -> compatibleInfo(client, server, speaker) } }
+                RemoteKokoroPlace(server, speaker) { reachCompatibleServer(server, speaker) }
             }
         return NarrationPlacePool.open(
             voice = voice,
@@ -140,15 +155,6 @@ internal class AndroidNarrationSynthesizers(
             scope = CoroutineScope(Dispatchers.IO),
         )
     }
-
-    private suspend fun compatibleInfo(
-        client: NarrationServerClient,
-        server: NarrationServer,
-        speaker: KokoroVoice,
-    ): NarrationServerInfo =
-        client.info(speaker.model.dirName).also { info ->
-            NarrationServerPlanning.incompatibility(info, server.name, speaker)?.let { throw NarrationServerProblem(it) }
-        }
 
     private fun kokoroSpeaker(
         voice: NarrationVoice,

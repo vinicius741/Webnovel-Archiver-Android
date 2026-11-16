@@ -71,11 +71,23 @@ model card offers **Download to this phone** where the phone can run it, which l
 generate (alone, or standing in while no computer answers; without the model the stand-in is not
 offered, and the Generate on card says so).
 
-Live speech (story descriptions, the Voice & Speech sample) runs on the phone. While the chosen
-built-in model is not installed there, `TtsSpeechEngineHost.speaking` replaces the settings with
-`TtsEnginePlanning.standIn`: the engine, voice and pitch of a saved profile that speaks with an
-Android engine, Google's first; the listening speed and pauses stay the user's. Without such a
-profile the phone's default engine speaks.
+Story descriptions are live speech on the phone. While the chosen built-in model is not installed
+there, `TtsSpeechEngineHost.speaking` replaces the settings with `TtsEnginePlanning.standIn`: the
+engine, voice and pitch of a saved profile that speaks with an Android engine, Google's first; the
+listening speed and pauses stay the user's. Without such a profile the phone's default engine speaks.
+
+The Voice & Speech sample never stands in: it is there to hear the chosen voice. With the model not
+on the phone (`TtsSamplePlanning.place`), the Try it card shows a chip per computer (one or several,
+defaulting to Listen's Generate on choice, then all). Play sample sends every sentence to them
+through `NarrationSampleRenderer`: one shared list, so two computers split the sentences, and once
+it is empty an idle computer also takes a sentence another is still on, so a slow one does not hold
+the sample up. A dropped connection gets one retry on whichever address answers; a computer that
+cannot be reached, stays short of memory for 30 s on the clock, or fails unexpectedly leaves its
+sentences to the others; a sentence fails the sample only after every live computer failed it twice.
+Requests time out after 45 s instead of the chapters' 3 minutes. Clips are trimmed like a chapter's.
+The card shows "Generating on … n of m sentences" (only the computers still working) with Cancel,
+then plays the clips through a fresh `TtsPcmPlayer` with the draft's speed and pauses. Without a
+computer it says how to add one instead of playing anything.
 
 ## Native code
 
@@ -96,7 +108,10 @@ profile the phone's default engine speaks.
 - The engine picker lists Phonon and Kokoro v1.0 as "Generates on your computers"; choosing one
   asks for no download.
 - The sample with Phonon chosen and not installed spoke through Google's engine (the saved Google
-  profile).
+  profile). Replaced the same day: the sample now generates on the chosen computers first. With
+  Phonon removed from the emulator, the Try it card showed the Bazzite chip; Play sample showed
+  Cancel while Bazzite loaded Phonon and generated, then played (Stop playing, one audio stream
+  started), and Stop ended the audio.
 - A Gunwitch chapter generated on Bazzite's 3.0 server in Phonon Harper (6 min in about 30 s) and
   played; another in Kokoro v1.0 Heart (8 min).
 - The connection test generated 15.2x real time with Phonon.
