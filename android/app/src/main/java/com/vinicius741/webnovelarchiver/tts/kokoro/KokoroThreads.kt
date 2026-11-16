@@ -44,6 +44,26 @@ internal object KokoroThreads {
     }
 }
 
+/**
+ * How many sentences Phonon generates at once for chapters on this phone. Its copies share one
+ * thread pool (the runtime sizes it once per process), so a second copy adds no threads: it fills
+ * the gaps one sentence leaves. The speed test on a Snapdragon 8 Elite (eight fast cores, 2026-11-16)
+ * measured 9.20x with one copy and 10.30x with two, although the two ran with the cores clocked
+ * 15-25% lower (warmer); the cores were busy 6.2 of 8 against 5.7. Kokoro gets no second copy: each
+ * of its copies brings its own threads, which would compete for the same cores.
+ */
+internal object PhononCopies {
+    /** Below this many fast cores the gain was not measured, so one copy stays. */
+    const val MIN_FAST_CORES = 6
+    private const val PARALLEL = 2
+
+    /** Copies for chapter generation with [fastCores] threads and [freeRamMb] free before the second loads. */
+    fun forNarration(
+        fastCores: Int,
+        freeRamMb: Long,
+    ): Int = if (fastCores >= MIN_FAST_CORES && freeRamMb >= KokoroBenchmarkPlanning.PARALLEL_MIN_FREE_MB) PARALLEL else 1
+}
+
 /** What Linux reports about this phone's cores, shared by the thread count and the speed test. */
 internal object KokoroCpu {
     const val DIR = "/sys/devices/system/cpu"

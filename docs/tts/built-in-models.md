@@ -7,7 +7,7 @@ Voice & Speech → Engine:
 |---|---|---|---|---|
 | Kokoro (built in) | `kokoro-en-v0_19`, sherpa-onnx export | sherpa-onnx 1.12.21 (AAR) | 320 MB archive, 369 MB installed | 11 (US and UK) |
 | Kokoro v1.0 (built in) | `kokoro-multi-lang-v1_0`, sherpa-onnx export, US lexicon | sherpa-onnx 1.12.21 (AAR) | 350 MB archive, 401 MB installed | 20 American (`af_*`, `am_*`); default Heart |
-| Phonon (built in) | Gradium `phonon-31m-en`, f32 weights | `libptts_ffi.so` (ptts 0.7.1) through JNA | 104 MB of separate files | Harper (default), Everly, Bryony, Hadley, Juniper |
+| Phonon (built in) | Gradium `phonon-31m-en`, f32 weights | `libptts_ffi.so` (ptts 0.7.1) through JNA | 113 MB of separate files | All 37 English voices of the catalog: 12 American, 13 British, 12 characters; default Harper |
 
 ## Why
 
@@ -37,9 +37,24 @@ pronunciations.
 
 In the narration server (one shared model, `--bench`): Kokoro v1.0 7.7x and Phonon 20.4x real
 time with four sentences at once (peaks 1.0 GB and 0.75 GB). On the x86_64 emulator's four cores
-Phonon's speed test measured 3.8x. Phonon's per-core speed suggests a phone could keep ahead of
-1.8x listening on its own; not yet measured on the Fold7. Phonon's own figures: 24x on a Snapdragon
-8 Elite Gen 5.
+Phonon's speed test measured 3.8x. Phonon's own figures: 24x on a Snapdragon 8 Elite Gen 5.
+
+On the owner's Galaxy Z Fold7 (Snapdragon 8 Elite: six 3.53 GHz and two 4.47 GHz cores, all
+"fast", so 8 threads), the speed test measured on 2026-11-16 (app 1.0.31, voice Harper):
+
+| Run | Speed | Cores busy | Clock (% of top) |
+|---|---|---|---|
+| 1 copy × 8 threads, cool | 9.20x | 5.7 of 8 | 84 / 82 |
+| 2 copies × 8 threads | 10.30x | 6.2 of 8 | 71 / 60 |
+| 1 copy × 8 threads, warm | 5.78x | 5.5 of 8 | 55 / 41 |
+
+The phone keeps far ahead of 1.8x listening even warm. The copies share Phonon's one thread pool
+(`RAYON_NUM_THREADS`, sized once per process), so a second copy adds no threads and fills the gaps a
+single sentence leaves: more throughput at lower clocks. Chapter generation on the phone therefore
+runs Phonon two sentences at a time (`PhononCopies`: at least 6 fast cores and 1.5 GB free before
+the second copy, about 170 MB, loads; one on the shared runtime and one on a narration-only copy).
+Other thread counts cannot be measured in the app (the pool is fixed per process), and the warm
+run shows sustained generation runs near 6x.
 
 ## How it fits together
 
@@ -88,6 +103,21 @@ Requests time out after 45 s instead of the chapters' 3 minutes. Clips are trimm
 The card shows "Generating on … n of m sentences" (only the computers still working) with Cancel,
 then plays the clips through a fresh `TtsPcmPlayer` with the draft's speed and pauses. Without a
 computer it says how to add one instead of playing anything.
+
+## Phonon's voices
+
+All 37 English voices of Gradium's `phonon-voices` catalog (pinned revision): the owner's first
+five picks (Harper, Everly, Bryony, Hadley, Juniper) first, then the other American and British
+voices, then 12 stylized character voices labelled "(character)". A voice's code is its catalog
+name without spaces (`CaptainSilasBlackwater`), which is also its file name, `voices/<code>.safetensors`,
+on the phone and on servers; `BuiltInModels.kt` (`PHONON_VOICES`) and `setup.sh` list the same
+voices with the same SHA-256 sums, and `BuiltInModelsTest` checks they agree. The catalog's 65
+Spanish, French, German and Portuguese voices are left out: the app runs the English-only model.
+
+A phone that installed Phonon before a voice was added keeps working through computers and shows
+"New voices are available" with **Download new voices**: `KokoroModelInstaller` moves the files it
+already has into staging (`KokoroModelFiles.missingFromOlderInstall`) and downloads only the new
+ones (about 8 MB for the 32 added on 2026-11-16). A server gets them by running `setup.sh` again.
 
 ## Native code
 

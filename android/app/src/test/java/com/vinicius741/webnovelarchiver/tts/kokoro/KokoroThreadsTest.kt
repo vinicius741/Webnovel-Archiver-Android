@@ -52,4 +52,14 @@ class KokoroThreadsTest {
         assertEquals(2, KokoroThreads.forAllowed(8, 1))
         assertEquals(8, KokoroThreads.forAllowed(8, null))
     }
+
+    @Test
+    fun phononGeneratesTwoSentencesAtOnceOnlyWithManyFastCoresAndMemory() {
+        // The owner's Snapdragon 8 Elite: eight fast cores, several GB free.
+        assertEquals(2, PhononCopies.forNarration(fastCores = 8, freeRamMb = 4_000L))
+        assertEquals(2, PhononCopies.forNarration(fastCores = 6, freeRamMb = KokoroBenchmarkPlanning.PARALLEL_MIN_FREE_MB))
+        // Not measured on fewer fast cores, and a second copy must not squeeze memory.
+        assertEquals(1, PhononCopies.forNarration(fastCores = 4, freeRamMb = 4_000L))
+        assertEquals(1, PhononCopies.forNarration(fastCores = 8, freeRamMb = KokoroBenchmarkPlanning.PARALLEL_MIN_FREE_MB - 1))
+    }
 }

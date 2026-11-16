@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.narration
 
+import android.app.ActivityManager
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
@@ -11,16 +12,23 @@ import com.vinicius741.webnovelarchiver.tts.TtsPcmPlanning
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackError
 import com.vinicius741.webnovelarchiver.tts.TtsSettingsApplier
 import com.vinicius741.webnovelarchiver.tts.TtsWavWriter
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngine
 import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngines
 import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInRuntime
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroAudio
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelFiles
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoice
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
+import com.vinicius741.webnovelarchiver.tts.kokoro.PHONON_THREADS
+import com.vinicius741.webnovelarchiver.tts.kokoro.PhononCopies
+import com.vinicius741.webnovelarchiver.tts.kokoro.loadBuiltInEngine
 import com.vinicius741.webnovelarchiver.tts.ttsVoiceKey
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -30,6 +38,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import timber.log.Timber
 import java.io.File
 
 /** Produces mono 16-bit PCM in one fixed voice. Android engines need a temporary WAV file. */
@@ -170,10 +179,23 @@ internal class AndroidNarrationSynthesizers(
         val runtime = builtIns.runtime(model)
         if (!runtime.isModelInstalled) unavailable("The ${model.family} model is not installed")
         val speaker = kokoroSpeaker(voice, model)
-        if (!runtime.acquireFor(KokoroModelFiles(context, model)) { true }) {
+        val files = KokoroModelFiles(context, model)
+        if (!runtime.acquireFor(files) { true }) {
             unavailable("The ${model.family} model could not load")
         }
-        return KokoroNarrationSynthesizer(runtime, voice, speaker)
+        return KokoroNarrationSynthesizer(runtime, voice, speaker, secondCopy(model, files))
+    }
+
+    /** Phonon's second copy for chapters (see [PhononCopies]), or null to generate one sentence at a time. */
+    private suspend fun secondCopy(
+        model: BuiltInModel,
+        files: KokoroModelFiles,
+    ): BuiltInEngine? {
+        if (model.runtime != BuiltInRuntime.PHONON) return null
+        val memory = ActivityManager.MemoryInfo()
+        context.getSystemService(ActivityManager::class.java)?.getMemoryInfo(memory) ?: return null
+        if (PhononCopies.forNarration(PHONON_THREADS, memory.availMem / BYTES_PER_MB) < 2) return null
+        return withContext(Dispatchers.IO) { loadBuiltInEngine(files, PHONON_THREADS) }
     }
 
     private suspend fun openAndroid(voice: NarrationVoice): NarrationSynthesizer {
@@ -204,16 +226,34 @@ internal class AndroidNarrationSynthesizers(
 
     private companion object {
         const val ENGINE_START_TIMEOUT_MS = 30_000L
+        const val BYTES_PER_MB = 1_048_576L
     }
 }
 
+/**
+ * A built-in model on this phone. With a [second] copy (Phonon, see [PhononCopies]) two sentences
+ * generate at once, one on the shared runtime and one on the copy, each on its own IO thread since
+ * the generator's worker is a single thread.
+ */
 private class KokoroNarrationSynthesizer(
     private val runtime: KokoroRuntime,
     override val voice: NarrationVoice,
     private val speaker: KokoroVoice,
+    private val second: BuiltInEngine? = null,
 ) : NarrationSynthesizer {
     override val voiceKey: String = KokoroVoices.voiceKey(speaker)
     override val inferenceThreads: Int? get() = runtime.loadedThreads
+    override val parallelism: Int get() = if (second == null) 1 else 2
+
+    /** Which copy is free: true for the runtime, false for [second]. */
+    private val free = Channel<Boolean>(capacity = 2).apply { trySend(true) }
+
+    /** Held while [second] generates, so [close] never frees it mid-sentence. */
+    private val secondLock = Any()
+
+    init {
+        if (second != null) free.trySend(false)
+    }
 
     override suspend fun fitToDevice() {
         withContext(Dispatchers.IO) { runtime.refitThreads() }
@@ -226,15 +266,35 @@ private class KokoroNarrationSynthesizer(
         output: File,
     ): TtsPcmClip? {
         currentCoroutineContext().ensureActive()
-        val audio = runtime.generate(speaker.model.spokenText(text), speaker) ?: return null
+        val spoken = speaker.model.spokenText(text)
+        val onRuntime = free.receive()
+        val audio =
+            try {
+                withContext(Dispatchers.IO) {
+                    if (onRuntime) runtime.generate(spoken, speaker) else synchronized(secondLock) { generateOnSecond(spoken) }
+                }
+            } finally {
+                free.trySend(onRuntime)
+            } ?: return null
         currentCoroutineContext().ensureActive()
         return TtsWavWriter.pcm16(audio.samples, audio.sampleRate)
     }
+
+    private fun generateOnSecond(text: String): KokoroAudio? =
+        if (released) {
+            null
+        } else {
+            runCatching { second?.generate(text, speaker) }
+                .onFailure { Timber.w(it, "%s second copy failed", speaker.model.dirName) }
+                .getOrNull()
+        }
 
     override fun close() {
         if (released) return
         released = true
         runtime.releaseLater()
+        // Freed off the caller's thread once a sentence in progress on it is done.
+        second?.let { copy -> Thread({ synchronized(secondLock) { copy.release() } }, "phonon-copy-release").start() }
     }
 }
 
