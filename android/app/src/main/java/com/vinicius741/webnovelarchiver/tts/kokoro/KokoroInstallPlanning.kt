@@ -4,9 +4,13 @@ import java.io.File
 
 /** Where a built-in model's install stands; [KokoroModelInstaller.state] publishes it. */
 internal sealed interface KokoroModelState {
-    /** [downloadedBytes] of a stopped download are kept, and the next try continues from there. */
+    /**
+     * [downloadedBytes] of a stopped download are kept, and the next try continues from there.
+     * [updateBytes] is what an older install lacks (voices added since); the next try fetches only those.
+     */
     data class NotInstalled(
         val downloadedBytes: Long = 0L,
+        val updateBytes: Long = 0L,
     ) : KokoroModelState
 
     data class Downloading(
@@ -82,7 +86,12 @@ internal object KokoroInstallPlanning {
     ): String =
         when (state) {
             is KokoroModelState.NotInstalled ->
-                if (state.downloadedBytes > 0L) {
+                if (state.updateBytes > 0L) {
+                    "New voices are available. A ${megabytes(
+                        state.updateBytes.coerceAtLeast(MB.toLong()),
+                    )} download adds them; until then chapters " +
+                        "generate on your computers."
+                } else if (state.downloadedBytes > 0L) {
                     "Download paused at ${megabytes(state.downloadedBytes)} of ${megabytes(pkg.downloadBytes)}."
                 } else {
                     "Not on this phone. Chapters generate on your computers; a ${megabytes(

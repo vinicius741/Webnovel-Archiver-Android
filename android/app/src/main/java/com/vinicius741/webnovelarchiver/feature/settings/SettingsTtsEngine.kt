@@ -56,7 +56,7 @@ internal fun ttsVoiceLabel(
         ?: KokoroVoices.model(enginePackage)?.defaultVoice?.name
         ?: "Engine default"
 
-private fun ScreenHost.modelInstaller(model: BuiltInModel): KokoroModelInstaller = app.appContainer.modelInstallers.getValue(model)
+internal fun ScreenHost.modelInstaller(model: BuiltInModel): KokoroModelInstaller = app.appContainer.modelInstallers.getValue(model)
 
 /**
  * The built-in models whose card belongs on the screen: the chosen one, and any installed or
@@ -120,23 +120,6 @@ internal fun ScreenHost.showTtsEnginePicker(
     sheet = showBottomSheet(app, title = "Speech engine", subtitle = "Voices differ per engine", body = body)
 }
 
-private fun ScreenHost.confirmKokoroDownload(
-    model: BuiltInModel,
-    onStarted: () -> Unit,
-) {
-    val pkg = model.modelPackage
-    confirm(
-        "${model.family} on this phone is a one-time ${KokoroInstallPlanning.megabytes(pkg.downloadBytes)} download " +
-            "and uses about ${KokoroInstallPlanning.megabytes(pkg.unpackedBytes)}. Chapters can generate on your computers " +
-            "without it; it lets this phone generate too and speak descriptions in this voice. " +
-            "Keep the app open until it finishes; Wi-Fi is best.",
-        "Download",
-    ) {
-        modelInstaller(model).install()
-        onStarted()
-    }
-}
-
 /** Download progress and actions for one built-in model, updated live while the screen is open. */
 internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
     val installer = modelInstaller(model)
@@ -188,28 +171,17 @@ internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
                 context.tintedIcon(if (installed) R.drawable.wna_download_done else R.drawable.wna_download, colors.primary),
             )
             // Progress only changes the text; rebuild the buttons when the stage changes.
-            val kind = if (state is KokoroModelState.NotInstalled) "paused=${state.downloadedBytes > 0L}" else state.javaClass.name
+            val kind =
+                if (state is KokoroModelState.NotInstalled) {
+                    "paused=${state.downloadedBytes > 0L} update=${state.updateBytes > 0L}"
+                } else {
+                    state.javaClass.name
+                }
             if (kind == shownKind) return
             shownKind = kind
             actions.removeAllViews()
             when (state) {
-                is KokoroModelState.NotInstalled ->
-                    if (!runsHere) {
-                        Unit
-                    } else if (state.downloadedBytes > 0L) {
-                        actions.addView(
-                            makeButton(context, "Continue download", Btn.FILLED, R.drawable.wna_download) { installer.install() },
-                        )
-                    } else {
-                        actions.addView(
-                            makeButton(
-                                context,
-                                "Download to this phone",
-                                Btn.SURFACE,
-                                R.drawable.wna_download,
-                            ) { confirmKokoroDownload(model) {} },
-                        )
-                    }
+                is KokoroModelState.NotInstalled -> if (runsHere) addNotInstalledActions(actions, model, state)
                 is KokoroModelState.Failed ->
                     actions.addView(
                         makeButton(context, "Try again", Btn.FILLED, R.drawable.wna_download) { installer.install() },
@@ -244,20 +216,6 @@ internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
             },
         )
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
-}
-
-private fun ScreenHost.confirmKokoroRemoval(model: BuiltInModel) {
-    confirm("Remove ${model.family}'s voices from this phone? You can download them again later.", "Remove") {
-        modelInstaller(model).remove()
-        scope.launch {
-            val settings = repository.ttsSettings.get()
-            if (settings.enginePackage == model.engineId) {
-                persistTtsSettings(settings.copy(enginePackage = null, voiceIdentifier = null))
-                toast("${model.family} removed. Speaking with the phone's engine again.")
-            }
-            showTtsSettings(keepDraft = true)
-        }
     }
 }
 

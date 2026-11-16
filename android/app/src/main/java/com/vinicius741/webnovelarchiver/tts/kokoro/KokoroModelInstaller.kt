@@ -98,7 +98,7 @@ internal class KokoroModelInstaller(
         if (files.isInstalled) {
             KokoroModelState.Installed(files.installedBytes())
         } else {
-            KokoroModelState.NotInstalled(downloadedBytes())
+            KokoroModelState.NotInstalled(downloadedBytes(), files.missingFromOlderInstall())
         }
 
     /** What a stopped download kept: the partial archive, or the files already in staging. */
@@ -112,10 +112,16 @@ internal class KokoroModelInstaller(
                     .sumOf { it.length() }
         }
 
+    /** Bytes the install will not download: what staging holds, plus an older install's files it keeps. */
+    private fun reusableBytes(): Long =
+        when (pkg) {
+            is ModelPackage.Archive -> KokoroInstallPlanning.reusableBytes(downloadedBytes(), pkg.downloadBytes)
+            is ModelPackage.Files -> files.reusableFileBytes(pkg)
+        }
+
     private suspend fun installNow() {
         files.modelsDir.mkdirs()
-        val downloaded = downloadedBytes()
-        val needed = KokoroInstallPlanning.bytesNeeded(KokoroInstallPlanning.reusableBytes(downloaded, pkg.downloadBytes), pkg)
+        val needed = KokoroInstallPlanning.bytesNeeded(reusableBytes().coerceIn(0L, pkg.downloadBytes), pkg)
         if (files.modelsDir.usableSpace < needed) {
             throw InstallException(
                 "Not enough free space. ${builtIn.family} needs about ${KokoroInstallPlanning.megabytes(needed)} free to install.",
@@ -175,6 +181,9 @@ internal class KokoroModelInstaller(
         if (target.length() == file.bytes) return target
         target.delete()
         target.parentFile?.mkdirs()
+        // An older install's copy (only new voices are missing) moves over and is checked like a download.
+        val installed = File(files.dir, file.path)
+        if (installed.length() == file.bytes && installed.renameTo(target)) return target
         val partial = File(files.staging, "${file.path}.part")
         val resumeFrom = KokoroInstallPlanning.resumeFrom(partial.length(), file.bytes)
         if (partial.length() != file.bytes) download(file.url, partial, resumeFrom, file.bytes, total, before)

@@ -57,10 +57,57 @@ class BuiltInModelsTest {
         val harper = BuiltInModel.PHONON.defaultVoice
         assertEquals("Harper", harper.code)
         assertEquals("builtin:phonon-31m-en|voice=Harper|text=${PhononTextPlanning.VERSION}", KokoroVoices.voiceKey(harper))
+        // The owner's first picks stay first; the rest of the catalog's English voices follow.
         assertEquals(
             listOf("Harper", "Everly", "Bryony", "Hadley", "Juniper"),
-            BuiltInModel.PHONON.voices.map { it.code },
+            BuiltInModel.PHONON.voices
+                .take(5)
+                .map { it.code },
         )
+    }
+
+    @Test
+    fun phononOffersEveryEnglishVoiceOfItsCatalog() {
+        val voices = BuiltInModel.PHONON.voices
+        assertEquals(37, voices.size)
+        assertEquals(voices.size, voices.map { it.code }.toSet().size)
+        assertEquals(voices.indices.toList(), voices.map { it.speakerId })
+        // Codes are file names on the phone and on servers, and words in setup.sh's list.
+        voices.forEach { assertTrue(it.code, it.code.matches(Regex("[A-Za-z][A-Za-z-]*"))) }
+        assertEquals(12, voices.count { it.name.contains("(American, ") })
+        assertEquals(13, voices.count { it.name.contains("(British, ") })
+        assertEquals(12, voices.count { it.name.endsWith("(character)") })
+        assertEquals("Bryony (British, female)", voices.first { it.code == "Bryony" }.name)
+        assertEquals("en-GB", voices.first { it.code == "Bryony" }.language)
+        assertEquals(
+            "Captain Silas Blackwater (character)",
+            voices.first { it.code == "CaptainSilasBlackwater" }.name,
+        )
+        val saved = KokoroVoices.identifier(voices.first { it.code == "Zoey" })
+        assertEquals("Zoey", KokoroVoices.forIdentifier(saved)?.code)
+    }
+
+    @Test
+    fun setupScriptFetchesTheSamePhononVoices() {
+        val script =
+            generateSequence(java.io.File("").absoluteFile) { it.parentFile }
+                .map { java.io.File(it, "scripts/narration-server/setup.sh") }
+                .first { it.isFile }
+                .readText()
+        val listed =
+            script
+                .substringAfter("PHONON_VOICES=\"")
+                .substringBefore("\"")
+                .lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        val phonon = BuiltInModel.PHONON.modelPackage as ModelPackage.Files
+        val expected =
+            BuiltInModel.PHONON.voices.map { voice ->
+                val file = phonon.files.first { it.path == "voices/${voice.code}.safetensors" }
+                "${voice.code}:${file.url.substringAfterLast('/').removeSuffix(".safetensors")}:${file.sha256}"
+            }
+        assertEquals(expected, listed)
     }
 
     @Test

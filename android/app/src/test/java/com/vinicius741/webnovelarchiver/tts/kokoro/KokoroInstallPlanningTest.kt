@@ -64,5 +64,9 @@ class KokoroInstallPlanningTest {
         )
         assertEquals("Unpacking 100%", KokoroInstallPlanning.describe(KokoroModelState.Unpacking(5L, 5L)))
         assertEquals("Installed. Uses 369 MB on this phone.", KokoroInstallPlanning.describe(KokoroModelState.Installed(369_315_617L)))
+        assertEquals(
+            "New voices are available. A 8 MB download adds them; until then chapters generate on your computers.",
+            KokoroInstallPlanning.describe(KokoroModelState.NotInstalled(updateBytes = 32 * 256_136L)),
+        )
     }
 }

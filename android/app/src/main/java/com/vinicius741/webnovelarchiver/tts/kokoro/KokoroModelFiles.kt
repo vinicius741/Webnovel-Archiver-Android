@@ -30,6 +30,23 @@ internal class KokoroModelFiles(
     /** Only a fully installed and checked model carries the marker, so a half-done install never loads. */
     val isInstalled: Boolean get() = marker.isFile && requiredFiles().all { File(dir, it).exists() }
 
+    /**
+     * Bytes an older install here lacks: files added to the model since (Phonon's new voices), or
+     * 0 when nothing was installed or the install is complete. Those files are fetched, the rest kept.
+     */
+    fun missingFromOlderInstall(): Long {
+        val pkg = builtIn.modelPackage as? ModelPackage.Files ?: return 0L
+        if (!marker.isFile) return 0L
+        return pkg.files.filterNot(::isAtHand).sumOf { it.bytes }
+    }
+
+    /** Bytes of [ModelPackage.Files] an install will not download: complete in staging or in an older install. */
+    fun reusableFileBytes(pkg: ModelPackage.Files): Long = pkg.files.filter(::isAtHand).sumOf { it.bytes }
+
+    /** [file] is complete in staging, or in the install folder an update moves it from. */
+    private fun isAtHand(file: ModelFile): Boolean =
+        File(staging, file.path).length() == file.bytes || File(dir, file.path).length() == file.bytes
+
     fun installedBytes(): Long = dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
 
     private fun requiredFiles(): List<String> =
