@@ -94,10 +94,18 @@ internal fun ScreenHost.showDownloadSettings() {
         lateinit var maxHandle: StepperHandle
         lateinit var paceSelector: SegmentedSelector
         settingsGroup {
+            val caption =
+                if (paceIndex(draft.range()) < 0) {
+                    "Now ${DownloadPacePlanning.paceLabel(draft.range())} between chapters. Pick a pace to replace it."
+                } else {
+                    "How long to wait between chapters"
+                }
             paceSelector =
-                paceSelectorRow("How long to wait between chapters", paceIndex(draft.range())) { index ->
+                paceSelectorRow(caption, paceIndex(draft.range())) { index ->
                     val range = DownloadPacePlanning.presets[index].range
                     changed(draft.copy(downloadDelay = range.minMs, downloadDelayMax = range.maxMs))
+                    // Rebuilt so the caption and every stepper show the new pace (the change is kept unsaved until then).
+                    post { showDownloadSettings() }
                     minHandle.show(range.minMs.toDouble())
                     maxHandle.show(range.maxMs.toDouble())
                 }

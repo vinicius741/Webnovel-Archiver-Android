@@ -137,7 +137,15 @@ internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
                     LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         addView(
-                            makeText(context, "${model.family} voices", Type.TITLE_SMALL, colors.onSurface).apply { textSize = TITLE_SP },
+                            makeText(
+                                context,
+                                if (model.retired) "Kokoro v0.19 voices · no longer used" else "${model.family} voices",
+                                Type.TITLE_SMALL,
+                                colors.onSurface,
+                            ).apply {
+                                textSize =
+                                    TITLE_SP
+                            },
                         )
                         addView(status)
                     },

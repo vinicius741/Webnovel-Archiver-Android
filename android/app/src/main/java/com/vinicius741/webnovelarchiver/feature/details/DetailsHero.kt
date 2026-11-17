@@ -269,8 +269,8 @@ private fun ScreenHost.buildQuickActions(
     val label =
         when {
             running == StoryOperationKind.EPUB -> "EPUB · generating…"
-            !story.epubPaths.isNullOrEmpty() || !story.epubPath.isNullOrBlank() -> "EPUB · read, share or regenerate"
-            else -> "EPUB · make one to read elsewhere"
+            !story.epubPaths.isNullOrEmpty() || !story.epubPath.isNullOrBlank() -> "EPUB · read or share"
+            else -> "Make an EPUB"
         }
     return makeFullWidthButton(app, label, Btn.SURFACE, R.drawable.wna_menu_book) { showEpubSheet(story.id) }.apply {
         (layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(Spacing.LG)

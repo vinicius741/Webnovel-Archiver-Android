@@ -59,8 +59,9 @@ internal fun ScreenHost.showSettings() {
         settingsGroup {
             val cleanup = SettingsHubPlanning.cleanupSummary(repository.regexRules.get().size, repository.sentenceRemovalList.get().size)
             navRow(R.drawable.wna_cleaning, "Text cleanup", cleanup) { showCleanupRules() }
-            // Only a foldable's inner screen has a choice to make; a non-default mode stays reachable to undo.
-            if (foldTracker.isFoldingFeature.value || repository.getDisplayPreferences().screenLayoutMode != LAYOUT_MODES.first().first) {
+            // Only a large (inner) screen has a choice to make; a non-default mode stays reachable to undo.
+            val largeScreen = foldTracker.isFoldingFeature.value || app.resources.configuration.screenWidthDp >= LARGE_SCREEN_DP
+            if (largeScreen || repository.getDisplayPreferences().screenLayoutMode != LAYOUT_MODES.first().first) {
                 addView(layoutModeRow())
             }
         }
@@ -279,6 +280,7 @@ private fun ScreenHost.notificationsSummary(): String? {
 
 internal const val DEFAULT_PARALLEL_SOURCES = 2
 private const val LOADING = "…"
+private const val LARGE_SCREEN_DP = 600
 private const val FOOTER_LINE_SPACING = 1.4f
 private const val LEAD_DP = 40
 private const val LEAD_RADIUS_DP = 12
