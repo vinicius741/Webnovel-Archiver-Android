@@ -9,7 +9,7 @@ How narration plays since November 2026. It builds on the session and position m
 > What changed is where each sentence's audio comes from. A chapter reads its clips from its
 > generated pack (`PackTtsOutput`), with exact durations from the start and no rendering. The
 > real-time rendering, render-ahead, cache and live fallback described here now serve only story
-> descriptions and the Voice & Speech sample. The goal: pause anywhere, put the device away,
+> descriptions and the Settings › Listening sample. The goal: pause anywhere, put the device away,
 come back days later, and continue without finding your place or hearing unexpected speech.
 
 ## The core change
@@ -62,7 +62,7 @@ Chapter HTML
 ### Pacing
 
 Pauses are real time: `TtsPcmPlayer` writes more silence as speed rises, because the track's time
-stretching would otherwise shorten it. Voice & Speech has a slider for the first four, and a Try it
+stretching would otherwise shorten it. Settings › Listening has a slider for the first four, and a Try it
 card (`TtsSamplePreview`) that plays editable text through this same pipeline with the unsaved values,
 because these can only be judged by ear. Saving reaches a loaded chapter from its next pause.
 
@@ -123,7 +123,7 @@ starts audio.
 
 ### Context replay on resume
 
-`TtsPositionPlanning.resumePoint`, and it can be turned off in Voice & Speech:
+`TtsPositionPlanning.resumePoint`, and it can be turned off in Settings › Listening:
 
 | Break | Resumes at |
 |---|---|
@@ -145,9 +145,9 @@ starts audio.
 - **Library:** a "Continue listening" card appears when nothing is loaded in the player. Its close
   button hides it across restarts, without forgetting any saved place, until something is played again.
 
-## Engines and profiles
+## Engines
 
-Voice & Speech has an **Engine** setting: the phone's preferred engine (`enginePackage = null`), the
+Settings › Listening has an **Engine** setting: the phone's preferred engine (`enginePackage = null`), the
 built-in Kokoro model (`builtin:kokoro-en-v0_19`, see `kokoro-built-in-voices.md`), or any installed
 TTS app, listed from `TTS_SERVICE` services (the manifest declares that `<queries>`
 intent, or Android hides other apps' engines). `TtsSpeechEngineHost` creates `TextToSpeech` for the
@@ -156,12 +156,12 @@ key names the engine that really speaks; the phone-default key is unchanged from
 could be chosen. Changing engine clears the voice, since voices belong to one engine. The voice
 picker asks the selected engine, not the one playing, for its voices.
 
-**Profiles** are named snapshots of engine, voice, pitch, rate and the four pauses
-(`TtsSettings.profiles`, `TtsProfilePlanning`). Chapter announcements, context replay and skip
-buttons are not part of a profile. Profiles live in `tts_settings.json`, so backups carry them.
-Saving under an existing name updates that profile. Saved settings and switched profiles reach a
-loaded chapter through `TtsEngine.applySettings`: new pauses and rate apply in place, and a new
-engine, voice or pitch restarts the output from the current point in the new voice.
+Voice profiles were removed in November 2026: there is one current voice, set on Settings ›
+Listening, which saves every change as it is made (older `tts_settings.json` files with a
+`profiles` list still load; the list is ignored). Pitch shows only for Google's engine
+(`TtsEnginePlanning.hasPitch`), and playback speed is set on the player and the reader dock.
+Changes reach a loaded chapter through `TtsEngine.applySettings`: new pauses and rate apply in
+place, and a new engine, voice or pitch restarts the output from the current point in the new voice.
 
 ## Fallback
 

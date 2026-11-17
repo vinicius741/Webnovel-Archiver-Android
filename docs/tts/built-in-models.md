@@ -1,7 +1,7 @@
 # Built-in voice models: Kokoro v0.19, Kokoro v1.0 and Phonon
 
 Since 2026-11-16 the app offers three built-in voice models, each a separate engine in
-Voice & Speech → Engine:
+Settings › Listening → Engine (Kokoro v0.19 retired on 2026-11-17, see below):
 
 | Engine | Model | Runtime | Download | Voices |
 |---|---|---|---|---|
@@ -86,12 +86,16 @@ model card offers **Download to this phone** where the phone can run it, which l
 generate (alone, or standing in while no computer answers; without the model the stand-in is not
 offered, and the Generate on card says so).
 
-Story descriptions are live speech on the phone. While the chosen built-in model is not installed
-there, `TtsSpeechEngineHost.speaking` replaces the settings with `TtsEnginePlanning.standIn`: the
-engine, voice and pitch of a saved profile that speaks with an Android engine, Google's first; the
-listening speed and pauses stay the user's. Without such a profile the phone's default engine speaks.
+Story-description read-aloud and voice profiles were removed in November 2026. Live speech that
+still asks for a built-in model that is not on the phone falls back to the phone's own engine
+(`TtsEnginePlanning.standIn`).
 
-The Voice & Speech sample never stands in: it is there to hear the chosen voice. With the model not
+Kokoro v0.19 is retired the same month (`BuiltInModel.retired`): it is no longer offered as an
+engine, settings that chose it load as Kokoro v1.0 with the same voice when v1.0 has it
+(`TtsEnginePlanning.withoutRetiredEngine`), and its generated audio keeps playing, since playback
+never needs the engine. An installed copy can still be removed in Settings › Listening.
+
+The Settings › Listening sample never stands in: it is there to hear the chosen voice. With the model not
 on the phone (`TtsSamplePlanning.place`), the Try it card shows a chip per computer (one or several,
 defaulting to Listen's Generate on choice, then all). Play sample sends every sentence to them
 through `NarrationSampleRenderer`: one shared list, so two computers split the sentences, and once

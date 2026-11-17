@@ -2,7 +2,7 @@
 
 Webnovel Archiver can speak with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), a neural
 voice model that runs on the phone, as well as with any Android TTS app. Kokoro appears as
-**Kokoro (built in)** in Voice & Speech → Engine. Its 11 English voices appear in the voice picker by
+**Kokoro (built in)** in Settings › Listening → Engine. Its 11 English voices appear in the voice picker by
 name, and each profile can use a different one.
 
 ## Why built in
@@ -113,7 +113,7 @@ rendering time, native thread count, allowed cores and process importance in the
 
 ## Speed test
 
-Settings → Voice & Speech → Kokoro voices → **Test speed** measures whether Kokoro can generate
+In debug builds, Settings › Listening → Kokoro voices → **Test speed** measures whether Kokoro can generate
 faster than the listener plays it, on the phone itself (release builds included). It answers whether
 gaps between sentences come from generation speed, and how much of the phone it leaves unused.
 

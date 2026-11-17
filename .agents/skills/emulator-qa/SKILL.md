@@ -174,7 +174,7 @@ Do these on top of static screenshots. Use dump bounds for taps.
 | Details | Collapse → chapter list; overflow menu; open a chapter into reader |
 | Reader | Next chapter; TTS play → transport visible → Stop; open Reader Settings |
 | Reader Settings | Tap **Voice settings** — dialog must dismiss (known P2 if it stays) |
-| Settings | Download Settings; Voice & Speech; Manage Tabs; Text Cleanup; scroll for Backup |
+| Settings | Listening; Text Cleanup; Manage Tabs; Downloads; scroll for Data & backup |
 | Add Story | Empty URL → Fetch Story stays on form (toast may die fast; form stay = pass) |
 | Queue | Use disposable simulation data to exercise ordering, pause/resume/cancel, failures, and verification; keep live downloads explicitly separate |
 

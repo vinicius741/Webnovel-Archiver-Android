@@ -2,14 +2,13 @@
 
 ---
 name: restore-library-backup
-description: Replaces the debug app's ENTIRE library on the webnovel_api36 emulator from a backup — no SAF picker, no app UI, all via `adb run-as`. Handles BOTH formats: `webnovel_backup_*.json` (metadata-only; host-side conversion + seed) and `webnovel_full_backup_*.zip` (complete: chapters, settings, metrics; restored through the app's own production pipeline via the debug-only `dev_restore_full_backup` launch extra). Use whenever the user mentions replacing/restoring/importing a backup onto the emulator or simulator, swapping the test novels for their real library, seeding the debug app from a backup file, or handing over any `webnovel_backup_*.json` / `webnovel_full_backup_*.zip` to install. Trigger phrases include "replace the app backup", "import this backup into the simulator", "load my library onto the emulator", "install the full backup", "swap the test novels for my real ones". This is the REPLACE path; it does NOT cover the in-app merge import (Settings picker) or ANY physical-phone use — see "When not to use this skill".
+description: Replaces the debug app's ENTIRE library on the webnovel_api36 emulator from a backup — no SAF picker, no app UI, all via `adb run-as`. Handles BOTH formats: `webnovel_backup_*.json` (metadata-only; host-side conversion + seed) and `webnovel_full_backup_*.zip` (complete: chapters, settings, metrics; restored through the app's own production pipeline via the debug-only `dev_restore_full_backup` launch extra). Use whenever the user mentions replacing/restoring/importing a backup onto the emulator or simulator, swapping the test novels for their real library, seeding the debug app from a backup file, or handing over any `webnovel_backup_*.json` / `webnovel_full_backup_*.zip` to install. Trigger phrases include "replace the app backup", "import this backup into the simulator", "load my library onto the emulator", "install the full backup", "swap the test novels for my real ones". This is the REPLACE path; it does NOT cover ANY physical-phone use — see "When not to use this skill".
 ---
 
 ## What this skill does
 
-The app's in-app "Import Backup" (Settings → Data & Backup) requires the system file
-picker and only **merges** into the existing library. There is no programmatic import
-hook. This skill replaces the emulator's library wholesale, in one of two ways
+The app's in-app backup is full ZIPs only (Settings → Data & backup → Restore backup,
+through the system file picker); JSON import was removed from the app in November 2026. This skill replaces the emulator's library wholesale, in one of two ways
 depending on the file the user hands over:
 
 - **`webnovel_backup_*.json`** (metadata-only) — convert on the host and write the
@@ -45,8 +44,8 @@ Both paths share the same report-based verification.
 
 - **Physical phone** — never. This writes app data via `run-as`; it only works on the
   debuggable debug variant and must target an emulator serial (per repo AGENTS.md).
-- **User wants a merge** (keep current emulator novels + add backup ones) — that is the
-  in-app Settings → Data & Backup → Import Backup picker; don't script it.
+- **User wants a merge** (keep current emulator novels + add backup ones) — the app no
+  longer has a merge import; say so instead of scripting one.
 - **Just launching/QA-ing the app** — use the `dev-launch-screen` skill instead.
 
 ## Irreversibility check
