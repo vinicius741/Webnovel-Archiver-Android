@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.feature.narration
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.feature.details.showStoryChapters
 import com.vinicius741.webnovelarchiver.feature.player.PlayerProgressLine
 import com.vinicius741.webnovelarchiver.narration.NarrationPack
 import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
@@ -66,7 +67,7 @@ internal fun LinearLayout.generatedSection(
                         leadIcon = R.drawable.wna_headphones,
                         lead = cover,
                         chevron = true,
-                    ) { host.showNarrationStory(storyId) },
+                    ) { host.showStoryChapters(storyId) },
                 )
             }
         addView(list)

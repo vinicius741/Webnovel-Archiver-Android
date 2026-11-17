@@ -268,11 +268,14 @@ class NarrationCoordinator internal constructor(
         return pack.recipe.title == text.spokenTitle
     }
 
-    /** Whether a chapter can play now (reads the chapter's text; call off the main thread). */
+    /**
+     * Whether a chapter can play now (reads the chapter's text; call off the main thread). Audio made
+     * from older text plays too, from the sentences it holds.
+     */
     suspend fun isReady(
         storyId: String,
         chapterId: String,
-    ): Boolean = status(storyId, chapterId) is NarrationChapterStatus.Ready
+    ): Boolean = status(storyId, chapterId).let { it is NarrationChapterStatus.Ready || it is NarrationChapterStatus.Outdated }
 
     /** One chapter's status, checking its text against its pack (reads the chapter). */
     suspend fun status(

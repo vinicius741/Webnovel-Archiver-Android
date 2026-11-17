@@ -14,10 +14,10 @@ import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPositions
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.details.showStoryChapters
 import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.feature.narration.playIfGenerated
 import com.vinicius741.webnovelarchiver.feature.narration.showNarration
-import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -191,7 +191,7 @@ private fun ScreenHost.playerHeader(state: TtsPlaybackSnapshot?): View {
         addView(
             app.iconButton(R.drawable.wna_graphic_eq, "Chapter audio", colors.onSurface) {
                 val snapshot = ttsEngine.playbackState.value.snapshot
-                if (snapshot != null) showNarrationStory(snapshot.storyId, snapshot.chapterId) else showNarration()
+                if (snapshot != null) showStoryChapters(snapshot.storyId, snapshot.chapterId) else showNarration()
             },
         )
     }

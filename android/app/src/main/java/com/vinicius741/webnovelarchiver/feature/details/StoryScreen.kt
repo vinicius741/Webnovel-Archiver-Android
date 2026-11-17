@@ -11,7 +11,6 @@ import android.widget.ScrollView
 import androidx.core.widget.NestedScrollView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.feature.story.StoryTab
 import com.vinicius741.webnovelarchiver.feature.story.StoryTabPlanning
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -61,8 +60,11 @@ internal object StoryTabMemory {
     /** Story whose Chapters tab should focus its search when it next opens (the app-bar search). */
     var focusChapterSearch: String? = null
 
-    /** Chapter filters the settings file cannot store ("Not downloaded"), per story, for this run of the app. */
+    /** Chapter filters the settings file cannot store ("Not downloaded", "Audio"), per story, for this run of the app. */
     val chapterFilters = HashMap<String, String>()
+
+    /** Chapter the Chapters tab scrolls to when it next opens (a chapter's audio was asked for), per story. */
+    val focusChapter = HashMap<String, String>()
 }
 
 @Suppress("LongParameterList", "LongMethod") // Scaffold wrapper: call sites pass named arguments, one linear layout build.
@@ -188,12 +190,11 @@ private fun ScreenHost.buildStoryTabStrip(
     twoPane: Boolean,
 ): View {
     val colors = ThemeManager.colors
-    val audio = runCatching { narration.store.packsFor(story.id).size }.getOrDefault(0)
     val row = SpreadRow(app)
     StoryTab.entries.forEach { tab ->
         val on = tab == current
         val label = StoryTabPlanning.label(tab, twoPane)
-        val count = StoryTabPlanning.count(tab, story.chapters.size, audio)
+        val count = StoryTabPlanning.count(tab, story.chapters.size)
         val texts =
             LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL

@@ -8,6 +8,7 @@ import android.widget.TextView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.feature.details.showStoryChapters
 import com.vinicius741.webnovelarchiver.feature.player.PlayerProgressLine
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
 import com.vinicius741.webnovelarchiver.narration.NarrationJobState
@@ -65,7 +66,7 @@ internal fun ScreenHost.showNarration() {
     val host = this
     val sideBySide = app.resources.configuration.screenWidthDp >= SIDE_BY_SIDE_MIN_DP
     // Idle says nothing the empty queue does not, so the banner shows only while something happens.
-    val liveStatus = NarrationLiveStatus(this, hideWhenIdle = true) { banner -> banner.storyId?.let { showNarrationStory(it) } }
+    val liveStatus = NarrationLiveStatus(this, hideWhenIdle = true) { banner -> banner.storyId?.let { showStoryChapters(it) } }
     val runningRow = RunningJobRow()
     val nowCard = ListenNowCard(this)
     val scroller =

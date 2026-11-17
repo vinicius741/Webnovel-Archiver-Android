@@ -32,7 +32,6 @@ import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
 import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
@@ -368,24 +367,13 @@ class MainActivity :
 
     /**
      * Play reached a chapter whose audio is not generated (mini-player, Now Playing, a restored
-     * session): say so and open that chapter's audio screen. The engine has already queued it.
+     * session): say so. The engine has already queued it first.
      */
     private val audioNotGeneratedListener: (TtsPlaybackError) -> Unit = { error ->
         if (error.kind == TtsPlaybackErrorKind.AudioNotGenerated) {
             runOnUiThread {
-                val session = ttsEngine.playbackState.value.snapshot
                 if (!uiReady || isFinishing) return@runOnUiThread
                 toast(getString(com.vinicius741.webnovelarchiver.R.string.tts_error_audio_not_generated))
-                // Not while reading (an auto-advance would pull the reader away) or already there.
-                val current = navigator.current
-                if (
-                    session != null &&
-                    current !is AppRoute.Reader &&
-                    current !is AppRoute.NarrationStory &&
-                    lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
-                ) {
-                    showNarrationStory(session.storyId, session.chapterId)
-                }
             }
         }
     }

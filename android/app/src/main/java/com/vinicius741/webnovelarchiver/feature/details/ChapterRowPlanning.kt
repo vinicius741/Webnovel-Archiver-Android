@@ -54,14 +54,14 @@ object ChapterRowPlanning {
         waitingForDelay: Boolean = false,
         patreonCopy: Boolean = false,
         removedFromSource: Boolean = false,
-        hasAudio: Boolean = false,
+        audio: String? = null,
     ): String =
         buildString {
             append("Index ")
             append(indexLabel(zeroBasedIndex))
             if (patreonCopy) append("  •  Patreon early access")
             if (removedFromSource) append("  •  Removed from source")
-            if (hasAudio) append("  •  Audio")
+            if (audio != null) append("  •  ").append(audio)
             subtitle(liveStatus, downloaded, downloadedAt, waitingForDelay)?.let {
                 append("  •  ")
                 append(it)

@@ -193,7 +193,7 @@ class AppNavigatorTest {
     fun `view memory survives for every tab of a story in the history`() {
         val navigator = AppNavigator()
         navigator.navigate(AppRoute.Details("story", chapters = true))
-        navigator.replace(AppRoute.NarrationStory("story"))
+        navigator.replace(AppRoute.AiControls("story"))
 
         assertTrue(AppRoute.Details("story", chapters = true).stableKey in navigator.viewMemoryKeys)
         assertTrue(AppRoute.Trends("story").stableKey in navigator.viewMemoryKeys)

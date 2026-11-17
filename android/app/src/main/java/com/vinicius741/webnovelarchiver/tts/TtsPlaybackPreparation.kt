@@ -12,6 +12,8 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsHistoryEntry
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
+import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
+import com.vinicius741.webnovelarchiver.narration.NarrationRecipe
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -62,6 +64,12 @@ internal interface TtsPlaybackSource {
     fun session(): TtsSession?
 
     suspend fun position(storyId: String): TtsStoryPosition?
+
+    /** What the chapter's generated audio was made from, when it has some. */
+    fun generatedRecipe(
+        storyId: String,
+        chapterId: String,
+    ): NarrationRecipe? = null
 }
 
 /** Performs all TTS file reads and chunk parsing away from Android's main dispatcher. */
@@ -74,9 +82,10 @@ internal class TtsPlaybackPreparer(
 
     constructor(
         repository: AppRepository,
+        narration: NarrationCoordinator?,
         ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
         computationDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    ) : this(RepositoryTtsPlaybackSource(repository), ioDispatcher, computationDispatcher)
+    ) : this(RepositoryTtsPlaybackSource(repository, narration), ioDispatcher, computationDispatcher)
 
     /**
      * [requestedIndex] null means "play wherever the story last stopped" (podcast resume); a value
@@ -217,6 +226,10 @@ internal class TtsPlaybackPreparer(
                 html = source.chapterHtml(storyId, chapter) ?: chapter.content,
                 settings = source.settings(),
                 rules = source.regexRules(),
+                generated =
+                    source
+                        .generatedRecipe(storyId, chapter.id)
+                        ?.takeIf { it.chunkingVersion == TtsTextPreparation.CHUNKING_VERSION && it.sentences.isNotEmpty() },
             )
         }
 }
@@ -231,7 +244,7 @@ private class TtsPlaybackBuilder(
     ): PreparedTtsPlayback? =
         withContext(computationDispatcher) {
             val html = input.html ?: return@withContext null
-            val narration = TtsTextPreparation.prepareTtsNarration(html, input.rules)
+            val narration = playableNarration(input, TtsTextPreparation.prepareTtsNarration(html, input.rules))
             if (narration.isEmpty()) return@withContext null
             val point =
                 TtsPositionPlanning.resolve(narration.map { it.text }, saved) {
@@ -247,7 +260,7 @@ private class TtsPlaybackBuilder(
     ): PreparedTtsPlayback? =
         withContext(computationDispatcher) {
             val html = input.html ?: return@withContext null
-            val narration = TtsTextPreparation.prepareTtsNarration(html, input.rules)
+            val narration = playableNarration(input, TtsTextPreparation.prepareTtsNarration(html, input.rules))
             if (narration.isEmpty()) return@withContext null
             prepared(input, narration, TtsChunkPoint(requestedIndex.coerceIn(0, narration.lastIndex)), speakTitle)
         }
@@ -272,9 +285,32 @@ private class TtsPlaybackBuilder(
             narration = narration,
             startOffsetMs = point.offsetMs,
             spokenTitle =
-                if (announce) TtsNarrationPlanning.spokenChapterTitle(input.chapter.title, narration.first().text) else null,
+                when {
+                    !announce -> null
+                    plays(input.generated, narration) -> input.generated?.title
+                    else -> TtsNarrationPlanning.spokenChapterTitle(input.chapter.title, narration.first().text)
+                },
         )
     }
+
+    /**
+     * The sentences to play: the chapter's text, or, when its generated audio was made from text that
+     * has changed since (a cleanup rule, a re-download), the sentences that audio holds. Outdated
+     * audio keeps playing instead of becoming unplayable; regenerating brings it up to date.
+     */
+    private fun playableNarration(
+        input: PreparationInput,
+        fromText: List<TtsNarrationChunk>,
+    ): List<TtsNarrationChunk> {
+        val generated = input.generated ?: return fromText
+        if (generated.sentences == fromText.map { it.text }) return fromText
+        return generated.sentences.map { TtsNarrationChunk(it) }
+    }
+
+    private fun plays(
+        generated: NarrationRecipe?,
+        narration: List<TtsNarrationChunk>,
+    ): Boolean = generated != null && generated.sentences == narration.map { it.text }
 }
 
 private data class PreparationInput(
@@ -283,6 +319,7 @@ private data class PreparationInput(
     val html: String?,
     val settings: TtsSettings,
     val rules: List<RegexCleanupRule>,
+    val generated: NarrationRecipe? = null,
 )
 
 private sealed interface NextChapterLookup {
@@ -299,6 +336,7 @@ private sealed interface NextChapterLookup {
 /** Production source: repository owns story/session/settings state and chapter reads. */
 private class RepositoryTtsPlaybackSource(
     private val repository: AppRepository,
+    private val narration: NarrationCoordinator?,
 ) : TtsPlaybackSource {
     override fun story(id: String): Story? = repository.story(id)
 
@@ -314,4 +352,9 @@ private class RepositoryTtsPlaybackSource(
     override fun session(): TtsSession? = repository.getTtsSession()
 
     override suspend fun position(storyId: String): TtsStoryPosition? = repository.getTtsStoryPosition(storyId)
+
+    override fun generatedRecipe(
+        storyId: String,
+        chapterId: String,
+    ): NarrationRecipe? = narration?.store?.pack(storyId, chapterId)?.recipe
 }

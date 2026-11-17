@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.feature.details.showStoryChapters
 import com.vinicius741.webnovelarchiver.feature.player.PlayerProgressLine
 import com.vinicius741.webnovelarchiver.narration.NarrationJob
 import com.vinicius741.webnovelarchiver.narration.NarrationJobState
@@ -77,7 +78,7 @@ internal fun LinearLayout.queueStoryCard(
             leadIcon = R.drawable.wna_headphones,
             lead = cover,
             trailing = more,
-        ) { if (story != null) host.showNarrationStory(group.storyId) else host.showStoryQueueMenu(group, isFirst) },
+        ) { if (story != null) host.showStoryChapters(group.storyId) else host.showStoryQueueMenu(group, isFirst) },
     )
     group.jobs.take(MAX_ROWS_PER_STORY).forEach { job ->
         card.addView(jobRow(host, job, isRunning = job.id == runningJobId, runningRow))
@@ -222,7 +223,7 @@ private fun ScreenHost.showStoryQueueMenu(
             }
     }
     if (repository.story(group.storyId) != null) {
-        items += OptionsDialogItem.Option("Open chapter audio") { showNarrationStory(group.storyId) }
+        items += OptionsDialogItem.Option("Open in the story") { showStoryChapters(group.storyId) }
     }
     items += OptionsDialogItem.Divider
     items +=
@@ -244,7 +245,7 @@ private fun ScreenHost.showJobMenu(
         items += OptionsDialogItem.Option("Retry") { narrationAction("Could not retry") { retry(job.id) } }
     }
     if (repository.story(job.storyId) != null) {
-        items += OptionsDialogItem.Option("Open chapter audio") { showNarrationStory(job.storyId, job.chapterId) }
+        items += OptionsDialogItem.Option("Open in the story") { showStoryChapters(job.storyId, job.chapterId) }
     }
     items += OptionsDialogItem.Divider
     items +=

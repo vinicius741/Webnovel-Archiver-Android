@@ -11,12 +11,14 @@ internal object ChapterFilterPlanning {
     /**
      * The chapters [filter] and [query] keep, with their 0-based reading position. The query matches
      * a title (ignoring case) or the exact chapter number. A filter that does not apply to this novel
-     * (no bookmark, nothing removed) shows every chapter.
+     * (no bookmark, nothing removed, no audio) shows every chapter. [withAudio] holds the chapters
+     * with audio or queued for it.
      */
     fun filter(
         story: Story,
         query: String,
         filter: String,
+        withAudio: Set<String> = emptySet(),
     ): List<Pair<Int, Chapter>> {
         val bookmarkIndex = bookmarkIndex(story)
         val hasRemoved = story.chapters.any { it.isRemovedFromSource }
@@ -30,6 +32,7 @@ internal object ChapterFilterPlanning {
                     DOWNLOADED_FILTER -> chapter.downloaded
                     FROM_BOOKMARK_FILTER -> bookmarkIndex < 0 || index >= bookmarkIndex
                     NOT_DOWNLOADED_FILTER -> !chapter.downloaded
+                    AUDIO_FILTER -> chapter.id in withAudio || withAudio.isEmpty()
                     REMOVED_FROM_SOURCE_FILTER -> chapter.isRemovedFromSource || !hasRemoved
                     else -> true
                 }
@@ -50,3 +53,6 @@ internal const val DOWNLOADED_FILTER = "hideNonDownloaded"
 internal const val FROM_BOOKMARK_FILTER = "hideAboveBookmark"
 internal const val NOT_DOWNLOADED_FILTER = "notDownloaded"
 internal const val REMOVED_FROM_SOURCE_FILTER = "removedFromSource"
+
+/** Chapters with generated audio (or queued for it); remembered for this run only, like Not downloaded. */
+internal const val AUDIO_FILTER = "audio"

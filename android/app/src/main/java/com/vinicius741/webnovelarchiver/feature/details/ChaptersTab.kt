@@ -16,25 +16,34 @@ import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
+import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.CardListDecoration
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.rememberListPosition
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /*
  * The Chapters tab: search, filter chips with counts (All / Downloaded / From bookmark / Not
- * downloaded / Removed from source), the shown count with jump-to-bookmark and Select, then the
- * recycled chapter rows. The header rides as the list's first item so the whole tab scrolls as one.
+ * downloaded / Audio / Removed from source), the shown count with jump-to-bookmark, the audio menu
+ * and Select, then the recycled chapter rows (each with its audio state; long-press for its
+ * actions). The header rides as the list's first item so the whole tab scrolls as one.
  */
 
 /**
@@ -60,6 +69,7 @@ internal fun ScreenHost.buildChaptersTab(
     val jobs = repository.queue().filter { it.storyId == story.id }
     val statuses = DownloadDetailsPlanning.chapterJobStatuses(jobs)
     val waiting = waitingChapterIds(jobs, app.appContainer.downloadPacer.snapshots.value.values, app.appContainer.time.nowMillis())
+    var audio = chapterAudioLabels(story)
     val list =
         RecyclerView(app).apply {
             layoutManager = LinearLayoutManager(app)
@@ -112,7 +122,7 @@ internal fun ScreenHost.buildChaptersTab(
     lateinit var renderHeader: () -> Unit
 
     fun render() {
-        adapter.show(story, query, filter)
+        adapter.show(story, query, filter, audio = audio)
         renderHeader()
     }
 
@@ -133,19 +143,24 @@ internal fun ScreenHost.buildChaptersTab(
         if (position >= 0) (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(position + 1, dp(Spacing.XL * 2))
     }
     renderHeader = {
-        renderChapterChips(chips, story, filter, ::pick)
+        renderChapterChips(chips, story, audio.size, filter, ::pick)
         val shown = adapter.shownCount()
         countLine.text = "%,d chapter%s".format(shown, if (shown == 1) "" else "s")
         renderChapterTools(tools, story, ::jumpToBookmark)
     }
     adapter =
-        ChapterListAdapter(this, story) { chapter ->
-            scope.launch {
-                story = repository.toggleBookmark(story.id, chapter.id) ?: return@launch
-                render()
-            }
-        }
-    adapter.show(story, query, filter, statuses, waiting)
+        ChapterListAdapter(
+            this,
+            story,
+            onToggleBookmark = { chapter ->
+                scope.launch {
+                    story = repository.toggleBookmark(story.id, chapter.id) ?: return@launch
+                    render()
+                }
+            },
+            onLongPress = { chapter -> showChapterActions(story, chapter) },
+        )
+    adapter.show(story, query, filter, statuses, waiting, audio)
     renderHeader()
     search.doAfterTextChanged {
         query = it?.toString().orEmpty()
@@ -156,6 +171,20 @@ internal fun ScreenHost.buildChaptersTab(
     list.addItemDecoration(CardListDecoration(app) { position -> position >= 1 })
     container.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
     rememberListPosition(list)
+    // Audio states follow the generation queue and new packs while the tab is on screen.
+    observeChapterAudio(list) {
+        audio = chapterAudioLabels(story)
+        render()
+    }
+    StoryTabMemory.focusChapter.remove(story.id)?.let { focusId ->
+        if (adapter.positionOf(focusId) < 0) pick(ALL_FILTER)
+        val position = adapter.positionOf(focusId)
+        if (position >=
+            0
+        ) {
+            list.post { (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(position + 1, dp(Spacing.XL)) }
+        }
+    }
     if (StoryTabMemory.focusChapterSearch == story.id) {
         StoryTabMemory.focusChapterSearch = null
         search.post {
@@ -165,12 +194,13 @@ internal fun ScreenHost.buildChaptersTab(
     }
     return ChaptersTab(list, { query.isNotEmpty() }, { search.setText("") }) { latest, latestStatuses, latestWaiting ->
         story = latest
-        adapter.show(latest, query, filter, latestStatuses, latestWaiting)
+        audio = chapterAudioLabels(latest)
+        adapter.show(latest, query, filter, latestStatuses, latestWaiting, audio)
         renderHeader()
     }
 }
 
-/** The shown count's row: jump to the bookmark (ivory) and Select chapters. */
+/** The shown count's row: jump to the bookmark (ivory), the story's audio menu, and Select chapters. */
 private fun ScreenHost.renderChapterTools(
     tools: LinearLayout,
     story: Story,
@@ -188,15 +218,19 @@ private fun ScreenHost.renderChapterTools(
             },
         )
     }
-    if (StoryActionGuards.canQueueDownloads(story)) {
+    if (story.chapters.any(TtsContinueListening::isPlayable)) {
+        tools.addView(app.iconButton(R.drawable.wna_headphones, "Audio for this story") { showStoryAudioMenu(story) })
+    }
+    if (story.chapters.isNotEmpty()) {
         tools.addView(makeButton(app, "Select", Btn.TEXT, R.drawable.wna_checklist) { showChapterSelection(story.id) })
     }
 }
 
-/** Filter chips with counts; "Not downloaded" and "Removed from source" appear only when they apply. */
+/** Filter chips with counts; "Not downloaded", "Audio" and "Removed from source" appear only when they apply. */
 private fun ScreenHost.renderChapterChips(
     container: LinearLayout,
     story: Story,
+    withAudio: Int,
     current: String,
     onPick: (String) -> Unit,
 ) {
@@ -211,6 +245,7 @@ private fun ScreenHost.renderChapterChips(
             add(Triple(DOWNLOADED_FILTER, "Downloaded", downloaded))
             if (fromBookmark > 0) add(Triple(FROM_BOOKMARK_FILTER, "From bookmark", fromBookmark))
             if (total - downloaded > 0) add(Triple(NOT_DOWNLOADED_FILTER, "Not downloaded", total - downloaded))
+            if (withAudio > 0) add(Triple(AUDIO_FILTER, "Audio", withAudio))
             if (removed > 0) add(Triple(REMOVED_FROM_SOURCE_FILTER, "Removed from source", removed))
         }
     val shown = chips.firstOrNull { it.first == current }?.first ?: ALL_FILTER
@@ -229,15 +264,43 @@ private fun ScreenHost.renderChapterChips(
 private fun ScreenHost.chapterFilterFor(storyId: String): String =
     StoryTabMemory.chapterFilters[storyId] ?: repository.chapterFilterSettings.get().filterMode
 
-/** Saves a filter the settings file knows; "Not downloaded" is remembered only for this run. */
+/** Saves a filter the settings file knows; "Not downloaded" and "Audio" are remembered only for this run. */
 private fun ScreenHost.rememberChapterFilter(
     storyId: String,
     mode: String,
 ) {
-    if (mode == NOT_DOWNLOADED_FILTER) {
+    if (mode == NOT_DOWNLOADED_FILTER || mode == AUDIO_FILTER) {
         StoryTabMemory.chapterFilters[storyId] = mode
         return
     }
     StoryTabMemory.chapterFilters.remove(storyId)
     scope.launch { repository.chapterFilterSettings.save(ChapterFilterSettings(mode)) }
+}
+
+/** Calls [onChange] on the main thread whenever the generation queue or the published audio changes, while [list] is attached. */
+private fun ScreenHost.observeChapterAudio(
+    list: RecyclerView,
+    onChange: () -> Unit,
+) {
+    var job: Job? = null
+    val coordinator = narration
+    list.addOnAttachStateChangeListener(
+        object : android.view.View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: android.view.View) {
+                job?.cancel()
+                val running = coordinator.progress.map { it?.takeUnless { p -> p.preparing }?.job?.id }.distinctUntilChanged()
+                job =
+                    scope.launch {
+                        combine(coordinator.queueState.map { it.jobs }, coordinator.packsRevision, running) { _, _, _ -> Unit }
+                            .drop(1)
+                            .collect { onChange() }
+                    }
+            }
+
+            override fun onViewDetachedFromWindow(view: android.view.View) {
+                job?.cancel()
+                job = null
+            }
+        },
+    )
 }

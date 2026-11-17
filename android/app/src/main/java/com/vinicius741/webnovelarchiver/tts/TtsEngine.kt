@@ -47,7 +47,7 @@ class TtsEngine(
      */
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
-    private val preparer = TtsPlaybackPreparer(repository)
+    private val preparer = TtsPlaybackPreparer(repository, narration)
 
     // The store MUST share the same owner as the preparer's read path. When a repository is present
     // the preparer reads the in-memory session cache, so writes route through the repository too

@@ -13,16 +13,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.dropWhile
 import java.util.Locale
 
-/** Which chapters the Chapter audio list shows. */
-internal enum class ChapterAudioFilter(
-    val label: String,
-) {
-    FROM_BOOKMARK("From bookmark"),
-    ALL("All"),
-    NOT_GENERATED("Not generated"),
-    READY("Ready"),
-}
-
 /** What the live generation banner says, whatever story is being generated. */
 internal data class GenerationBanner(
     val state: State,
@@ -52,65 +42,12 @@ internal object NarrationScreenPlanning {
     /** The one instruction for making chapter audio, wherever the app explains it. */
     const val HOW_TO_GENERATE = "Tap the headphones on a chapter to generate its audio."
 
-    /** Index of the bookmarked chapter in [Story.chapters], or -1. */
-    fun bookmarkIndex(story: Story): Int = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
-
-    /** Chapters the bookmark filter shows: the bookmarked one and everything after it. */
-    fun fromBookmark(
-        story: Story,
-        chapters: List<Chapter>,
-    ): List<Chapter> {
-        val bookmark = bookmarkIndex(story)
-        if (bookmark < 0) return chapters
-        val positions = story.chapters.withIndex().associate { (index, chapter) -> chapter.id to index }
-        return chapters.filter { (positions[it.id] ?: -1) >= bookmark }
-    }
-
-    /**
-     * The filter a story opens with: from the bookmark when there is one, so a long novel starts
-     * where the reader is. A chapter the screen was opened for stays visible.
-     */
-    fun defaultFilter(
-        story: Story,
-        chapters: List<Chapter>,
-        focusId: String?,
-    ): ChapterAudioFilter {
-        if (bookmarkIndex(story) < 0) return ChapterAudioFilter.ALL
-        if (focusId != null && fromBookmark(story, chapters).none { it.id == focusId }) return ChapterAudioFilter.ALL
-        return ChapterAudioFilter.FROM_BOOKMARK
-    }
-
-    fun filter(
-        story: Story,
-        chapters: List<Chapter>,
-        statuses: Map<String, NarrationChapterStatus>,
-        filter: ChapterAudioFilter,
-    ): List<Chapter> =
-        when (filter) {
-            ChapterAudioFilter.ALL -> chapters
-            ChapterAudioFilter.FROM_BOOKMARK -> fromBookmark(story, chapters)
-            ChapterAudioFilter.NOT_GENERATED -> chapters.filter { statuses[it.id].needsAudio() }
-            ChapterAudioFilter.READY -> chapters.filter { statuses[it.id] is NarrationChapterStatus.Ready }
-        }
-
     /** Chapters a Generate request would queue: no current audio, failed, or audio for older text. */
     fun NarrationChapterStatus?.needsAudio(): Boolean =
         this == null ||
             this is NarrationChapterStatus.None ||
             this is NarrationChapterStatus.Outdated ||
             this is NarrationChapterStatus.Failed
-
-    /** Every visible chapter from [anchorId] to [targetId], inclusive and in either direction. */
-    fun range(
-        visibleIds: List<String>,
-        anchorId: String?,
-        targetId: String,
-    ): Set<String> {
-        val to = visibleIds.indexOf(targetId)
-        if (to < 0) return emptySet()
-        val from = anchorId?.let(visibleIds::indexOf)?.takeIf { it >= 0 } ?: to
-        return visibleIds.subList(minOf(from, to), maxOf(from, to) + 1).toSet()
-    }
 
     /** The queue as story groups, in the order each story first appears. */
     fun groups(jobs: List<NarrationJob>): List<QueueGroup> =

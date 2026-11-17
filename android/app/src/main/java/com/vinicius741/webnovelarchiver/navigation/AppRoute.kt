@@ -16,8 +16,8 @@ sealed class AppRoute(
 
     /**
      * The story page. Its tabs are routes of their own so Back and deep links address them: this
-     * route is the Overview tab, or the Chapters tab when [chapters] is set; [NarrationStory] is the
-     * Audio tab, [Trends] the Trends tab and [AiControls] the AI tab. Tab switches replace the
+     * route is the Overview tab, or the Chapters tab (with each chapter's audio) when [chapters] is
+     * set; [Trends] is the Trends tab and [AiControls] the AI tab. Tab switches replace the
      * current history entry, so Back leaves the story instead of walking its tabs.
      */
     data class Details(
@@ -70,17 +70,8 @@ sealed class AppRoute(
     /** Podcast-style Now Playing screen (TTS transport, progress, speed). */
     data object Player : AppRoute("player")
 
-    /** Generated chapter audio: the generation queue, keep-ahead, storage and every story's audio. */
+    /** The Listen destination: the player card, the generation queue and every story's audio. */
     data object Narration : AppRoute("narration")
-
-    /**
-     * One story's chapter audio: generate, regenerate, delete and play. [chapterId] is the chapter
-     * "Read aloud" asked for, shown first.
-     */
-    data class NarrationStory(
-        val storyId: String,
-        val chapterId: String? = null,
-    ) : AppRoute("narration_story")
 
     data object Settings : AppRoute("settings")
 
@@ -120,7 +111,6 @@ sealed class AppRoute(
                 is ChapterSelection -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is Trends -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${focus ?: ""}"
                 is PatreonAccount -> "$name:${storyId?.let(AppRouteCodec::encodeArgument).orEmpty()}"
-                is NarrationStory -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 else -> name
             }
 
@@ -132,7 +122,6 @@ sealed class AppRoute(
         get() =
             when (this) {
                 is Details -> storyId
-                is NarrationStory -> storyId
                 is Trends -> storyId
                 is AiControls -> storyId
                 else -> null
@@ -163,7 +152,6 @@ internal fun storyTabRoutes(storyId: String): List<AppRoute> =
     listOf(
         AppRoute.Details(storyId),
         AppRoute.Details(storyId, chapters = true),
-        AppRoute.NarrationStory(storyId),
         AppRoute.Trends(storyId),
         AppRoute.AiControls(storyId),
     )
@@ -182,7 +170,6 @@ object AppRouteCodec {
                 is AppRoute.Trends -> listOf(route.storyId) + listOfNotNull(route.focus?.takeIf { it.isNotBlank() })
                 is AppRoute.ChapterSelection -> listOf(route.storyId) + route.selectedChapterIds.sorted()
                 is AppRoute.PatreonAccount -> listOfNotNull(route.storyId)
-                is AppRoute.NarrationStory -> listOfNotNull(route.storyId, route.chapterId)
                 else -> emptyList()
             }
         return (listOf(route.name) + arguments.map(::hexEncode)).joinToString(":")
@@ -234,7 +221,8 @@ object AppRouteCodec {
             "trends" -> arguments.firstOrNull()?.let { AppRoute.Trends(it, arguments.getOrNull(1)) }
             "patreon_account" -> if (arguments.size <= 1) AppRoute.PatreonAccount(arguments.firstOrNull()) else null
             "reader" -> if (arguments.size == 2) AppRoute.Reader(arguments[0], arguments[1]) else null
-            "narration_story" -> if (arguments.size in 1..2) AppRoute.NarrationStory(arguments[0], arguments.getOrNull(1)) else null
+            // The Audio tab merged into the Chapters tab.
+            "narration_story" -> if (arguments.size in 1..2) AppRoute.Details(arguments[0], chapters = true) else null
             else -> null
         }
 
