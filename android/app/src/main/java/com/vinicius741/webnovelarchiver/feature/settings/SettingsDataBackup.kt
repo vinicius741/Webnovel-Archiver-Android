@@ -165,7 +165,7 @@ private fun ScreenHost.addSourceRows(group: LinearLayout) {
             }
         toast(detail)
     }
-    group.navRow(R.drawable.wna_article, "Share activity logs", "The last 7 days of syncs, downloads and errors") {
+    group.navRow(R.drawable.wna_article, "Share activity logs", "The last hour of syncs, downloads and errors") {
         exportAndShare({
             ActivityLogExporter.export(
                 directory = app.appContainer.repository.storage.backupRoot,

@@ -1,6 +1,6 @@
 # Activity log
 
-The activity log is a persistent record of what the app did over the last 7 days. It covers syncs, downloads, library changes, backups, network access, warnings, and crashes. When something goes wrong on the phone, the owner exports it from **Settings → Share Activity Logs** and sends the file. The problem can then be diagnosed from the file alone.
+The activity log is a persistent record of what the app did over the last 7 days. It covers syncs, downloads, library changes, backups, network access, warnings, and crashes. When something goes wrong on the phone, the owner exports the last hour of it from **Settings → Share Activity Logs** right away and sends the file. The problem can then be diagnosed from the file alone.
 
 It complements two older diagnostics, which are both in-memory and lost when the app restarts:
 
@@ -68,10 +68,10 @@ The `sync` events in detail:
 - **Library:** `libraryStats` and a per-novel `library` summary: id, title, source, chapter, downloaded, removed-flag and Patreon-copy counts, Patreon link, last chapter sync, status, archive flag.
 - **Queue and network:** the download queue summary and source reliability snapshots.
 - **Log files:** their names and sizes.
-- **Completeness:** `droppedOldestForSize`, `droppedBeforeWrite`, and `writeFailures`, so a reader knows when history is incomplete.
+- **Completeness:** `windowStartAt`, `droppedOutsideWindow`, `droppedOldestForSize`, `droppedBeforeWrite`, and `writeFailures`, so a reader knows when history is incomplete.
 - **`agentInstructions`:** reading instructions for an AI agent.
 
-Event lines follow, oldest first. If the document exceeds 12 MB, the oldest events are dropped and counted (`ActivityLogExportPlanning.documentLines`).
+Event lines follow, oldest first. Only events from the hour before the export are included (`EXPORT_WINDOW_MILLIS`, `ActivityLogExportPlanning.linesInWindow`); older ones stay on the phone and are counted in `droppedOutsideWindow`. The export is meant to be shared right after something goes wrong, and it must stay small enough to attach to an agent chat (a 1.1 MB, 7-day export was rejected as too much context). If the document still exceeds 384 KB, the oldest events are dropped and counted (`ActivityLogExportPlanning.documentLines`).
 
 ## Privacy
 

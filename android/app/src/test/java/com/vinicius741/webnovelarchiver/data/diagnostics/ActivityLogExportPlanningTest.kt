@@ -35,6 +35,21 @@ class ActivityLogExportPlanningTest {
     }
 
     @Test
+    fun windowKeepsOnlyRecentEventsAndUnreadableLines() {
+        val events = listOf("{\"ts\":100,\"seq\":1}", "{\"ts\":200,\"seq\":2}", "{\"ts\":300,\"seq\":3}", "{\"seq\":4}")
+
+        val kept = ActivityLogExportPlanning.linesInWindow(events, windowStartMillis = 200)
+
+        assertEquals(events.drop(1), kept)
+    }
+
+    @Test
+    fun exportWindowIsOneHourAndFitsAnAgentChat() {
+        assertEquals(60L * 60L * 1000L, ActivityLogExportPlanning.EXPORT_WINDOW_MILLIS)
+        assertTrue(ActivityLogExportPlanning.MAX_EXPORT_BYTES <= 512 * 1024)
+    }
+
+    @Test
     fun headerSummarizesTheLibraryPerNovel() {
         val story =
             Story(
