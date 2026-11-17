@@ -124,7 +124,7 @@ internal fun ScreenHost.showStoryMenu(
         buildList {
             if (item.section == QueueSection.UP_NEXT) {
                 add(
-                    QueueMenuEntry("Download next", R.drawable.wna_up) {
+                    QueueMenuEntry("Download now", R.drawable.wna_up) {
                         launchQueueControl("downloadStoryNext") { downloadEngine.downloadStoryNext(item.storyId) }
                     },
                 )

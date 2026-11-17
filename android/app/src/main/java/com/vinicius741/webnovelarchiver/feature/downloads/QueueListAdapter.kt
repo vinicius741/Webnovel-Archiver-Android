@@ -33,8 +33,14 @@ internal interface QueueListActions {
 
     fun onChapterMenu(item: QueueChapterItem)
 
-    /** The up-next novels in their new order after a drag. */
-    fun onReorder(upNextOrder: List<String>)
+    /**
+     * The up-next novels in their new order after a drag, or [downloadNow] when a card was dropped
+     * among Downloading now: that novel then moves to the front of the queue.
+     */
+    fun onReorder(
+        upNextOrder: List<String>,
+        downloadNow: String?,
+    )
 }
 
 internal class QueueListAdapter(
@@ -128,7 +134,15 @@ internal class QueueListAdapter(
             recyclerView: RecyclerView,
             current: RecyclerView.ViewHolder,
             target: RecyclerView.ViewHolder,
-        ): Boolean = (items.getOrNull(target.bindingAdapterPosition) as? QueueStoryItem)?.draggable == true
+        ): Boolean {
+            // An up-next card may also be dropped onto Downloading now, to jump ahead of it; the
+            // Up next header is a target too, so a card dragged up can be brought back down.
+            return when (val item = items.getOrNull(target.bindingAdapterPosition)) {
+                is QueueStoryItem -> item.draggable || item.section == QueueSection.DOWNLOADING
+                is QueueHeaderItem -> item.section == QueueSection.UP_NEXT
+                else -> false
+            }
+        }
 
         override fun onMove(
             recyclerView: RecyclerView,
@@ -177,7 +191,13 @@ internal class QueueListAdapter(
             if (moved) {
                 // The saved order arrives with the next queue publish; a stale pending update
                 // would snap the card back for a frame first.
-                actions.onReorder(items.filterIsInstance<QueueStoryItem>().filter { it.section == QueueSection.UP_NEXT }.map { it.storyId })
+                val position = viewHolder.bindingAdapterPosition
+                val upNextHeader = items.indexOfFirst { it is QueueHeaderItem && it.section == QueueSection.UP_NEXT }
+                val dropped = (items.getOrNull(position) as? QueueStoryItem)?.takeIf { position in 0 until upNextHeader }
+                actions.onReorder(
+                    items.filterIsInstance<QueueStoryItem>().filter { it.section == QueueSection.UP_NEXT }.map { it.storyId },
+                    downloadNow = dropped?.storyId,
+                )
             } else if (waiting != null) {
                 submit(waiting)
             }

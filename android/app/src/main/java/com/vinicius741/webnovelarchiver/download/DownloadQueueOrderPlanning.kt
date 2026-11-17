@@ -23,7 +23,7 @@ object DownloadQueueOrderPlanning {
         }
     }
 
-    /** "Download next": the novel's chapters become the first pending work for its site. */
+    /** "Download now": the novel's chapters become the first pending work for its site, so it takes over once the chapter being fetched finishes. */
     fun moveStoryToFront(
         jobs: List<DownloadJob>,
         storyId: String,

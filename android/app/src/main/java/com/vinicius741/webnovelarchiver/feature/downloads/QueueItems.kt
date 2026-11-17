@@ -172,7 +172,8 @@ internal fun buildQueueItems(
         addStories(plan.downloading, draggableSection = false)
     }
     if (plan.upNext.isNotEmpty()) {
-        val reorderable = plan.upNext.size > 1
+        // A lone up-next novel can still be dragged onto Downloading now to jump ahead.
+        val reorderable = plan.upNext.size > 1 || plan.downloading.isNotEmpty()
         items += QueueHeaderItem(QueueSection.UP_NEXT, "Up next", hint = if (reorderable) "Drag to reorder" else null)
         addStories(plan.upNext, draggableSection = reorderable)
     }

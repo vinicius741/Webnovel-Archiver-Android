@@ -288,10 +288,17 @@ private fun ScreenHost.queueListActions(
 
         override fun onChapterMenu(item: QueueChapterItem) = showChapterMenu(item)
 
-        override fun onReorder(upNextOrder: List<String>) {
+        override fun onReorder(
+            upNextOrder: List<String>,
+            downloadNow: String?,
+        ) {
             session.reorderVersion = repository.downloadState.value.queueVersion
             session.reorderAtMillis = app.appContainer.time.nowMillis()
-            launchQueueControl("reorderStories") { downloadEngine.reorderStories(upNextOrder) }
+            if (downloadNow != null) {
+                launchQueueControl("downloadStoryNext") { downloadEngine.downloadStoryNext(downloadNow) }
+            } else {
+                launchQueueControl("reorderStories") { downloadEngine.reorderStories(upNextOrder) }
+            }
         }
     }
 
