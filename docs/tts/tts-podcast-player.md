@@ -81,15 +81,22 @@ inline content); otherwise the viewed chapter plays from the top.
   Reader. It uses `AppNavigator.bringToTop`, dropping older readers of that story from the
   history, so Back from the reader always returns to Now Playing. Closes itself when playback ends. Rebuilds on chapter
   change; patches transport state in place otherwise.
-- **Reader initial highlight**: highlights sent before the reader's WebView finishes loading are
-  dropped, so the injected script pulls the speaking sentence once on load through
-  `AndroidBridge.activeTtsGroup()` and scrolls it to the centre without animating. Later sentences
-  arrive via `WnaTts.setActive` as before, and the reader follows chapter changes on its own.
+- **Reader read-along** (`feature/reader/ReaderReadAlong.kt`, rules in `ReadAlongPlanning`): one
+  controller per reader page owns the highlight, following, the pill, and opening the chapter
+  playback moves to. It listens to `TtsEngine.playbackState` while its WebView is attached and stops
+  when the page is removed, so no other screen or activity can cancel it. The page script
+  (`ReaderReadAlongScript`) only renders what it is told (`WnaReader.render(sentence, scroll)`) and
+  also pulls `ReaderBridge.readAlongState()` on load, on becoming visible, and once a second while
+  visible. A pull that disagrees with what the page was last sent makes the controller catch up
+  and restart its listener if it had stopped; each repair is logged as `read_along_healed` in the
+  activity log (READER), alongside `read_along_listening` / `read_along_stopped` /
+  `read_along_following`.
 - **Reader TTS bar**: while the visible chapter is being read aloud (playing or paused), the
   Reader replaces its bottom chrome with a docked `ReaderPlayerDock` (play/pause, sentence n of N,
   time left, back 15, speed, open player, stop). Chapter prev/next navigation is hidden so stray
-  taps cannot jump chapters or break playback; it returns when the session stops. Scrolling the
-  page during playback stops auto-follow and shows a "Back to current sentence" pill. Play/pause
+  taps cannot jump chapters or break playback; it returns when the session stops. Dragging the
+  page past Android's touch slop stops following and, while audio plays, shows a "Back to current
+  sentence" pill. Play/pause
   resumes the persisted session when the engine has no live session (cold-start phantom-pause fix).
 - **Notification + media buttons**: short skips by default, or **chapter** skips with the setting on;
   sentence skipping stays available in Now Playing.
@@ -120,10 +127,9 @@ inline content); otherwise the viewed chapter plays from the top.
 
 ## Reader auto-follow guard
 
-The reader's TTS collector (highlight + chapter auto-follow) is now detached whenever a
-non-Reader screen opens (`ui/Scaffold.kt`), and auto-follow only fires while that reader chapter
-is the current route. Before, a chapter transition anywhere (player skip, background
-auto-advance) would hijack the screen the user was looking at.
+Chapter auto-follow only fires while that reader chapter is the current route, so a chapter
+transition anywhere else (player skip, background auto-advance) does not hijack the screen the user
+is looking at. It checks the story's current chapter list, not the one the page opened with.
 
 ## Storage layout
 

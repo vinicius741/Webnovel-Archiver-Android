@@ -81,7 +81,7 @@ class ReaderContentRendererTest {
     }
 
     @Test
-    fun includeTtsScriptInjectsTheWnaTtsBridge() {
+    fun includeTtsScriptInjectsTheReadAlongScript() {
         // The highlight + tap-to-start script is only injected when requested.
         val withScript =
             ReaderContentRenderer.document(
@@ -100,10 +100,10 @@ class ReaderContentRendererTest {
                 includeTtsScript = false,
             )
 
-        assertTrue(withScript.contains("WnaTts"))
-        assertTrue(withScript.contains("AndroidBridge"))
-        assertTrue(withScript.contains("data-tts-group"))
-        assertFalse(withoutScript.contains("WnaTts"))
+        assertTrue(withScript.contains("window.WnaReader"))
+        assertTrue(withScript.contains("window.ReaderBridge"))
+        assertTrue(withScript.contains("data-tts-groups"))
+        assertFalse(withoutScript.contains("WnaReader"))
     }
 
     @Test
@@ -135,8 +135,8 @@ class ReaderContentRendererTest {
 
         assertTrue(withBridge.contains("Story · Chapter 2"))
         assertTrue(withBridge.contains("Three &amp; Four"))
-        assertTrue(withBridge.contains("WnaTts.nextChapter()"))
-        assertFalse(withoutBridge.contains("WnaTts.nextChapter()"))
+        assertTrue(withBridge.contains("WnaReader.nextChapter()"))
+        assertFalse(withoutBridge.contains("WnaReader.nextChapter()"))
     }
 
     @Test
@@ -153,21 +153,26 @@ class ReaderContentRendererTest {
             )
 
         assertTrue(html.contains("wna-end-note"))
-        assertFalse(html.contains("WnaTts.nextChapter()\""))
+        assertFalse(html.contains("WnaReader.nextChapter()\""))
     }
 
     @Test
-    fun scriptStopsFollowingWhenTheReaderDrags() {
-        val html =
-            ReaderContentRenderer.document(
-                "T",
-                "<p>x</p>",
-                1.0f,
-                ReaderContentRenderer.ReaderDocumentColors("#000000", "#FFFFFF"),
-                includeTtsScript = true,
-            )
+    fun scriptPullsTheAppStateRatherThanKeepingItsOwn() {
+        // A lost update must heal itself: the page asks for the state on load, on becoming visible,
+        // and once a second, and has no following flag of its own to fall out of step.
+        val script = ReaderReadAlongScript.script
 
-        assertTrue(html.contains("onFollowChanged"))
-        assertTrue(html.contains("WnaTts.follow"))
+        assertTrue(script.contains("readAlongState()"))
+        assertTrue(script.contains("visibilitychange"))
+        assertTrue(script.contains("setInterval"))
+        assertFalse(script.contains("following ="))
+    }
+
+    @Test
+    fun renderCallPassesTheSentenceAndScrollCode() {
+        assertEquals(
+            "window.WnaReader&&WnaReader.render(7,1);",
+            ReaderReadAlongScript.renderCall(7, ReadAlongScroll.SMOOTH),
+        )
     }
 }

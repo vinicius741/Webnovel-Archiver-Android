@@ -15,7 +15,6 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackIntercept
@@ -60,10 +59,6 @@ internal fun ScreenHost.screen(
     aiControlsScreenState.binding = null
     screenObserver?.cancel()
     screenObserver = null
-    // The reader's TTS collector (highlight/auto-follow) must die with the reader screen: its
-    // WebView is destroyed here, so updates past this point are dead writes — and auto-follow would
-    // hijack the screen the user navigated to. showReader re-registers on the next reader build.
-    if (route !is AppRoute.Reader) detachReaderTtsListener()
     navigator.navigate(route)
     shell.onRoute(navigator.history)
     // A screen that did not set its own rerender inherits the previous screen's, which on a fold
