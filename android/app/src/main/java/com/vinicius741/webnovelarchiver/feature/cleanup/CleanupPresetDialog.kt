@@ -63,8 +63,8 @@ internal fun ScreenHost.showCleanupPresetDialog(
     view.addItem(count, countLabel)
     val targets = listOf("tts", "download", "both")
     val target =
-        makeThemedSpinner(app, listOf("Read aloud only", "Downloaded text only", "Both")).apply {
-            setSelection(targets.indexOf(existing?.appliesTo ?: "tts").coerceAtLeast(0))
+        makeThemedSpinner(app, listOf("Listening only", "Reading only", "Both")).apply {
+            setSelection(targets.indexOf(existing?.appliesTo ?: "both").coerceAtLeast(0))
         }
     view.addItem(target, "Apply to")
     val before =

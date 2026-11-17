@@ -26,6 +26,7 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeField
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.makeThemedSpinner
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.scroll
@@ -41,30 +42,19 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
     val name = makeField(app, existing?.name.orEmpty(), "Rule name", InputType.TYPE_CLASS_TEXT)
     val pattern = makeField(app, existing?.pattern.orEmpty(), "Regex pattern", InputType.TYPE_CLASS_TEXT)
     val flags = makeField(app, existing?.flags ?: "i", "Flags, e.g. im", InputType.TYPE_CLASS_TEXT)
-    val appliesTo = makeField(app, existing?.appliesTo ?: "both", "download, tts, or both", InputType.TYPE_CLASS_TEXT)
+    val targets = listOf("both", "download", "tts")
+    val appliesTo =
+        makeThemedSpinner(app, listOf("Reading and listening", "Reading only", "Listening only")).apply {
+            setSelection(targets.indexOf(existing?.appliesTo ?: "both").coerceAtLeast(0))
+        }
     view.addItem(name)
     view.addItem(pattern)
     view.addItem(flags)
-    view.addItem(appliesTo)
-    val quickRow =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(
-                makeButton(app, "Quick Separator", Btn.TONAL, R.drawable.wna_brush) {
-                    showQuickRegexBuilder { generated ->
-                        name.setText(generated.name)
-                        pattern.setText(generated.pattern)
-                        flags.setText(generated.flags)
-                    }
-                },
-            )
-        }
-    view.addItem(quickRow)
-
+    view.addItem(appliesTo, "Apply to")
     // Live "test your rule" pane. The user pastes sample
     // text and the in-progress rule (pattern + flags) is applied to it in real time via
     // [RegexRuleCleanup.previewRegexRule], so they see what the rule removes before saving. Reuses the
-    // same monospace preview styling as [showQuickRegexBuilder]'s pattern preview.
+    // same monospace preview styling as the preset dialog's.
     val previewInput =
         EditText(app).apply {
             applyInputStyle(
@@ -139,20 +129,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
                 toast(validation.error ?: "Invalid regex rule")
                 return@setOnClickListener
             }
-            val normalizedTarget =
-                when (
-                    appliesTo.text
-                        .toString()
-                        .trim()
-                        .lowercase()
-                ) {
-                    "download", "tts" ->
-                        appliesTo.text
-                            .toString()
-                            .trim()
-                            .lowercase()
-                    else -> "both"
-                }
+            val normalizedTarget = targets.getOrElse(appliesTo.selectedItemPosition) { "both" }
             val rules = repository.regexRules.get().toMutableList()
             if (RegexRuleCleanup.hasSimilarRegexRule(
                     rules,
@@ -181,75 +158,6 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
                 dialog.dismiss()
                 showCleanupRules()
             }
-        }
-    }
-    dialog.show()
-    dialog.applyFormStyle()
-}
-
-internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (RegexRuleCleanup.QuickPattern) -> Unit) {
-    val view = FormLayout(app, dialog = true)
-    val characters = makeField(app, "", "e.g. =, -, ##", InputType.TYPE_CLASS_TEXT)
-    val minCount = makeField(app, "5", "Minimum repetitions", InputType.TYPE_CLASS_NUMBER)
-    val wholeLine =
-        CheckBox(app).apply {
-            text = "Whole line only"
-            isChecked = true
-        }
-    styledCheckBox(wholeLine)
-    view.addItem(characters, "Characters")
-    view.addItem(minCount, "Minimum repetitions")
-    view.addItem(wholeLine)
-    // C5: live preview of the pattern that will be generated, so the user sees what it matches
-    // before tapping "Use Pattern".
-    val preview =
-        makeText(app, "", Type.BODY_SMALL, ThemeManager.colors.onSurface).apply {
-            typeface = Typeface.MONOSPACE
-        }
-    view.addItem(preview, "Pattern")
-    val updatePreview = {
-        val generated =
-            RegexRuleCleanup.generateQuickPattern(
-                characters.text.toString(),
-                minCount.text.toString().toIntOrNull() ?: 0,
-                wholeLine.isChecked,
-            )
-        preview.text =
-            if (generated ==
-                null
-            ) {
-                "Enter characters and a count"
-            } else {
-                "/${generated.pattern}/${generated.flags}"
-            }
-    }
-    characters.doAfterTextChanged { updatePreview() }
-    minCount.doAfterTextChanged { updatePreview() }
-    wholeLine.setOnCheckedChangeListener { _, _ -> updatePreview() }
-
-    val dialog =
-        AlertDialog
-            .Builder(app)
-            .setTitle("Quick Separator Rule")
-            .setView(scroll(view))
-            .setPositiveButton("Use Pattern", null)
-            .setNegativeButton("Cancel", null)
-            .create()
-    dialog.setOnShowListener {
-        updatePreview()
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val generated =
-                RegexRuleCleanup.generateQuickPattern(
-                    characters.text.toString(),
-                    minCount.text.toString().toIntOrNull() ?: 0,
-                    wholeLine.isChecked,
-                )
-            if (generated == null) {
-                toast("Enter characters and a minimum count of at least 1")
-                return@setOnClickListener
-            }
-            onGenerated(generated)
-            dialog.dismiss()
         }
     }
     dialog.show()

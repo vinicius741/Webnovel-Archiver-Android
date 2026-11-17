@@ -26,14 +26,20 @@ import kotlinx.coroutines.launch
 internal fun ScreenHost.buildRegexRules(body: LinearLayout) {
     val colors = ThemeManager.colors
     val rules = repository.regexRules.get()
-    if (rules.isEmpty()) body.text("No regex rules yet.", Type.BODY_SMALL, colors.onSurfaceVariant)
+    if (rules.isEmpty()) {
+        body.text(
+            "No rules yet. Presets remove common clutter, like separator lines.",
+            Type.BODY_SMALL,
+            colors.onSurfaceVariant,
+        )
+    }
     rules.forEach { rule ->
         val preset = RegexCleanupPresets.identify(rule)
         val target =
             when (rule.appliesTo) {
-                "tts" -> "Read aloud only"
+                "tts" -> "Listening only"
                 "download" -> "Downloaded text only"
-                else -> "Read aloud and downloaded text"
+                else -> "Reading and listening"
             }
         body.addView(
             body.card {
@@ -127,7 +133,8 @@ internal fun ScreenHost.buildRegexRules(body: LinearLayout) {
             horizontalSpacingDp = Spacing.SM
             verticalSpacingDp = Spacing.SM
             addView(makeButton(context, "Add preset", Btn.TONAL, R.drawable.wna_add) { showCleanupPresetPicker() })
-            addView(makeButton(context, "Add custom regex", Btn.SURFACE, R.drawable.wna_add) { showRegexRuleDialog(null) })
+            // Advanced: a raw regular expression, for what no preset covers.
+            addView(makeButton(context, "Advanced: write a pattern", Btn.TEXT) { showRegexRuleDialog(null) })
         },
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = body.context.dp(Spacing.XS)

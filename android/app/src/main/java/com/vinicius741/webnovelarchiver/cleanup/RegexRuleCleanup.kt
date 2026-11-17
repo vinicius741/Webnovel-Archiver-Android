@@ -153,22 +153,6 @@ object RegexRuleCleanup {
         }.getOrElse { RegexValidationResult(false, "Invalid regex: ${it.message}") }
     }
 
-    fun generateQuickPattern(
-        characters: String,
-        minCount: Int,
-        wholeLine: Boolean,
-    ): QuickPattern? {
-        val value = characters.trim()
-        if (value.isBlank() || minCount < 1) return null
-        val escaped = escapeRegexLiteral(value)
-        val core = if (value.length > 1) "(?:$escaped){$minCount,}" else "$escaped{$minCount,}"
-        val pattern = if (wholeLine) "^[\\s]*$core[\\s]*$" else core
-        val flags = if (wholeLine) "gm" else "g"
-        val display = if (value.length > 4) "${value.take(4)}..." else value
-        val scope = if (wholeLine) "separator lines" else "patterns"
-        return QuickPattern(pattern, flags, "Remove $display ($minCount+) $scope")
-    }
-
     /** Validates an in-progress editor rule and applies it to a bounded [sampleInput] prefix. */
     fun previewRegexRule(
         pattern: String,

@@ -33,7 +33,7 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /**
  * One story's card in the generation queue: a header (cover, title, counts; opens the story's audio,
- * ⋮ for the story's queue actions), its first jobs, and "Generate this story first" when it is not
+ * ⋮ for the story's queue actions), its first jobs, and "Move to front" when it is not
  * already first.
  */
 internal fun LinearLayout.queueStoryCard(
@@ -92,7 +92,7 @@ internal fun LinearLayout.queueStoryCard(
     }
     if (!isFirst && queued > 0) {
         card.addView(
-            makeButton(context, "Generate this story first", Btn.TEXT, R.drawable.wna_up) {
+            makeButton(context, "Move to front", Btn.TEXT, R.drawable.wna_up) {
                 host.narrationAction("Could not reorder the queue") { moveStoryToTop(group.storyId) }
             },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -211,7 +211,7 @@ private fun ScreenHost.showStoryQueueMenu(
     if (!isFirst) {
         items +=
             OptionsDialogItem.Option(
-                "Generate this story first",
+                "Move to front",
             ) { narrationAction("Could not reorder the queue") { moveStoryToTop(group.storyId) } }
     }
     if (group.failed > 0) {
@@ -239,7 +239,7 @@ private fun ScreenHost.showJobMenu(
 ) {
     val items = mutableListOf<OptionsDialogItem>()
     if (!isRunning) {
-        items += OptionsDialogItem.Option("Generate next") { narrationAction("Could not move the chapter") { moveToTop(job.id) } }
+        items += OptionsDialogItem.Option("Move to front") { narrationAction("Could not move the chapter") { moveToTop(job.id) } }
     }
     if (job.state == NarrationJobState.FAILED) {
         items += OptionsDialogItem.Option("Retry") { narrationAction("Could not retry") { retry(job.id) } }

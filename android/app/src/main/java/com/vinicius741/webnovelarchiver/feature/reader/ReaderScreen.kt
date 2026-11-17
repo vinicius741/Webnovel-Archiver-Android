@@ -271,7 +271,7 @@ private fun ScreenHost.readerActions(document: ReaderDocument): List<AppBarActio
                 showReader(story.id, chapter.id)
             }
         },
-        AppBarAction(R.drawable.wna_headphones, "Read aloud") { startReadAloud(story, chapter) },
+        AppBarAction(R.drawable.wna_headphones, "Listen") { startReadAloud(story, chapter) },
         AppBarAction(R.drawable.wna_text_fields, "Reader settings") {
             val voice = runCatching { narration.currentVoice().label }.getOrNull()
             val rate =
@@ -338,7 +338,7 @@ private fun ScreenHost.startReadAloud(
                 playIfGenerated(story.id, chapter.id) { TtsForegroundService.startFromChunk(app, story.id, chapter.id, 0) }
             },
         )
-        sheet = showBottomSheet(app, title = "Read aloud", body = body)
+        sheet = showBottomSheet(app, title = "Listen", body = body)
     }
 }
 

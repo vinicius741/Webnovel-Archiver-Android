@@ -189,7 +189,7 @@ private fun ScreenHost.playerHeader(state: TtsPlaybackSnapshot?): View {
             }
         addView(titles, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         addView(
-            app.iconButton(R.drawable.wna_graphic_eq, "Chapter audio", colors.onSurface) {
+            app.iconButton(R.drawable.wna_graphic_eq, "Chapters and audio", colors.onSurface) {
                 val snapshot = ttsEngine.playbackState.value.snapshot
                 if (snapshot != null) showStoryChapters(snapshot.storyId, snapshot.chapterId) else showNarration()
             },

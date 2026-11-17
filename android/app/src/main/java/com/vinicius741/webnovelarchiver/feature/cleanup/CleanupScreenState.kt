@@ -6,7 +6,7 @@ enum class CleanupMode(
     val label: String,
 ) {
     SENTENCES("Full sentences"),
-    REGEX("Regex rules"),
+    REGEX("Rules"),
 }
 
 /** Tab choice, sentence draft and independent scroll positions survive screen rebuilds. */
