@@ -1,11 +1,13 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
+import com.vinicius741.webnovelarchiver.narration.NarrationRecipe
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -60,6 +62,38 @@ class TtsPlaybackPreparerTest {
             assertEquals(null, story.lastReadChapterId)
             assertEquals("two", prepared.chapter.id)
             assertEquals(listOf("Second."), prepared.chunks)
+        }
+
+    @Test
+    fun audioOfOlderTextPlaysItsOwnSentences() =
+        runTest {
+            val story = Story(id = "story", chapters = mutableListOf(Chapter(id = "one", content = "<p>New first. Second.</p>")))
+            val older =
+                NarrationRecipe(
+                    storyId = "story",
+                    chapterId = "one",
+                    chunkingVersion = TtsTextPreparation.CHUNKING_VERSION,
+                    sentences = listOf("Old first.", "Second."),
+                )
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val prepared =
+                TtsPlaybackPreparer(FakeTtsPlaybackSource(story, null, recipe = older), dispatcher, dispatcher)
+                    .prepare("story", "one") ?: error("Expected playback")
+
+            assertEquals(listOf("Old first.", "Second."), prepared.chunks)
+            assertEquals(true, prepared.olderText)
+            // Same sentences, or another chunking version: the current text plays.
+            val same = older.copy(sentences = listOf("New first.", "Second."))
+            val current =
+                TtsPlaybackPreparer(FakeTtsPlaybackSource(story, null, recipe = same), dispatcher, dispatcher)
+                    .prepare("story", "one") ?: error("Expected playback")
+            assertEquals(false, current.olderText)
+            val stale = older.copy(chunkingVersion = TtsTextPreparation.CHUNKING_VERSION - 1)
+            val text =
+                TtsPlaybackPreparer(FakeTtsPlaybackSource(story, null, recipe = stale), dispatcher, dispatcher)
+                    .prepare("story", "one") ?: error("Expected playback")
+            assertEquals(listOf("New first.", "Second."), text.chunks)
         }
 
     @Test
@@ -316,7 +350,13 @@ class TtsPlaybackPreparerTest {
         private val story: Story,
         private val persisted: TtsSession?,
         private val storyPosition: TtsStoryPosition? = null,
+        private val recipe: NarrationRecipe? = null,
     ) : TtsPlaybackSource {
+        override fun generatedRecipe(
+            storyId: String,
+            chapterId: String,
+        ): NarrationRecipe? = recipe
+
         override fun story(id: String): Story? = story.takeIf { it.id == id }
 
         override suspend fun chapterHtml(

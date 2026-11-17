@@ -40,7 +40,7 @@ internal data class QueueGroup(
 @Suppress("TooManyFunctions") // Small pure rules, each unit-tested.
 internal object NarrationScreenPlanning {
     /** The one instruction for making chapter audio, wherever the app explains it. */
-    const val HOW_TO_GENERATE = "Tap the headphones on a chapter to generate its audio."
+    const val HOW_TO_GENERATE = "Long-press a chapter in a story, or tap the headphones while reading, to generate its audio."
 
     /** Chapters a Generate request would queue: no current audio, failed, or audio for older text. */
     fun NarrationChapterStatus?.needsAudio(): Boolean =

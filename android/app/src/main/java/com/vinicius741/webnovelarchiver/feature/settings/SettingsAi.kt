@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.feature.ai.addAiModelsCard
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -53,7 +54,8 @@ internal fun ScreenHost.showAiSettings() {
         Runnable {
             val key = pendingKey ?: return@Runnable
             pendingKey = null
-            scope.launch {
+            // The process scope: a flush on leaving must finish even if the activity goes away.
+            app.appContainer.applicationScope.launch {
                 try {
                     val current = repository.aiSettings.get()
                     val next = key.trim().ifBlank { null }

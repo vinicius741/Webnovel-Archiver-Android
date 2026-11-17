@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -74,7 +75,8 @@ internal fun ScreenHost.showDownloadSettings() {
     val saver =
         DebouncedSaver {
             val toSave = draft
-            scope.launch {
+            // The process scope: a flush on leaving must finish even if the activity goes away.
+            app.appContainer.applicationScope.launch {
                 try {
                     repository.settings.save(toSave)
                 } finally {

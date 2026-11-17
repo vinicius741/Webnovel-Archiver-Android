@@ -8,6 +8,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import androidx.lifecycle.withStarted
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
 import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
@@ -42,57 +43,69 @@ internal fun ScreenHost.playIfGenerated(
     start: () -> Unit,
 ) {
     pendingPlay?.cancel()
-    pendingPlay = null
-    scope.launch {
-        val ready =
-            runCatching { narration.isReady(storyId, chapterId) }
-                .onFailure { Timber.w(it, "Narration status failed") }
-                .getOrDefault(false)
-        if (ready) {
-            start()
-            return@launch
-        }
-        val queued =
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    narration.enqueue(
-                        storyId,
-                        listOf(chapterId),
-                        narration.currentVoice(),
-                        NarrationOrigin.MANUAL,
-                        front = true,
-                    )
-                }
+    // What was playing when asked: only audio started after the request cancels the wait.
+    val playingAtRequest =
+        ttsEngine.playbackState.value.snapshot
+            ?.let { it.storyId to it.chapterId }
+    pendingPlay =
+        scope.launch {
+            val ready =
+                runCatching { narration.isReady(storyId, chapterId) }
+                    .onFailure { Timber.w(it, "Narration status failed") }
+                    .getOrDefault(false)
+            if (ready) {
+                start()
+                return@launch
             }
-        if (queued.isFailure) {
-            Timber.e(queued.exceptionOrNull(), "Narration enqueue failed")
-            toast("Could not generate the audio")
-            return@launch
+            val queued =
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        narration.enqueue(
+                            storyId,
+                            listOf(chapterId),
+                            narration.currentVoice(),
+                            NarrationOrigin.MANUAL,
+                            front = true,
+                        )
+                    }
+                }
+            if (queued.isFailure) {
+                Timber.e(queued.exceptionOrNull(), "Narration enqueue failed")
+                toast("Could not generate the audio")
+                return@launch
+            }
+            toast("Generating \"${narration.chapterTitle(storyId, chapterId)}\". It plays when it's ready.")
+            requestNotificationPermissionForDownload()
+            if (awaitAudio(storyId, chapterId, playingAtRequest)) {
+                // Starting the playback service needs the app in the foreground: wait for the user to come back.
+                app.lifecycle.withStarted {}
+                runCatching(start).onFailure { Timber.w(it, "Pending play could not start") }
+            }
         }
-        toast("Generating \"${narration.chapterTitle(storyId, chapterId)}\". It plays when it's ready.")
-        requestNotificationPermissionForDownload()
-        pendingPlay = scope.launch { awaitAudioThenPlay(storyId, chapterId, start) }
-    }
 }
 
-/** Starts [start] once the chapter's audio is published; gives up if its job goes away or fails, or other audio starts. */
-private suspend fun ScreenHost.awaitAudioThenPlay(
+/**
+ * Waits until the chapter's audio is published (true), or gives up (false) when its job goes away or
+ * fails, or other audio than [playingAtRequest] starts.
+ */
+private suspend fun ScreenHost.awaitAudio(
     storyId: String,
     chapterId: String,
-    start: () -> Unit,
-) {
+    playingAtRequest: Pair<String, String>?,
+): Boolean {
     val outcome =
         combine(narration.packsRevision, narration.queueState, ttsEngine.playbackState) { _, queue, playback ->
             val snapshot = playback.snapshot
+            val playing = snapshot?.let { it.storyId to it.chapterId }
             val job = queue.jobs.firstOrNull { it.storyId == storyId && it.chapterId == chapterId }
             when {
-                snapshot != null && snapshot.isPlaying && snapshot.chapterId != chapterId -> PendingPlay.GIVE_UP
                 runCatching { narration.isReady(storyId, chapterId) }.getOrDefault(false) -> PendingPlay.READY
+                snapshot?.isPlaying == true && playing != storyId to chapterId && playing != playingAtRequest -> PendingPlay.GIVE_UP
                 job == null || job.state == NarrationJobState.FAILED -> PendingPlay.GIVE_UP
                 else -> PendingPlay.WAIT
             }
         }.first { it != PendingPlay.WAIT }
-    if (outcome == PendingPlay.READY) start()
+    return outcome == PendingPlay.READY
 }
 
 private enum class PendingPlay { WAIT, READY, GIVE_UP }

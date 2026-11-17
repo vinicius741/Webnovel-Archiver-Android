@@ -275,7 +275,11 @@ class NarrationCoordinator internal constructor(
     suspend fun isReady(
         storyId: String,
         chapterId: String,
-    ): Boolean = status(storyId, chapterId).let { it is NarrationChapterStatus.Ready || it is NarrationChapterStatus.Outdated }
+    ): Boolean {
+        // A queued job (keep-ahead, Regenerate) does not stop the published pack from playing meanwhile.
+        store.awaitLoaded()
+        return store.pack(storyId, chapterId)?.recipe?.chunkingVersion == TtsTextPreparation.CHUNKING_VERSION
+    }
 
     /** One chapter's status, checking its text against its pack (reads the chapter). */
     suspend fun status(

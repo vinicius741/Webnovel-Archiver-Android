@@ -26,7 +26,8 @@ internal data class ReadAlongState(
     val snapshot: TtsPlaybackSnapshot? = null,
     val following: Boolean = true,
 ) {
-    val sentence: Int get() = snapshot?.chunkIndex ?: NO_SENTENCE
+    /** No highlight while the audio's sentences are not the page's ([TtsPlaybackSnapshot.olderText]). */
+    val sentence: Int get() = snapshot?.takeUnless { it.olderText }?.chunkIndex ?: NO_SENTENCE
 
     /** The docked player replaces chapter navigation while this chapter is read aloud. */
     val showsPlayer: Boolean get() = snapshot != null

@@ -176,7 +176,7 @@ private fun ScreenHost.addSampleComputers(
     val hint =
         if (servers.isEmpty()) {
             val download = if (KokoroModelFiles.isDeviceSupported(model)) ", or download the model above" else ""
-            "${model.family} is not on this phone. Add one of your computers in Listen › Setup to hear it$download."
+            "${model.family} is not on this phone. Add one of your computers under Generate on, below, to hear it$download."
         } else {
             "${model.family} is not on this phone, so the sample is generated on your computers first and plays when it is ready. " +
                 "Choose one or more."
@@ -242,6 +242,6 @@ private fun sampleFailureText(failure: TtsSampleFailure): String =
         TtsSampleFailure.NothingToRead -> "There is nothing to read in the sample"
         TtsSampleFailure.AudioBusy -> "Another app is using the audio right now"
         TtsSampleFailure.Engine -> "The voice could not play the sample"
-        is TtsSampleFailure.NoComputer -> "${failure.model} is not on this phone. Add a computer in Listen › Setup to hear it."
+        is TtsSampleFailure.NoComputer -> "${failure.model} is not on this phone. Add a computer under Generate on, below, to hear it."
         is TtsSampleFailure.Computers -> failure.message.ifBlank { "The computers could not generate the sample" }
     }

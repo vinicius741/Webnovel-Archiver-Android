@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackUpdate
+import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -212,6 +213,12 @@ internal class ReaderReadAlong(
                 apply(ReadAlongPlanning.afterFollow(state), allowScroll = false)
                 val story = host.repository.story(storyId) ?: return@post
                 if (story.chapters.none { it.id == chapterId }) return@post
+                // Audio of older text has other sentences than the page: a tap there cannot seek.
+                val playing = host.ttsEngine.playbackState.value.snapshot
+                if (playing?.olderText == true && playing.storyId == storyId && playing.chapterId == chapterId) {
+                    host.toast("This audio was made from older text. Regenerate it to start from a sentence.")
+                    return@post
+                }
                 host.playIfGenerated(storyId, chapterId) {
                     TtsForegroundService.startFromChunk(host.app, storyId, chapterId, sentence)
                 }

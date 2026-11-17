@@ -5,8 +5,8 @@ import android.os.Looper
 import android.view.View
 import android.widget.LinearLayout
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.feature.narration.ServerRows
 import com.vinicius741.webnovelarchiver.feature.narration.narration
@@ -66,7 +66,8 @@ internal fun ScreenHost.showTtsSettings() {
     val save =
         Runnable {
             val toSave = unsavedTts ?: return@Runnable
-            scope.launch {
+            // The process scope: a flush on leaving must finish even if the activity goes away.
+            app.appContainer.applicationScope.launch {
                 try {
                     persistTtsSettings(toSave)
                 } finally {
@@ -93,7 +94,7 @@ internal fun ScreenHost.showTtsSettings() {
                 R.drawable.wna_record_voice,
             ) { showTtsVoicePicker(current) }
             // Only Google's engine has a pitch control that does something.
-            if (TtsEnginePlanning.hasPitch(saved.enginePackage)) {
+            if (TtsEnginePlanning.hasPitch(saved.enginePackage ?: phoneEngine)) {
                 groupStepper("Pitch", null, saved.pitch.toDouble(), PITCH_SPEC) { value ->
                     update { it.copy(pitch = value.toFloat()) }
                     null
@@ -143,11 +144,12 @@ internal fun ScreenHost.showTtsSettings() {
             // Online checks for the computers while the page is visible.
             if (document.servers.isNotEmpty()) {
                 launch {
-                    app.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                        while (true) {
+                    // Checks only while the app is in the foreground; the observer ends with the page.
+                    while (true) {
+                        if (app.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                             narration.refreshServerStatus(SERVER_CHECK_INTERVAL_MS)
-                            delay(SERVER_CHECK_TICK_MS)
                         }
+                        delay(SERVER_CHECK_TICK_MS)
                     }
                 }
             }

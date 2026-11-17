@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import com.vinicius741.webnovelarchiver.cleanup.TtsChunkBoundary
 import com.vinicius741.webnovelarchiver.cleanup.TtsNarrationChunk
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -32,6 +33,8 @@ internal data class PreparedTtsPlayback(
     val history: List<TtsHistoryEntry> = emptyList(),
     /** When a restored session last changed, so a later resume knows how long the break was. */
     val savedAt: Long? = null,
+    /** The sentences are the generated audio's own, from text that has changed since (see [TtsPlaybackBuilder]). */
+    val olderText: Boolean = false,
 )
 
 /**
@@ -290,6 +293,7 @@ private class TtsPlaybackBuilder(
                     plays(input.generated, narration) -> input.generated?.title
                     else -> TtsNarrationPlanning.spokenChapterTitle(input.chapter.title, narration.first().text)
                 },
+            olderText = input.olderText,
         )
     }
 
@@ -304,7 +308,10 @@ private class TtsPlaybackBuilder(
     ): List<TtsNarrationChunk> {
         val generated = input.generated ?: return fromText
         if (generated.sentences == fromText.map { it.text }) return fromText
-        return generated.sentences.map { TtsNarrationChunk(it) }
+        input.olderText = true
+        // Paragraph and scene pauses carry over wherever a sentence is unchanged.
+        val boundaries = fromText.associate { it.text to it.boundaryAfter }
+        return generated.sentences.map { TtsNarrationChunk(it, boundaries[it] ?: TtsChunkBoundary.SENTENCE) }
     }
 
     private fun plays(
@@ -320,7 +327,10 @@ private data class PreparationInput(
     val settings: TtsSettings,
     val rules: List<RegexCleanupRule>,
     val generated: NarrationRecipe? = null,
-)
+) {
+    /** Set while building when [generated]'s older sentences replace the chapter's current text. */
+    var olderText: Boolean = false
+}
 
 private sealed interface NextChapterLookup {
     data class Found(

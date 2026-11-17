@@ -251,7 +251,9 @@ private class SelectionActions(
                 }
             generateButton =
                 button("Generate audio", Btn.TONAL, R.drawable.wna_headphones) {
-                    if (generate.isNotEmpty()) host.queueNarration(story.id, generate.map { it.chapter.id })
+                    if (generate.isEmpty()) return@button
+                    host.queueNarration(story.id, generate.map { it.chapter.id })
+                    host.showStoryChapters(story.id)
                 }
             deleteButton =
                 button("Delete audio", Btn.ERROR, R.drawable.wna_delete) {
