@@ -17,6 +17,7 @@
 - Work in the current branch, normally `main`.
 - Do not create or switch branches, commit, push, or open a pull request unless the user explicitly requests that action in the current message.
 - When committing, stage only task-related changes. Preserve unrelated worktree changes.
+- The owner develops this project on two different computers, so the local checkout is often behind `origin`. Before building, installing, QA, or starting new work, run `git fetch origin` and compare `main` with `origin/main`. If the local branch is behind and the worktree is clean, fast-forward with `git pull --ff-only`. If local changes or diverged commits are in the way, stop and report instead of merging, rebasing, or stashing. A build that Gradle reports as up to date can still be stale relative to `origin`.
 
 ## Device Safety
 
