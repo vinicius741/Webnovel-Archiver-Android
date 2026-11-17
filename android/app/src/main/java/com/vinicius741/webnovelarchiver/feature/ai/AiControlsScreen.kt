@@ -202,27 +202,23 @@ private fun ScreenHost.addAiDescriptionCard(
     container.addView(cardView)
 }
 
+/**
+ * Applying an AI description already shows it; this switches back to the source's one (or to the AI
+ * one again) without a separate on/off setting.
+ */
 private fun ScreenHost.addAiDisplayToggleRow(
     container: LinearLayout,
     story: Story,
 ) {
-    var toggle: CheckBox? = null
+    if (story.description.isNullOrBlank()) return
+    val showingAi = story.showAiDescription
     container.row {
-        addView(
-            makeText(context, "Show AI description in Details", Type.BODY_MEDIUM, ThemeManager.colors.onSurface),
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-        )
-        val checkBox =
-            CheckBox(context).apply {
-                text = ""
-                isChecked = story.showAiDescription
+        button(if (showingAi) "Use source description" else "Use AI description", Btn.TEXT) {
+            scope.launch {
+                repository.setShowAiDescription(story.id, !showingAi)
+                rerender?.invoke()
             }
-        styledCheckBox(checkBox)
-        addView(checkBox)
-        toggle = checkBox
-    }
-    toggle!!.setOnCheckedChangeListener { _, checked ->
-        scope.launch { repository.setShowAiDescription(story.id, checked) }
+        }
     }
 }
 

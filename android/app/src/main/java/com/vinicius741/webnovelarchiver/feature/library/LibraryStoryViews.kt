@@ -230,7 +230,6 @@ private fun ScreenHost.storyCover(
     cover.layoutParams = FrameLayout.LayoutParams(dp(LIST_COVER_WIDTH_DP), dp(LIST_COVER_WIDTH_DP * 3 / 2))
     return FrameLayout(app).apply {
         addView(cover)
-        if (hasUnseenAiResult(story)) addView(aiResultBadge())
         if (selected != null) addView(selectionCheck(selected))
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }

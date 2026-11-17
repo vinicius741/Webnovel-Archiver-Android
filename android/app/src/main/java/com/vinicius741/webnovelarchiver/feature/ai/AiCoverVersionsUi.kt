@@ -335,7 +335,7 @@ private fun ScreenHost.showCoverChoiceDetails(
         }
     }
     if (version != null && version.prompt.isNotBlank() && editable && story.chapters.any { it.downloaded }) {
-        content.fullButton("Put prompt in the box", Btn.OUTLINED) {
+        content.fullButton("Reuse this prompt", Btn.OUTLINED) {
             dialog.dismiss()
             reuseCoverPrompt(story, version.prompt)
         }

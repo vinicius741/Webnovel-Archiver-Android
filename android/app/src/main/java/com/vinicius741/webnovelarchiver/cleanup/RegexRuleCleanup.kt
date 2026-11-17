@@ -204,14 +204,4 @@ object RegexRuleCleanup {
         val unique = flags.trim().lowercase().toSet()
         return regexFlagOrder.filter { it in unique }.joinToString("")
     }
-
-    private fun escapeRegexLiteral(value: String): String {
-        val special = setOf('.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']', '\\', '-')
-        return buildString {
-            value.forEach { char ->
-                if (char in special) append('\\')
-                append(char)
-            }
-        }
-    }
 }

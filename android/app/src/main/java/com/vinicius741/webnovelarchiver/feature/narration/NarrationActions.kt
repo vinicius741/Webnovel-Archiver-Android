@@ -19,10 +19,10 @@ import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -81,22 +81,21 @@ private suspend fun ScreenHost.awaitAudioThenPlay(
     chapterId: String,
     start: () -> Unit,
 ) {
-    combine(narration.packsRevision, narration.queueState, ttsEngine.playbackState) { _, queue, playback -> queue to playback }
-        .collect { (queue, playback) ->
+    val outcome =
+        combine(narration.packsRevision, narration.queueState, ttsEngine.playbackState) { _, queue, playback ->
             val snapshot = playback.snapshot
-            if (snapshot != null && snapshot.isPlaying &&
-                snapshot.chapterId != chapterId
-            ) {
-                throw CancellationException("Other audio started")
-            }
-            if (runCatching { narration.isReady(storyId, chapterId) }.getOrDefault(false)) {
-                start()
-                throw CancellationException("Started")
-            }
             val job = queue.jobs.firstOrNull { it.storyId == storyId && it.chapterId == chapterId }
-            if (job == null || job.state == NarrationJobState.FAILED) throw CancellationException("No longer generating")
-        }
+            when {
+                snapshot != null && snapshot.isPlaying && snapshot.chapterId != chapterId -> PendingPlay.GIVE_UP
+                runCatching { narration.isReady(storyId, chapterId) }.getOrDefault(false) -> PendingPlay.READY
+                job == null || job.state == NarrationJobState.FAILED -> PendingPlay.GIVE_UP
+                else -> PendingPlay.WAIT
+            }
+        }.first { it != PendingPlay.WAIT }
+    if (outcome == PendingPlay.READY) start()
 }
+
+private enum class PendingPlay { WAIT, READY, GIVE_UP }
 
 /**
  * Plays [chapterId] itself: from the story's saved listening place when that place is in this

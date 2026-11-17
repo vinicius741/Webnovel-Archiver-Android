@@ -82,7 +82,8 @@ internal fun ScreenHost.showUpdates() {
             makeTopLevelAppBar(
                 "Updates",
                 forecastSubtitle(stories.size),
-                listOf(AppBarAction(R.drawable.wna_sync, "Sync all that may be out") { syncAllMayBeOut() }),
+                // The forecast card (and the May be out filter) hold the one Sync all button.
+                emptyList(),
             )
         addView(appBar.view)
         if (stories.isEmpty()) {

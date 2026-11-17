@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesCopy
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning.Overview
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning.Section
+import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
@@ -69,7 +70,7 @@ internal fun ScreenHost.makeForecastCard(
         return card
     }
     val actions = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
-    val sync = makeButton(app, if (mayBeOut > 0) "Sync $mayBeOut" else "Sync", Btn.FILLED, R.drawable.wna_sync) { syncAllMayBeOut() }
+    val sync = makeButton(app, syncAllLabel(mayBeOut), Btn.FILLED, R.drawable.wna_sync) { syncAllMayBeOut() }
     if (mayBeOut == 0) disableButton(sync)
     actions.addView(sync)
     val toDownload = overview.count(Section.TO_DOWNLOAD)
@@ -83,18 +84,29 @@ internal fun ScreenHost.makeForecastCard(
         )
     }
     card.addView(actions, topGap(Spacing.LG))
+    if (mayBeOut > 0) card.addView(makeText(app, SYNC_DOWNLOADS_NOTE, Type.BODY_SMALL, colors.onSurfaceVariant), topGap(Spacing.SM))
     updatesState.lastResult?.let { result ->
         card.addView(makeText(app, result, Type.BODY_SMALL, colors.tertiary), topGap(Spacing.MD))
     }
     return card
 }
 
-/** The "May be out" filter's lead action: sync them all, or the running batch's progress. */
+/** The "May be out" filter's lead: the same Sync all as the forecast card, or the running batch's progress. */
 internal fun ScreenHost.makeSyncAllBlock(count: Int): View {
     val batch = updatesState.batch
     if (batch != null) return makeBatchProgress(batch)
-    return makeFullWidthButton(app, "Sync all $count", Btn.TONAL, R.drawable.wna_sync, 0) { syncAllMayBeOut() }
+    return LinearLayout(app).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(makeFullWidthButton(app, syncAllLabel(count), Btn.FILLED, R.drawable.wna_sync, 0) { syncAllMayBeOut() })
+        addView(makeText(app, SYNC_DOWNLOADS_NOTE, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant), topGap(Spacing.SM))
+    }
 }
+
+private fun syncAllLabel(count: Int): String = if (count > 0) "Sync all $count" else "Sync all"
+
+/** What a sync does besides checking, said where the button is. */
+private val SYNC_DOWNLOADS_NOTE =
+    "Syncing also downloads new chapters (up to ${SyncDownloadPlanning.AUTO_DOWNLOAD_LIMIT} a novel; bigger updates ask first)."
 
 /** A finished run's large-update reviews and source check that waited for Updates, with a Review action. */
 private fun ScreenHost.makePendingReviews(): View? {

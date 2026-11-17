@@ -188,15 +188,7 @@ internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
                         makeButton(context, "Try again", Btn.FILLED, R.drawable.wna_download) { installer.install() },
                     )
                 is KokoroModelState.Installed -> {
-                    // The speed test is a developer tool: debug builds only.
-                    if (BuildConfig.DEBUG) {
-                        actions.addView(
-                            makeButton(context, "Test speed", Btn.SURFACE, R.drawable.wna_speed) { confirmKokoroSpeedTest(model) },
-                        )
-                        if (hasKokoroSpeedTest(model)) {
-                            actions.addView(makeButton(context, "Last results", Btn.SURFACE) { showLastKokoroSpeedTest(model) })
-                        }
-                    }
+                    addSpeedTestActions(actions, model)
                     actions.addView(
                         makeButton(context, "Remove", Btn.TEXT) { confirmKokoroRemoval(model) }.apply { setTextColor(colors.error) },
                     )
@@ -220,6 +212,16 @@ internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
         )
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
+}
+
+/** The speed test is a developer tool: its buttons show in debug builds only. */
+private fun ScreenHost.addSpeedTestActions(
+    actions: ViewGroup,
+    model: BuiltInModel,
+) {
+    if (!BuildConfig.DEBUG) return
+    actions.addView(makeButton(app, "Test speed", Btn.SURFACE, R.drawable.wna_speed) { confirmKokoroSpeedTest(model) })
+    if (hasKokoroSpeedTest(model)) actions.addView(makeButton(app, "Last results", Btn.SURFACE) { showLastKokoroSpeedTest(model) })
 }
 
 /** [draft] is what the settings screen currently shows, kept when picking a voice rebuilds it. */
