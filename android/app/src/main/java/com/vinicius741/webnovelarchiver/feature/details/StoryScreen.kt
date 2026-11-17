@@ -225,7 +225,9 @@ private fun ScreenHost.buildStoryTabStrip(
         val column =
             LinearLayout(app).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(texts)
+                // Wrap explicitly: a vertical LinearLayout's default child width is MATCH_PARENT, which
+                // stretched the column (and its bar) across the whole tab and left the label at its start.
+                addView(texts, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 addView(
                     indicator,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TAB_INDICATOR_DP)).apply {
