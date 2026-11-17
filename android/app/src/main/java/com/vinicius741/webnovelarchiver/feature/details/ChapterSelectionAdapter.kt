@@ -8,13 +8,16 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -24,7 +27,7 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.size
-import com.vinicius741.webnovelarchiver.ui.strokeBg
+import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 internal data class SelectableChapter(
     val originalIndex: Int,
@@ -36,6 +39,7 @@ internal data class SelectableChapter(
 internal class ChapterSelectionAdapter(
     private val items: List<SelectableChapter>,
     private val selectedIds: Set<String>,
+    private val bookmarkPosition: Int,
     private val onTap: (Int) -> Unit,
 ) : RecyclerView.Adapter<ChapterSelectionAdapter.Holder>() {
     private var rangeAnchor: Int? = null
@@ -45,6 +49,7 @@ internal class ChapterSelectionAdapter(
         val checkbox: CheckBox,
         val index: TextView,
         val title: TextView,
+        val bookmark: ImageView,
     ) : RecyclerView.ViewHolder(row)
 
     private val indexDigits: Int =
@@ -80,9 +85,15 @@ internal class ChapterSelectionAdapter(
                 ellipsize = TextUtils.TruncateAt.END
                 includeFontPadding = false
             }
+        val bookmark =
+            ImageView(context).apply {
+                setImageDrawable(context.tintedIcon(R.drawable.wna_bookmark, ThemeManager.colors.bookmark))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
         val row =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
+                isBaselineAligned = false
                 gravity = Gravity.CENTER_VERTICAL
                 minimumHeight = context.dp(56)
                 setPadding(context.dp(Space.MD), context.dp(Space.XS), context.dp(Space.LG), context.dp(Space.XS))
@@ -101,8 +112,12 @@ internal class ChapterSelectionAdapter(
                     title,
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
                 )
+                addView(
+                    bookmark,
+                    LinearLayout.LayoutParams(context.dp(20), context.dp(20)).apply { marginStart = context.dp(Space.SM) },
+                )
             }
-        return Holder(row, checkbox, index, title)
+        return Holder(row, checkbox, index, title, bookmark)
     }
 
     override fun onBindViewHolder(
@@ -111,6 +126,7 @@ internal class ChapterSelectionAdapter(
     ) {
         val item = items[position]
         val selected = item.chapter.id in selectedIds
+        val bookmarked = position == bookmarkPosition
         val anchored = position == rangeAnchor
         val colors = ThemeManager.colors
         // Rows sit on the list's card (CardListDecoration); selection is a faint gold wash, the range start a gold index.
@@ -141,8 +157,10 @@ internal class ChapterSelectionAdapter(
                 }
             } ?: titleLabel
         holder.row.background = ripple(background, 0f, colors.onSurface)
+        holder.bookmark.visibility = if (bookmarked) View.VISIBLE else View.GONE
         holder.row.contentDescription =
-            "Chapter $indexLabel, $titleLabel, ${if (selected) "selected" else "not selected"}"
+            "Chapter $indexLabel, $titleLabel, ${if (selected) "selected" else "not selected"}" +
+            if (bookmarked) ", your bookmark" else ""
         holder.row.setOnClickListener {
             holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let(onTap)
         }
