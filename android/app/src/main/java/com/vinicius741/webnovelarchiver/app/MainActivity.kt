@@ -29,7 +29,6 @@ import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordin
 import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
-import com.vinicius741.webnovelarchiver.feature.details.detachDetailsTtsListener
 import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
@@ -403,9 +402,7 @@ class MainActivity :
         // Destroy lingering reader WebViews so they can't leak the activity reference.
         com.vinicius741.webnovelarchiver.platform.WebViewSafety
             .disposeAll(frame)
-        // Detach the details TTS observer so it can't fire into a destroyed activity (the engine is
-        // process-wide; only the listener is dropped). The reader's stops with its page.
-        detachDetailsTtsListener()
+        // The engine is process-wide: drop only this activity's listener. The reader's stops with its page.
         if (::ttsEngine.isInitialized) ttsEngine.removeErrorListener(audioNotGeneratedListener)
         super.onDestroy()
     }

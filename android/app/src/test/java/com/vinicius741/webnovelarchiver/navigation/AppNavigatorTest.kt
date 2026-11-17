@@ -75,7 +75,7 @@ class AppNavigatorTest {
         val navigator = AppNavigator()
         navigator.navigate(AppRoute.Details("story"))
         navigator.navigate(AppRoute.ChapterSelection("story", setOf("one")))
-        navigator.navigate(AppRoute.LegacyEpubs("story"))
+        navigator.navigate(AppRoute.AuthorNovels("story"))
         navigator.navigate(AppRoute.ChapterSelection("story", setOf("two")))
 
         assertEquals(AppRoute.ChapterSelection("story", setOf("two")), navigator.current)

@@ -193,11 +193,7 @@ private fun ScreenHost.addAiDescriptionCard(
                 }
             } else {
                 text(
-                    if (story.isArchived == true) {
-                        "Archived snapshots are read-only — AI generation is disabled."
-                    } else {
-                        "Download at least one chapter before generating an AI description."
-                    },
+                    "Download at least one chapter before generating an AI description.",
                     Type.BODY_SMALL,
                     colors.onSurfaceVariant,
                 ).apply { setPadding(0, dp(Space.SM), 0, 0) }

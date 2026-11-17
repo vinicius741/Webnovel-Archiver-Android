@@ -413,12 +413,6 @@ class AppRepository private constructor(
         chapterId: String,
     ): Story? = updateExistingStory(storyId) { StoryMutations.toggleBookmark(it, chapterId) }
 
-    /** Sets a chapter bookmark against the latest story. */
-    suspend fun setBookmark(
-        storyId: String,
-        chapterId: String,
-    ): Story? = updateExistingStory(storyId) { StoryMutations.setBookmark(it, chapterId) }
-
     suspend fun setEpubConfig(
         storyId: String,
         config: EpubConfig,

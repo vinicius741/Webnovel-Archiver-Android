@@ -23,9 +23,12 @@ data class EpubCleanupResult(
     val failedPaths: List<String>,
 )
 
-/** Pure retention policy: current story references are immutable; only oldest legacy files expire. */
+/**
+ * Pure retention policy: current story references are immutable; files a new generation replaced
+ * are deleted (there is no screen to find them by hand).
+ */
 object EpubRetentionPolicy {
-    const val DEFAULT_LEGACY_FILES_TO_KEEP = 3
+    const val DEFAULT_LEGACY_FILES_TO_KEEP = 0
 
     fun plan(
         entries: List<EpubStorageEntry>,

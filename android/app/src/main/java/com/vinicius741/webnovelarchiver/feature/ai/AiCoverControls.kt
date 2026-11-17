@@ -229,11 +229,7 @@ private fun ScreenHost.addAiCoverMakerCard(
         container.addView(
             container.card {
                 text(
-                    if (story.isArchived == true) {
-                        "Archived snapshots are read-only — AI generation is disabled."
-                    } else {
-                        "Download at least one chapter before generating an AI cover."
-                    },
+                    "Download at least one chapter before generating an AI cover.",
                     Type.BODY_SMALL,
                     colors.onSurfaceVariant,
                 )

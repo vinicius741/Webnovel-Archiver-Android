@@ -77,13 +77,11 @@ internal fun ScreenHost.storyScreen(
     block: LinearLayout.(StoryFrame) -> Unit,
 ) {
     val tab = requireNotNull(StoryTabPlanning.tabOf(route)) { "Not a story tab: ${route.name}" }
-    // Opening another tab of the story already on screen (a job chip, the Listen button) is a tab
+    // Opening another tab of the story already on screen (a job chip) is a tab
     // switch too: it replaces the entry, so Back still leaves the story.
     val current = navigator.current
     if (current.stableKey != route.stableKey && StoryTabPlanning.storyIdOf(current) == story.id) navigator.replace(route)
     activeStory = story
-    // The Overview's description player re-attaches its collector; other tabs must not keep it.
-    detachDetailsTtsListener()
     val twoPane = currentScreenLayout().isTwoPane
     // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
     detailsOperationSlot = null
