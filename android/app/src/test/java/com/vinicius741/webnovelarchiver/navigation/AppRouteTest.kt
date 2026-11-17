@@ -15,13 +15,11 @@ class AppRouteTest {
                 AppRoute.Library,
                 AppRoute.Details("story:/ ünicode"),
                 AppRoute.Details("story:/ ünicode", chapters = true),
-                AppRoute.NarrationStory("story", "chapter"),
                 AppRoute.Trends("story", "score"),
                 AppRoute.Reader("story:1", "chapter/2"),
                 AppRoute.ChapterSelection("story", setOf("chapter:2", "chapter 1")),
                 AppRoute.AiControls("story:/ ünicode"),
                 AppRoute.AuthorNovels("story:/ ünicode"),
-                AppRoute.Notifications,
                 AppRoute.CleanupRules,
                 AppRoute.AppUpdate,
             )
@@ -122,12 +120,19 @@ class AppRouteTest {
     }
 
     @Test
+    fun `retired routes open what replaced them`() {
+        val audioTab = "narration_story:" + AppRouteCodec.encodeArgument("story")
+        assertEquals(AppRoute.Details("story", chapters = true), AppRouteCodec.decode(audioTab))
+        assertEquals(AppRoute.Details("story"), AppRouteCodec.decode("legacy_epubs:" + AppRouteCodec.encodeArgument("story")))
+        assertEquals(AppRoute.Settings, AppRouteCodec.decode("notifications"))
+    }
+
+    @Test
     fun `every story tab leaves the story for the library when opened cold`() {
         assertEquals(AppRoute.Library, AppRoute.Details("story").parent)
         assertEquals(AppRoute.Library, AppRoute.Details("story", chapters = true).parent)
         assertEquals(AppRoute.Library, AppRoute.Trends("story").parent)
         assertEquals(AppRoute.Library, AppRoute.AiControls("story").parent)
-        assertEquals(AppRoute.Library, AppRoute.NarrationStory("story").parent)
     }
 
     @Test
@@ -135,7 +140,6 @@ class AppRouteTest {
         val navigator = AppNavigator()
         navigator.navigate(AppRoute.Details("story"))
         navigator.replace(AppRoute.Details("story", chapters = true))
-        navigator.replace(AppRoute.NarrationStory("story"))
         navigator.replace(AppRoute.Trends("story"))
 
         assertEquals(listOf(AppRoute.Library, AppRoute.Trends("story")), navigator.history)

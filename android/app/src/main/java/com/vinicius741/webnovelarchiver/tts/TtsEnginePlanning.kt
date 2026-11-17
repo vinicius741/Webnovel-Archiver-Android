@@ -1,7 +1,7 @@
 package com.vinicius741.webnovelarchiver.tts
 
-import com.vinicius741.webnovelarchiver.domain.model.TtsProfile
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
 
 /** A speech engine (TTS app) installed on the device. */
 internal data class TtsEngineInfo(
@@ -23,27 +23,32 @@ internal object TtsEnginePlanning {
     ): String? = requested?.takeIf { it in installed }
 
     /**
-     * What live speech (story descriptions) uses while the chosen engine cannot
-     * speak on this phone: a built-in model whose files are not here, since chapters generate on the
-     * user's computers. A saved profile that speaks with an Android engine lends its engine, voice and
-     * pitch, Google's first; the listening speed and pauses stay the user's. Without one, the phone's
-     * own engine speaks, as for any missing engine.
+     * What live speech uses while the chosen engine cannot speak on this phone (a built-in model
+     * whose files are not here, since chapters generate on the user's computers): the phone's own
+     * engine and voice, as for any missing engine.
      */
-    fun standIn(
-        settings: TtsSettings,
-        usable: Collection<String>,
-        isBuiltIn: (String?) -> Boolean,
-    ): TtsSettings {
-        val profile =
-            settings.profiles
-                .filter { !isBuiltIn(it.enginePackage) && (it.enginePackage == null || it.enginePackage in usable) }
-                .sortedWith(
-                    compareByDescending<TtsProfile> { it.enginePackage == GOOGLE_TTS }
-                        .thenByDescending { it.name.contains("google", ignoreCase = true) }
-                        .thenByDescending { it.enginePackage != null },
-                ).firstOrNull()
-                ?: return settings.copy(enginePackage = null, voiceIdentifier = null)
-        return settings.copy(enginePackage = profile.enginePackage, voiceIdentifier = profile.voiceIdentifier, pitch = profile.pitch)
+    fun standIn(settings: TtsSettings): TtsSettings = settings.copy(enginePackage = null, voiceIdentifier = null)
+
+    /** Whether going from [old] to [new] changes the sound itself, so rendered audio must be redone. */
+    fun soundsDifferent(
+        old: TtsSettings,
+        new: TtsSettings,
+    ): Boolean = old.enginePackage != new.enginePackage || old.voiceIdentifier != new.voiceIdentifier || old.pitch != new.pitch
+
+    /** Only Google's engine has a pitch control that does something. */
+    fun hasPitch(enginePackage: String?): Boolean = enginePackage == GOOGLE_TTS
+
+    /**
+     * Settings that chose a retired built-in model ([BuiltInModel.retired]) move to its replacement,
+     * keeping the voice when the replacement has one with the same code, else its default voice.
+     * Audio already generated with the retired model keeps playing: playback never needs the engine.
+     */
+    fun withoutRetiredEngine(settings: TtsSettings): TtsSettings {
+        val model = BuiltInModel.forEngine(settings.enginePackage)?.takeIf { it.retired } ?: return settings
+        val replacement = model.replacement ?: return settings.copy(enginePackage = null, voiceIdentifier = null)
+        val code = BuiltInModel.forIdentifier(settings.voiceIdentifier)?.code
+        val voice = replacement.voices.firstOrNull { it.code == code }
+        return settings.copy(enginePackage = replacement.engineId, voiceIdentifier = voice?.let { replacement.idPrefix + it.code })
     }
 
     fun sorted(engines: List<TtsEngineInfo>): List<TtsEngineInfo> =

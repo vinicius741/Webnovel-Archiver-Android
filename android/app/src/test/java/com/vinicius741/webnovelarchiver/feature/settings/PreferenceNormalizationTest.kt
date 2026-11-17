@@ -6,7 +6,6 @@ import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
-import com.vinicius741.webnovelarchiver.domain.model.TtsProfile
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import org.junit.Assert.assertEquals
@@ -127,38 +126,23 @@ class PreferenceNormalizationTest {
     }
 
     @Test
-    fun ttsProfilesAreClampedAndBrokenOnesDropped() {
-        val good = TtsProfile(id = "a", name = " Night ", rate = 9f, sentencePauseMs = 99_000L, enginePackage = " ")
-        val settings =
-            PreferenceNormalization.ttsSettings(
-                TtsSettings(
-                    enginePackage = "  ",
-                    profiles = listOf(good, TtsProfile(id = "", name = "No id"), TtsProfile(id = "b", name = ""), good),
-                    activeProfileId = "b",
-                ),
+    fun ttsSettingsWithRetiredProfilesStillLoad() {
+        val legacy =
+            Gson().fromJson(
+                """{"rate":1.8,"enginePackage":"  ","profiles":[{"id":"a","name":"Night"}],"activeProfileId":"a"}""",
+                TtsSettings::class.java,
             )
-
-        assertNull(settings.enginePackage)
-        assertEquals(listOf("a"), settings.profiles.map { it.id })
-        val profile = settings.profiles.single()
-        assertEquals("Night", profile.name)
-        assertEquals(2.0f, profile.rate)
-        assertEquals(TtsSettings.MAX_SENTENCE_PAUSE_MS, profile.sentencePauseMs)
-        assertNull(profile.enginePackage)
-        assertNull(settings.activeProfileId)
-    }
-
-    @Test
-    fun ttsSettingsFromBeforeProfilesDeserializeWithNone() {
-        val legacy = Gson().fromJson("""{"pitch":1.0,"rate":1.8,"voiceIdentifier":"en-us-x-sfg-local"}""", TtsSettings::class.java)
-        val explicitNull = Gson().fromJson("""{"rate":1.8,"profiles":null}""", TtsSettings::class.java)
 
         val settings = PreferenceNormalization.ttsSettings(legacy)
 
-        assertEquals(emptyList<TtsProfile>(), settings.profiles)
         assertNull(settings.enginePackage)
         assertEquals(1.8f, settings.rate)
-        assertEquals(emptyList<TtsProfile>(), PreferenceNormalization.ttsSettings(explicitNull).profiles)
+    }
+
+    @Test
+    fun kokoroV019SettingsLoadAsKokoroV1() {
+        val settings = PreferenceNormalization.ttsSettings(TtsSettings(enginePackage = "builtin:kokoro-en-v0_19"))
+        assertEquals("builtin:kokoro-multi-lang-v1_0", settings.enginePackage)
     }
 
     @Test

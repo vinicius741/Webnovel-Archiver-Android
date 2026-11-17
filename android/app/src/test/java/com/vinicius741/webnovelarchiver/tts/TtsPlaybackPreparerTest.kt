@@ -1,11 +1,13 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
+import com.vinicius741.webnovelarchiver.narration.NarrationRecipe
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -63,51 +65,41 @@ class TtsPlaybackPreparerTest {
         }
 
     @Test
-    fun prepareSpeaksStoryDescriptionForSentinelChapterId() =
+    fun audioOfOlderTextPlaysItsOwnSentences() =
         runTest {
-            val story =
-                Story(
-                    id = "story",
-                    title = "Titled Story",
-                    description = "A humble beginning. Then adventure.\n\nA second paragraph.",
-                    chapters = mutableListOf(Chapter(id = "one", content = "<p>Never spoken.</p>")),
+            val story = Story(id = "story", chapters = mutableListOf(Chapter(id = "one", content = "<p>New first. Second.</p>")))
+            val older =
+                NarrationRecipe(
+                    storyId = "story",
+                    chapterId = "one",
+                    chunkingVersion = TtsTextPreparation.CHUNKING_VERSION,
+                    sentences = listOf("Old first.", "Second."),
                 )
-            val source = FakeTtsPlaybackSource(story, null)
             val dispatcher = StandardTestDispatcher(testScheduler)
 
             val prepared =
-                TtsPlaybackPreparer(source, dispatcher, dispatcher)
-                    .prepare("story", TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID)
-                    ?: error("Expected description playback")
+                TtsPlaybackPreparer(FakeTtsPlaybackSource(story, null, recipe = older), dispatcher, dispatcher)
+                    .prepare("story", "one") ?: error("Expected playback")
 
-            assertEquals(TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID, prepared.chapter.id)
-            assertEquals(
-                listOf("Titled Story", "A humble beginning.", "Then adventure.", "A second paragraph."),
-                prepared.chunks,
-            )
-            assertEquals(0, prepared.startIndex)
+            assertEquals(listOf("Old first.", "Second."), prepared.chunks)
+            assertEquals(true, prepared.olderText)
+            // Same sentences, or another chunking version: the current text plays.
+            val same = older.copy(sentences = listOf("New first.", "Second."))
+            val current =
+                TtsPlaybackPreparer(FakeTtsPlaybackSource(story, null, recipe = same), dispatcher, dispatcher)
+                    .prepare("story", "one") ?: error("Expected playback")
+            assertEquals(false, current.olderText)
+            val stale = older.copy(chunkingVersion = TtsTextPreparation.CHUNKING_VERSION - 1)
+            val text =
+                TtsPlaybackPreparer(FakeTtsPlaybackSource(story, null, recipe = stale), dispatcher, dispatcher)
+                    .prepare("story", "one") ?: error("Expected playback")
+            assertEquals(listOf("New first.", "Second."), text.chunks)
         }
 
     @Test
-    fun prepareReturnsNullForBlankDescription() =
+    fun anOldDescriptionSessionIsNeitherPreparedNorResumed() =
         runTest {
-            val story = Story(id = "story", description = "   ")
-            val source = FakeTtsPlaybackSource(story, null)
-            val dispatcher = StandardTestDispatcher(testScheduler)
-
-            val prepared =
-                TtsPlaybackPreparer(
-                    source,
-                    dispatcher,
-                    dispatcher,
-                ).prepare("story", TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID)
-
-            assertEquals(null, prepared)
-        }
-
-    @Test
-    fun resumeRestoresPausedDescriptionSession() =
-        runTest {
+            // Description read-aloud was removed; a session an older version saved must stay silent.
             val story = Story(id = "story", description = "First sentence. Second sentence.")
             val session =
                 TtsSession(
@@ -119,34 +111,10 @@ class TtsPlaybackPreparerTest {
                 )
             val source = FakeTtsPlaybackSource(story, session)
             val dispatcher = StandardTestDispatcher(testScheduler)
+            val preparer = TtsPlaybackPreparer(source, dispatcher, dispatcher)
 
-            val prepared =
-                TtsPlaybackPreparer(source, dispatcher, dispatcher).resume()
-                    ?: error("Expected resumable description playback")
-
-            assertEquals(listOf("First sentence.", "Second sentence."), prepared.chunks)
-            assertEquals(1, prepared.startIndex)
-        }
-
-    @Test
-    fun nextChapterFinishesDescriptionSessionWithoutMarkingRead() =
-        runTest {
-            val story =
-                Story(
-                    id = "story",
-                    description = "Only description.",
-                    chapters = mutableListOf(Chapter(id = "one", content = "<p>Chapter.</p>")),
-                )
-            val source = FakeTtsPlaybackSource(story, null)
-            val dispatcher = StandardTestDispatcher(testScheduler)
-
-            val outcome =
-                TtsPlaybackPreparer(source, dispatcher, dispatcher)
-                    .nextChapter(TtsSession(storyId = "story", chapterId = TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID))
-
-            assertEquals(NextChapterOutcome.NoNextChapter, outcome)
-            // The sentinel must never be persisted as the story's last-read chapter.
-            assertEquals(null, story.lastReadChapterId)
+            assertEquals(null, preparer.prepare("story", TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID))
+            assertEquals(null, preparer.resume())
         }
 
     @Test
@@ -382,7 +350,13 @@ class TtsPlaybackPreparerTest {
         private val story: Story,
         private val persisted: TtsSession?,
         private val storyPosition: TtsStoryPosition? = null,
+        private val recipe: NarrationRecipe? = null,
     ) : TtsPlaybackSource {
+        override fun generatedRecipe(
+            storyId: String,
+            chapterId: String,
+        ): NarrationRecipe? = recipe
+
         override fun story(id: String): Story? = story.takeIf { it.id == id }
 
         override suspend fun chapterHtml(

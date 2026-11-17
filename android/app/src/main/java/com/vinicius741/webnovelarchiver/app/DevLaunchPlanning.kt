@@ -24,7 +24,6 @@ object DevLaunchPlanning {
         UPDATES("updates"),
         QUEUE("queue"),
         SETTINGS("settings"),
-        NOTIFICATIONS("notifications"),
         READER("reader"),
         DETAILS("details"),
         TRENDS("trends"),
@@ -60,7 +59,6 @@ object DevLaunchPlanning {
             DevStartScreen.CLEANUP -> AppRoute.CleanupRules
             DevStartScreen.PATREON -> AppRoute.PatreonAccount()
             DevStartScreen.APP_UPDATE -> AppRoute.AppUpdate
-            DevStartScreen.NOTIFICATIONS -> AppRoute.Notifications
             DevStartScreen.ADD_STORY -> AppRoute.AddStory
             DevStartScreen.DETAILS -> resolveDetails(storyOverride, libraryProvider)
             DevStartScreen.TRENDS -> pickStory(storyOverride, libraryProvider)?.let { AppRoute.Trends(it.id, null) }

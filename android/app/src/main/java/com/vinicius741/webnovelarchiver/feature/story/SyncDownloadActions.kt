@@ -47,7 +47,7 @@ private fun ScreenHost.showLargeSyncDownloadDialog(
                         queueDownload(story, plan.chapterIndexes)
                     }
             }
-        }.setNegativeButton("Sync only", null)
+        }.setNegativeButton("Don't download", null)
         .show()
         .applyAppTheme()
 }

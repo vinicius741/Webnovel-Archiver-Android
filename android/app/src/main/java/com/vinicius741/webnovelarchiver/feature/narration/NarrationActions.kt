@@ -8,43 +8,124 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import androidx.lifecycle.withStarted
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
 import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
+import com.vinicius741.webnovelarchiver.narration.NarrationJobState
 import com.vinicius741.webnovelarchiver.narration.NarrationOrigin
 import com.vinicius741.webnovelarchiver.narration.NarrationVoice
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 internal val ScreenHost.narration: NarrationCoordinator get() = app.appContainer.narration
 
+/** The chapter waiting for its audio so it can start playing; a newer request replaces it. */
+private var pendingPlay: Job? = null
+
 /**
- * Starts a chapter only when its audio is generated; otherwise opens the story's narration screen
- * on that chapter, where it can be generated. Every "listen" entry point goes through this.
+ * Plays a chapter's generated audio, or, when it has none yet, generates it first (at the front of
+ * the queue) and starts playing once it is ready. Every "listen" entry point goes through this.
  */
 internal fun ScreenHost.playIfGenerated(
     storyId: String,
     chapterId: String,
     start: () -> Unit,
 ) {
-    scope.launch {
-        val ready =
-            runCatching {
-                narration.isReady(
-                    storyId,
-                    chapterId,
-                )
-            }.onFailure { Timber.w(it, "Narration status failed") }.getOrDefault(false)
-        if (ready) {
-            start()
-        } else {
-            toast("Generate this chapter's audio first")
-            showNarrationStory(storyId, chapterId)
+    pendingPlay?.cancel()
+    // What was playing when asked: only audio started after the request cancels the wait.
+    val playingAtRequest =
+        ttsEngine.playbackState.value.snapshot
+            ?.let { it.storyId to it.chapterId }
+    pendingPlay =
+        scope.launch {
+            val ready =
+                runCatching { narration.isReady(storyId, chapterId) }
+                    .onFailure { Timber.w(it, "Narration status failed") }
+                    .getOrDefault(false)
+            if (ready) {
+                start()
+                return@launch
+            }
+            val queued =
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        narration.enqueue(
+                            storyId,
+                            listOf(chapterId),
+                            narration.currentVoice(),
+                            NarrationOrigin.MANUAL,
+                            front = true,
+                        )
+                    }
+                }
+            if (queued.isFailure) {
+                Timber.e(queued.exceptionOrNull(), "Narration enqueue failed")
+                toast("Could not generate the audio")
+                return@launch
+            }
+            toast("Generating \"${narration.chapterTitle(storyId, chapterId)}\". It plays when it's ready.")
+            requestNotificationPermissionForDownload()
+            if (awaitAudio(storyId, chapterId, playingAtRequest)) {
+                // Starting the playback service needs the app in the foreground: wait for the user to come back.
+                app.lifecycle.withStarted {}
+                runCatching(start).onFailure { Timber.w(it, "Pending play could not start") }
+            }
+        }
+}
+
+/**
+ * Waits until the chapter's audio is published (true), or gives up (false) when its job goes away or
+ * fails, or other audio than [playingAtRequest] starts.
+ */
+private suspend fun ScreenHost.awaitAudio(
+    storyId: String,
+    chapterId: String,
+    playingAtRequest: Pair<String, String>?,
+): Boolean {
+    val outcome =
+        combine(narration.packsRevision, narration.queueState, ttsEngine.playbackState) { _, queue, playback ->
+            val snapshot = playback.snapshot
+            val playing = snapshot?.let { it.storyId to it.chapterId }
+            val job = queue.jobs.firstOrNull { it.storyId == storyId && it.chapterId == chapterId }
+            when {
+                runCatching { narration.isReady(storyId, chapterId) }.getOrDefault(false) -> PendingPlay.READY
+                snapshot?.isPlaying == true && playing != storyId to chapterId && playing != playingAtRequest -> PendingPlay.GIVE_UP
+                job == null || job.state == NarrationJobState.FAILED -> PendingPlay.GIVE_UP
+                else -> PendingPlay.WAIT
+            }
+        }.first { it != PendingPlay.WAIT }
+    return outcome == PendingPlay.READY
+}
+
+private enum class PendingPlay { WAIT, READY, GIVE_UP }
+
+/**
+ * Plays [chapterId] itself: from the story's saved listening place when that place is in this
+ * chapter, else from its start. "Continue" entry points use [TtsForegroundService.start] instead.
+ */
+internal fun ScreenHost.playChapter(
+    storyId: String,
+    chapterId: String,
+) {
+    playIfGenerated(storyId, chapterId) {
+        scope.launch {
+            val position = repository.getTtsStoryPosition(storyId)
+            if (position != null && !position.caughtUp && position.chapterId == chapterId) {
+                TtsForegroundService.start(app, storyId, chapterId)
+            } else {
+                TtsForegroundService.startFromChunk(app, storyId, chapterId, 0)
+            }
         }
     }
 }

@@ -50,7 +50,7 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /**
- * The Listen hub's Setup section. Where Kokoro chapters generate: this phone or one of the user's
+ * The Listening settings' audio generation section. Where Kokoro chapters generate: this phone or one of the user's
  * computers running `scripts/narration-server` (see `docs/tts/remote-narration-servers.md`), then
  * how many chapters stay generated ahead of the listener. Returns the computers' rows, which the
  * screen updates in place as online checks come back.
@@ -187,9 +187,9 @@ private fun generateOnHint(
     when {
         !kokoro -> "Only the built-in voices (Kokoro, Phonon) can generate on a computer. Your current voice generates on this phone."
         missingOnPhone != null && noServers ->
-            "$missingOnPhone is not on this phone. Add one of your computers to generate with it, or download it in Voice & Speech."
+            "$missingOnPhone is not on this phone. Add one of your computers to generate with it, or download it above."
         missingOnPhone != null && chosen.isEmpty() ->
-            "$missingOnPhone is not on this phone. Choose a computer to generate with it, or download it in Voice & Speech."
+            "$missingOnPhone is not on this phone. Choose a computer to generate with it, or download it above."
         noServers -> "Generating on this phone. Add one of your computers to generate faster over Wi-Fi or Tailscale."
         chosen.isEmpty() -> "Uses the built-in voice on this phone. Choose one or more computers to generate faster."
         else -> {
@@ -201,7 +201,7 @@ private fun generateOnHint(
                 }
             val fallback =
                 if (choice.phoneFallback && missingOnPhone != null) {
-                    " This phone can take over only after $missingOnPhone is downloaded in Voice & Speech."
+                    " This phone can take over only after $missingOnPhone is downloaded above."
                 } else if (choice.phoneFallback) {
                     " This phone takes over while ${if (chosen.size == 1) "it can't generate" else "none of them can generate"}."
                 } else {

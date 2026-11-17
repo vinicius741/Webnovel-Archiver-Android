@@ -93,7 +93,7 @@ internal fun ScreenHost.buildStoryHero(
     val ctaSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     renderDetailsCta(ctaSlot, story, summary, isBusy)
     column.addView(ctaSlot)
-    column.addView(buildQuickActions(story, operation?.kind, isBusy))
+    column.addView(buildQuickActions(story, operation?.kind))
     val hasEpub = !story.epubPaths.isNullOrEmpty() || !story.epubPath.isNullOrBlank()
     if (story.epubStale == true && hasEpub) column.addView(buildStaleEpubNotice(story, isBusy))
     val coverage = if (story.chapters.isNotEmpty()) CoverageCard(this, story) else null
@@ -108,24 +108,12 @@ internal fun ScreenHost.buildStoryHero(
     return StoryHero(root, coverage, bannerSlot, ctaSlot)
 }
 
-/** Archived, source-health and removed-chapter notices, and the waiting AI cover. */
+/** Source-health and removed-chapter notices, and the waiting AI cover. */
 private fun ScreenHost.addHeroNotices(
     column: LinearLayout,
     story: Story,
     tab: StoryTab,
 ) {
-    if (story.isArchived == true) {
-        column.addView(
-            makeText(
-                app,
-                "Old archive copy: read-only",
-                Type.LABEL_MEDIUM,
-                ThemeManager.colors.tertiary,
-            ).apply {
-                setPadding(0, dp(Spacing.SM), 0, dp(Spacing.SM))
-            },
-        )
-    }
     if (story.isArchived != true && story.sourceSyncState.availability != SourceAvailability.available) {
         column.addView(buildSourceAvailabilityNotice(story))
     }
@@ -270,75 +258,23 @@ private fun ScreenHost.buildForecastSyncButton(
     }
 }
 
-/** Sync · EPUB · Select · Audio, each a tinted square with its label under it. */
+/**
+ * The EPUB sheet's button. Sync sits on the forecast banner, downloads and Select on the Chapters
+ * tab, and audio on the chapters themselves, so EPUB is the one action left here.
+ */
 private fun ScreenHost.buildQuickActions(
     story: Story,
     running: StoryOperationKind?,
-    isBusy: Boolean,
 ): View {
-    val row =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams =
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(Spacing.LG)
-                    bottomMargin = dp(6)
-                }
+    val label =
+        when {
+            running == StoryOperationKind.EPUB -> "EPUB · generating…"
+            !story.epubPaths.isNullOrEmpty() || !story.epubPath.isNullOrBlank() -> "EPUB · read or share"
+            else -> "Make an EPUB"
         }
-    val canSync = StoryActionGuards.canSync(story) && !isBusy
-    row.addQuickAction("Sync", R.drawable.wna_refresh, canSync, spinning = running == StoryOperationKind.SYNC) {
-        repository.story(story.id)?.let { syncStory(it) }
+    return makeFullWidthButton(app, label, Btn.SURFACE, R.drawable.wna_menu_book) { showEpubSheet(story.id) }.apply {
+        (layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(Spacing.LG)
     }
-    row.addQuickAction("EPUB", R.drawable.wna_menu_book, true, spinning = running == StoryOperationKind.EPUB) { showEpubSheet(story.id) }
-    row.addQuickAction("Select", R.drawable.wna_checklist, StoryActionGuards.canQueueDownloads(story)) { showChapterSelection(story.id) }
-    row.addQuickAction("Audio", R.drawable.wna_graphic_eq, true) { switchStoryTab(story.id, StoryTab.AUDIO) }
-    return row
-}
-
-private fun LinearLayout.addQuickAction(
-    label: String,
-    icon: Int,
-    enabled: Boolean,
-    spinning: Boolean = false,
-    onClick: () -> Unit,
-) {
-    val colors = ThemeManager.colors
-    val radius = context.dp(QUICK_BOX_RADIUS_DP).toFloat()
-    val box =
-        FrameLayout(context).apply {
-            background = strokeBg(colors.elevation2, radius, colors.line, context.dp(1))
-            if (spinning) {
-                addView(
-                    ProgressBar(context).apply { indeterminateTintList = ColorStateList.valueOf(colors.primary) },
-                    FrameLayout.LayoutParams(context.dp(20), context.dp(20), Gravity.CENTER),
-                )
-            } else {
-                addView(
-                    ImageView(context).apply { setImageDrawable(context.tintedIcon(icon, colors.primary)) },
-                    FrameLayout.LayoutParams(context.dp(22), context.dp(22), Gravity.CENTER),
-                )
-            }
-        }
-    val item =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, context.dp(Spacing.XS), 0, context.dp(Spacing.XS))
-            isClickable = enabled
-            isFocusable = enabled
-            alpha = if (enabled) 1f else DISABLED_ALPHA
-            contentDescription = label
-            background = ripple(roundedBg(android.graphics.Color.TRANSPARENT, radius), radius, colors.onSurface)
-            addView(box, LinearLayout.LayoutParams(context.dp(QUICK_BOX_WIDTH_DP), context.dp(QUICK_BOX_HEIGHT_DP)))
-            addView(
-                makeText(context, label, Type.LABEL_MEDIUM, colors.onSurfaceVariant).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    setPadding(0, context.dp(6), 0, 0)
-                },
-            )
-            if (enabled) setOnClickListener { onClick() }
-        }
-    addView(item, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 }
 
 /** "210 / 210 offline", the ivory bookmark chip, and the coverage bar; opens the Chapters tab. */
@@ -474,9 +410,6 @@ internal fun formatAgo(
 
 private const val BACKDROP_HEIGHT_DP = 300
 private const val FORECAST_RADIUS_DP = 14
-private const val QUICK_BOX_WIDTH_DP = 52
-private const val QUICK_BOX_HEIGHT_DP = 44
-private const val QUICK_BOX_RADIUS_DP = 16
 private const val COVERAGE_RADIUS_DP = 16
 private const val LINE_SPACING = 1.1f
 internal const val DISABLED_ALPHA = 0.45f

@@ -47,7 +47,7 @@ class TtsEngine(
      */
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
-    private val preparer = TtsPlaybackPreparer(repository)
+    private val preparer = TtsPlaybackPreparer(repository, narration)
 
     // The store MUST share the same owner as the preparer's read path. When a repository is present
     // the preparer reads the in-memory session cache, so writes route through the repository too
@@ -252,7 +252,7 @@ class TtsEngine(
                     sessionStore.schedule(updated)
                     outputs.active?.setRate(settings.rate)
                 }
-                val newVoice = previous != null && TtsProfilePlanning.soundsDifferent(previous, settings)
+                val newVoice = previous != null && TtsEnginePlanning.soundsDifferent(previous, settings)
                 // A chapter keeps the voice it was generated in; only a description speaks with the settings.
                 if (loaded.hasChapter && loaded.speaksLive && (newVoice || speech.needsRestart(settings))) {
                     reloadVoiceLocked(settings)

@@ -55,7 +55,8 @@ class DownloadPacePlanningTest {
         assertEquals("0", DownloadPacePlanning.seconds(0))
         assertEquals("0.8–2.5 s", DownloadPacePlanning.rangeLabel(PaceRange(800, 2_500)))
         assertEquals("2 s", DownloadPacePlanning.rangeLabel(PaceRange(2_000, 2_000)))
-        assertEquals("Uses the defaults", DownloadPacePlanning.overrideSummary(null))
-        assertEquals("2–5 s delay", DownloadPacePlanning.overrideSummary(SourceDownloadSettings(delay = 2_000, delayMax = 5_000)))
+        assertEquals("Default pace", DownloadPacePlanning.overrideSummary(null))
+        assertEquals("Gentle", DownloadPacePlanning.overrideSummary(SourceDownloadSettings(delay = 2_000, delayMax = 5_000)))
+        assertEquals("Custom · 2–4 s", DownloadPacePlanning.overrideSummary(SourceDownloadSettings(delay = 2_000, delayMax = 4_000)))
     }
 }

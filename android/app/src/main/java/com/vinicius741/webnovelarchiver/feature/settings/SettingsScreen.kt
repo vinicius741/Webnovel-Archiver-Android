@@ -16,9 +16,7 @@ import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
-import com.vinicius741.webnovelarchiver.notification.NotificationCategoryStatus
 import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
 import com.vinicius741.webnovelarchiver.tts.TtsEnginePlanning
 import com.vinicius741.webnovelarchiver.ui.SegmentedSelector
@@ -40,8 +38,8 @@ import java.text.NumberFormat
 private val LAYOUT_MODES = listOf("auto" to "Auto", "cover" to "Cover", "inner" to "Inner")
 
 /**
- * The Settings destination (v3): a summary of what is on this phone, then grouped rows (Listening
- * & reading, Library, Intelligence, System), each with its current value, and the app version.
+ * The Settings destination (v3): a summary of what is on this phone, then grouped rows (Listening,
+ * Reading & display, Library, Intelligence, System), each with its current value, and the app version.
  */
 internal fun ScreenHost.showSettings() {
     // Re-render so layout/width toggles re-center the capped content live.
@@ -52,11 +50,20 @@ internal fun ScreenHost.showSettings() {
         capSettingsWidth(this)
         addPhoneSummaryCard(this)
 
-        section("Listening & reading")
+        section("Listening")
         settingsGroup {
-            navRow(R.drawable.wna_record_voice, "Voice & Speech", summaries?.voice ?: LOADING) { showTtsSettings() }
+            navRow(R.drawable.wna_record_voice, "Listening", summaries?.voice ?: LOADING) { showTtsSettings() }
+        }
+
+        section("Reading & display")
+        settingsGroup {
             val cleanup = SettingsHubPlanning.cleanupSummary(repository.regexRules.get().size, repository.sentenceRemovalList.get().size)
             navRow(R.drawable.wna_cleaning, "Text cleanup", cleanup) { showCleanupRules() }
+            // Only a large (inner) screen has a choice to make; a non-default mode stays reachable to undo.
+            val largeScreen = foldTracker.isFoldingFeature.value || app.resources.configuration.screenWidthDp >= LARGE_SCREEN_DP
+            if (largeScreen || repository.getDisplayPreferences().screenLayoutMode != LAYOUT_MODES.first().first) {
+                addView(layoutModeRow())
+            }
         }
 
         section("Library")
@@ -70,7 +77,6 @@ internal fun ScreenHost.showSettings() {
                     PaceRange(settings.downloadDelay, maxOf(settings.downloadDelay, settings.downloadDelayMax)),
                 )
             navRow(R.drawable.wna_download, "Downloads", downloads) { showDownloadSettings() }
-            addView(layoutModeRow())
             navRow(
                 R.drawable.wna_favorite,
                 "Patreon account",
@@ -86,9 +92,16 @@ internal fun ScreenHost.showSettings() {
 
         section("System")
         settingsGroup {
-            navRow(R.drawable.wna_notifications, "Notifications", notificationsSummary()) { showNotifications() }
+            val notificationsOff = notificationsSummary()
+            navRow(
+                R.drawable.wna_notifications,
+                "Notifications",
+                notificationsOff ?: "Allowed · Android settings",
+                tint = if (notificationsOff != null) colors.error else colors.primary,
+                chevron = false,
+            ) { performNotificationPermissionAction() }
             val storageHealth = repository.getStorageHealth()
-            val dataSummary = if (storageHealth.requiresUserAttention) "Storage needs attention" else "Backups, sources, storage"
+            val dataSummary = if (storageHealth.requiresUserAttention) "Storage needs attention" else "Backup, restore, troubleshooting"
             navRow(
                 R.drawable.wna_backup,
                 "Data & backup",
@@ -258,15 +271,16 @@ private fun ScreenHost.aiSummary(): String {
     return "OpenRouter · ${formatUsd(month.costUsd)} this month"
 }
 
-private fun ScreenHost.notificationsSummary(): String {
-    if (!AppNotificationChannels.hasPostNotificationsPermission(app)) return "Not allowed for downloads"
+/** Why notifications are off, or null when Android allows them. */
+private fun ScreenHost.notificationsSummary(): String? {
+    if (!AppNotificationChannels.hasPostNotificationsPermission(app)) return "Off · download progress is hidden. Tap to allow"
     if (!AppNotificationChannels.areAppNotificationsEnabled(app)) return "Blocked in Android settings"
-    val on = AppNotificationCategory.entries.count { AppNotificationChannels.status(app, it) == NotificationCategoryStatus.ENABLED }
-    return "Allowed · $on of ${AppNotificationCategory.entries.size} categories on"
+    return null
 }
 
 internal const val DEFAULT_PARALLEL_SOURCES = 2
 private const val LOADING = "…"
+private const val LARGE_SCREEN_DP = 600
 private const val FOOTER_LINE_SPACING = 1.4f
 private const val LEAD_DP = 40
 private const val LEAD_RADIUS_DP = 12

@@ -8,7 +8,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
-import com.vinicius741.webnovelarchiver.feature.narration.playIfGenerated
+import com.vinicius741.webnovelarchiver.feature.narration.playChapter
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -112,7 +112,7 @@ internal fun ScreenHost.renderDetailsCta(
     }
 }
 
-/** Listens from the chapter Continue would open; plays only generated audio (see [playIfGenerated]). */
+/** Listens to the chapter Continue would open, generating its audio first when needed (see [playChapter]). */
 private fun ScreenHost.listenButton(
     storyId: String,
     chapterId: String,
@@ -126,7 +126,7 @@ private fun ScreenHost.listenButton(
         background = ripple(roundedBg(colors.primaryContainer, radius), radius, colors.onPrimaryContainer)
         isClickable = true
         isFocusable = true
-        setOnClickListener { playIfGenerated(storyId, chapterId) { TtsForegroundService.start(app, storyId, chapterId) } }
+        setOnClickListener { playChapter(storyId, chapterId) }
     }
 }
 

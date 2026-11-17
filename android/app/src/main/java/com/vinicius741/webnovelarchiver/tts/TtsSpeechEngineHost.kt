@@ -77,14 +77,13 @@ internal class TtsSpeechEngineHost(
 
     /**
      * The settings live speech really uses: [settings], unless they name a built-in model whose files
-     * are not on this phone (it generates chapters on the user's computers), in which case a saved
-     * Android profile stands in (see [TtsEnginePlanning.standIn]).
+     * are not on this phone (it generates chapters on the user's computers), in which case the phone's
+     * own engine stands in (see [TtsEnginePlanning.standIn]).
      */
     fun speaking(settings: TtsSettings): TtsSettings {
         val model = KokoroVoices.model(settings.enginePackage) ?: return settings
         if (builtIns.isInstalled(model) && KokoroModelFiles.isDeviceSupported(model)) return settings
-        val usable = TtsEngineCatalog.usablePackages(context, builtIns.installedEngines)
-        return TtsEnginePlanning.standIn(settings, usable, KokoroVoices::isEngine)
+        return TtsEnginePlanning.standIn(settings)
     }
 
     /** [selectEngine] for the engine [settings] really speak with (see [speaking]). */

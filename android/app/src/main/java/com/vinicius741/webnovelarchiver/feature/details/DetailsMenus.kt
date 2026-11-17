@@ -7,10 +7,10 @@ import com.vinicius741.webnovelarchiver.epub.EpubConfigPlanning
 import com.vinicius741.webnovelarchiver.feature.library.LibrarySelectionPlanning
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.narration.narration
-import com.vinicius741.webnovelarchiver.feature.story.StoryTab
 import com.vinicius741.webnovelarchiver.feature.story.applyCleanup
 import com.vinicius741.webnovelarchiver.feature.story.generateConfiguredEpub
 import com.vinicius741.webnovelarchiver.feature.story.openEpubForStory
+import com.vinicius741.webnovelarchiver.feature.story.shareAll
 import com.vinicius741.webnovelarchiver.feature.story.showEpubConfigDialog
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -26,8 +26,8 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * The story page's sheets: the ⋮ menu (every action the old Details overflow had, grouped, with
- * icons) and the EPUB sheet behind the EPUB quick action.
+ * The story page's sheets: the ⋮ menu (re-check, cleanup, delete) and the EPUB sheet behind the
+ * EPUB quick action.
  */
 
 /** One row of a story sheet; [busyGuarded] rows wait while a sync, cleanup or EPUB run is in progress. */
@@ -66,54 +66,32 @@ private fun ScreenHost.showStorySheet(
     handle = showBottomSheet(app, title = title, subtitle = subtitle, body = body)
 }
 
-/** The ⋮ menu: full sync, Patreon link, EPUB, cleanup, the other tabs, and Delete isolated last. */
+/** The ⋮ menu: re-check all chapters, text cleanup, and Delete isolated last. */
 internal fun ScreenHost.showDetailsOverflow(story: com.vinicius741.webnovelarchiver.domain.model.Story) {
     val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
     val top =
         buildList {
             if (StoryActionGuards.canSync(story) && provider?.supportsLatestChapterSync == true) {
                 add(
-                    SheetRow("Full sync", R.drawable.wna_refresh, "Re-check every chapter and the details", busyGuarded = true) {
+                    SheetRow(
+                        "Re-check all chapters",
+                        R.drawable.wna_refresh,
+                        "Sync looks only for new ones; this checks every chapter and the details",
+                        busyGuarded = true,
+                    ) {
                         syncStory(story, StorySyncMode.Full)
                     },
                 )
             }
-            if (StoryActionGuards.canModifyStory(story)) {
-                val label = if (story.effectivePatreonUrl.isNullOrBlank()) "Add Patreon link" else "Edit Patreon link"
-                add(SheetRow(label, R.drawable.wna_edit, busyGuarded = true) { showPatreonLinkDialog(story) })
-            }
+            add(
+                SheetRow("Apply text cleanup", R.drawable.wna_cleaning, "Run your cleanup rules on saved chapters", busyGuarded = true) {
+                    applyCleanup(story)
+                },
+            )
         }
-    val epub =
-        listOf(
-            SheetRow("EPUB settings", R.drawable.wna_settings, busyGuarded = true) { showEpubConfigDialog(story) },
-            SheetRow("EPUB files", R.drawable.wna_folder, epubFilesLabel(story), busyGuarded = true) { showLegacyEpubs(story.id) },
-        )
-    val text =
-        listOf(
-            SheetRow("Apply text cleanup", R.drawable.wna_cleaning, "Run your cleanup rules on saved chapters", busyGuarded = true) {
-                applyCleanup(story)
-            },
-        )
-    val explore =
-        listOf(
-            SheetRow("Trends", R.drawable.wna_chart) { switchStoryTab(story.id, StoryTab.TRENDS) },
-            SheetRow("AI controls", R.drawable.wna_auto_awesome) { switchStoryTab(story.id, StoryTab.AI) },
-            SheetRow("Narration audio", R.drawable.wna_graphic_eq) { switchStoryTab(story.id, StoryTab.AUDIO) },
-        )
     val delete =
         listOf(SheetRow("Delete novel", R.drawable.wna_delete, destructive = true, busyGuarded = true) { confirmDeleteStory(story) })
-    showStorySheet(
-        story.title,
-        "More options",
-        story.id,
-        listOf(
-            null to top,
-            "EPUB" to epub,
-            "Text" to text,
-            "Explore" to explore,
-            null to delete,
-        ),
-    )
+    showStorySheet(story.title, "More options", story.id, listOf(null to top, null to delete))
 }
 
 private fun ScreenHost.confirmDeleteStory(story: com.vinicius741.webnovelarchiver.domain.model.Story) {
@@ -127,7 +105,7 @@ private fun ScreenHost.confirmDeleteStory(story: com.vinicius741.webnovelarchive
     }
 }
 
-/** The EPUB quick action: generate or regenerate, read, settings and files. */
+/** The EPUB quick action: generate or regenerate, read, share, and settings. */
 internal fun ScreenHost.showEpubSheet(storyId: String) {
     val story = repository.story(storyId) ?: return
     val files = epubFileCount(story)
@@ -160,10 +138,30 @@ internal fun ScreenHost.showEpubSheet(storyId: String) {
             ) {
                 if (files == 0) toast("Generate an EPUB first") else openEpubForStory(story)
             },
+            SheetRow(
+                "Share EPUB",
+                R.drawable.wna_share,
+                if (files >
+                    0
+                ) {
+                    epubFilesLabel(story)
+                } else {
+                    "Generate it first"
+                },
+                busyGuarded = true,
+            ) {
+                if (files == 0) toast("Generate an EPUB first") else shareEpubs(story)
+            },
             SheetRow("EPUB settings", R.drawable.wna_settings, busyGuarded = true) { showEpubConfigDialog(story) },
-            SheetRow("EPUB files", R.drawable.wna_folder, epubFilesLabel(story), busyGuarded = true) { showLegacyEpubs(story.id) },
         )
     showStorySheet("EPUB", subtitle, story.id, listOf(null to rows))
+}
+
+/** Shares the story's current EPUB file(s) in one chooser. */
+private fun ScreenHost.shareEpubs(story: com.vinicius741.webnovelarchiver.domain.model.Story) {
+    val paths = story.epubPaths?.filter { it.isNotBlank() }?.ifEmpty { null } ?: listOfNotNull(story.epubPath)
+    val files = paths.mapNotNull { repository.resolveAbsolutePath(it) }
+    if (files.isEmpty()) toast("EPUB file not found. Please regenerate.") else shareAll(files, "Share EPUB")
 }
 
 private fun epubFileCount(story: com.vinicius741.webnovelarchiver.domain.model.Story): Int =

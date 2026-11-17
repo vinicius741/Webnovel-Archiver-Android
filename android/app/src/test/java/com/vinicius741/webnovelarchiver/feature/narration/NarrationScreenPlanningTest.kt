@@ -16,57 +16,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NarrationScreenPlanningTest {
-    private val chapters = (1..6).map { Chapter(id = "c$it", title = "Chapter $it", downloaded = true) }
-
-    private fun story(bookmark: String? = null) =
-        Story(id = "s", title = "Story", chapters = chapters.toMutableList()).apply {
-            lastReadChapterId =
-                bookmark
-        }
-
     private fun job(
         id: String,
         storyId: String,
         state: NarrationJobState = NarrationJobState.QUEUED,
     ) = NarrationJob(id = id, storyId = storyId, chapterId = id, state = state)
-
-    @Test
-    fun `the bookmark filter shows the bookmarked chapter and everything after it`() {
-        val shown = NarrationScreenPlanning.filter(story("c4"), chapters, emptyMap(), ChapterAudioFilter.FROM_BOOKMARK)
-        assertEquals(listOf("c4", "c5", "c6"), shown.map { it.id })
-    }
-
-    @Test
-    fun `a story opens at its bookmark unless the requested chapter is before it`() {
-        assertEquals(ChapterAudioFilter.FROM_BOOKMARK, NarrationScreenPlanning.defaultFilter(story("c4"), chapters, null))
-        assertEquals(ChapterAudioFilter.FROM_BOOKMARK, NarrationScreenPlanning.defaultFilter(story("c4"), chapters, "c5"))
-        assertEquals(ChapterAudioFilter.ALL, NarrationScreenPlanning.defaultFilter(story("c4"), chapters, "c2"))
-        assertEquals(ChapterAudioFilter.ALL, NarrationScreenPlanning.defaultFilter(story(null), chapters, null))
-        assertEquals(ChapterAudioFilter.ALL, NarrationScreenPlanning.defaultFilter(story("gone"), chapters, null))
-    }
-
-    @Test
-    fun `status filters split chapters needing audio from ready ones`() {
-        val statuses =
-            mapOf(
-                "c1" to NarrationChapterStatus.Queued(1),
-                "c2" to NarrationChapterStatus.Failed("boom"),
-                "c3" to NarrationChapterStatus.Generating(0.5f),
-            )
-        val notGenerated = NarrationScreenPlanning.filter(story(), chapters, statuses, ChapterAudioFilter.NOT_GENERATED)
-        assertEquals(listOf("c2", "c4", "c5", "c6"), notGenerated.map { it.id })
-        assertTrue(NarrationScreenPlanning.filter(story(), chapters, statuses, ChapterAudioFilter.READY).isEmpty())
-    }
-
-    @Test
-    fun `a range covers every visible chapter between the anchor and the target either way`() {
-        val visible = listOf("c2", "c3", "c4", "c5")
-        assertEquals(setOf("c3", "c4", "c5"), NarrationScreenPlanning.range(visible, "c3", "c5"))
-        assertEquals(setOf("c2", "c3", "c4"), NarrationScreenPlanning.range(visible, "c4", "c2"))
-        assertEquals(setOf("c4"), NarrationScreenPlanning.range(visible, null, "c4"))
-        assertEquals(setOf("c4"), NarrationScreenPlanning.range(visible, "hidden", "c4"))
-        assertTrue(NarrationScreenPlanning.range(visible, "c2", "hidden").isEmpty())
-    }
 
     @Test
     fun `the queue groups by story in first-appearance order`() {

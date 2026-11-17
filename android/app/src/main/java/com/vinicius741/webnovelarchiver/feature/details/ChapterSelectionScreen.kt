@@ -9,20 +9,26 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.details.ChapterSelectionPlanning
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.narration.NarrationScreenPlanning
+import com.vinicius741.webnovelarchiver.feature.narration.narrationAction
+import com.vinicius741.webnovelarchiver.feature.narration.queueNarration
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.CardListDecoration
+import com.vinicius741.webnovelarchiver.ui.SegmentedSelector
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.button
+import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
-import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.strokeBg
@@ -30,19 +36,44 @@ import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 
+/** Which chapters Select lists, so a long novel shows only the ones an action can apply to. */
+private enum class SelectionScope(
+    val label: String,
+) {
+    NOT_DOWNLOADED("Not downloaded"),
+    DOWNLOADED("Downloaded"),
+    ALL("All"),
+}
+
+/** The scope Select last showed, per story, for this run of the app. */
+private val selectionScopes = HashMap<String, SelectionScope>()
+
+/**
+ * Select chapters: one selection for every chapter action. Tap or long-press-and-drag chapters, then
+ * Download them, Generate their audio, or Delete their audio; each action counts only the selected
+ * chapters it applies to.
+ */
+@Suppress("LongMethod") // One linear screen build; its helpers are the hint card and the action row.
 internal fun ScreenHost.showChapterSelection(
     storyId: String,
     initialSelectedIds: Set<String> = emptySet(),
 ) {
     val story = repository.story(storyId) ?: return showLibrary()
-    if (!StoryActionGuards.canQueueDownloads(story)) {
-        toast(StoryActionGuards.archivedActionMessage("Downloading"))
-        return showDetails(story.id)
-    }
-
+    val canDownload = StoryActionGuards.canQueueDownloads(story)
+    val audio = chapterAudioLabels(story)
+    val hasUndownloaded = story.chapters.any { !it.downloaded }
+    val scope =
+        selectionScopes[storyId]
+            ?: if (hasUndownloaded && canDownload) SelectionScope.NOT_DOWNLOADED else SelectionScope.DOWNLOADED
     val items =
         story.chapters.mapIndexedNotNull { index, chapter ->
-            if (chapter.downloaded) null else SelectableChapter(index, chapter)
+            val shown =
+                when (scope) {
+                    SelectionScope.NOT_DOWNLOADED -> !chapter.downloaded
+                    SelectionScope.DOWNLOADED -> chapter.downloaded
+                    SelectionScope.ALL -> true
+                }
+            if (shown) SelectableChapter(index, chapter, audio[chapter.id]) else null
         }
     val orderedIds = items.map { it.chapter.id }
     val selectedIds = initialSelectedIds.filterTo(mutableSetOf()) { it in orderedIds }
@@ -52,12 +83,24 @@ internal fun ScreenHost.showChapterSelection(
         title = "Select chapters",
         subtitle = story.title,
     ) {
+        val scopes = SelectionScope.entries
+        val counts =
+            listOf(story.chapters.count { !it.downloaded }, story.chapters.count { it.downloaded }, story.chapters.size)
+        addView(
+            SegmentedSelector(context, scopes.map { it.label }, scopes.indexOf(scope), counts) { index ->
+                selectionScopes[storyId] = scopes[index]
+                showChapterSelection(storyId, selectedIds.toSet())
+            }.view,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(Space.SM)
+            },
+        )
         if (items.isEmpty()) {
             addView(
                 makeEmptyState(
                     context,
-                    message = "Every chapter is already saved — there's nothing left to queue.",
-                    title = "All caught up",
+                    message = "No chapters here. Pick another group above.",
+                    title = "Nothing to select",
                     iconRes = R.drawable.wna_check,
                 ),
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
@@ -69,7 +112,7 @@ internal fun ScreenHost.showChapterSelection(
         var rangeAnchor: Int? = null
         lateinit var adapter: ChapterSelectionAdapter
         lateinit var rangeButton: android.widget.Button
-        lateinit var downloadButton: android.widget.Button
+        lateinit var actions: SelectionActions
         lateinit var hint: TextView
 
         fun updateSelection(nextSelection: Set<String>) {
@@ -77,9 +120,7 @@ internal fun ScreenHost.showChapterSelection(
             selectedIds.clear()
             selectedIds.addAll(nextSelection)
             adapter.refreshSelection(previous, selectedIds)
-            downloadButton.text = "Download ${selectedIds.size} selected"
-            downloadButton.isEnabled = selectedIds.isNotEmpty()
-            downloadButton.alpha = if (selectedIds.isEmpty()) DISABLED_ALPHA else 1f
+            actions.update(selectedIds)
         }
 
         fun finishRangeMode(message: String? = null) {
@@ -139,7 +180,7 @@ internal fun ScreenHost.showChapterSelection(
                     }
                 }
             button("All", Btn.OUTLINED, R.drawable.wna_check) {
-                finishRangeMode("All available chapters selected.")
+                finishRangeMode("All shown chapters selected.")
                 updateSelection(orderedIds.toSet())
             }
             button("Clear", Btn.OUTLINED, R.drawable.wna_close) {
@@ -182,22 +223,78 @@ internal fun ScreenHost.showChapterSelection(
             ),
         )
         addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        actions = SelectionActions(this@showChapterSelection, this, story, items, audio, canDownload)
+        actions.update(selectedIds)
+    }
+}
 
-        downloadButton =
-            fullButton(
-                "Download ${selectedIds.size} selected",
-                Btn.FILLED,
-                R.drawable.wna_download,
-                topMarginDp = Space.SM,
-                bottomMarginDp = 0,
-            ) {
-                val selectedIndexes = items.filter { it.chapter.id in selectedIds }.map { it.originalIndex }
-                if (selectedIndexes.isEmpty()) {
-                    toast("No undownloaded chapters selected")
-                } else {
-                    queueDownload(story, selectedIndexes)
+/** Download / Generate audio / Delete audio for the selection, each counting the chapters it applies to. */
+private class SelectionActions(
+    private val host: ScreenHost,
+    container: LinearLayout,
+    private val story: com.vinicius741.webnovelarchiver.domain.model.Story,
+    private val items: List<SelectableChapter>,
+    private val audio: Map<String, String>,
+    private val canDownload: Boolean,
+) {
+    private var download: List<SelectableChapter> = emptyList()
+    private var generate: List<SelectableChapter> = emptyList()
+    private var delete: List<SelectableChapter> = emptyList()
+    private lateinit var downloadButton: android.widget.Button
+    private lateinit var generateButton: android.widget.Button
+    private lateinit var deleteButton: android.widget.Button
+
+    init {
+        // Icons with the count each action applies to, in one row of equal buttons; the full label is spoken.
+        container.row {
+            downloadButton =
+                button("", Btn.FILLED, R.drawable.wna_download) {
+                    if (download.isNotEmpty()) host.queueDownload(story, download.map { it.originalIndex })
+                }
+            generateButton =
+                button("", Btn.TONAL, R.drawable.wna_headphones) {
+                    if (generate.isEmpty()) return@button
+                    host.queueNarration(story.id, generate.map { it.chapter.id })
+                    host.showStoryChapters(story.id)
+                }
+            deleteButton =
+                button("", Btn.ERROR, R.drawable.wna_delete) {
+                    val ids = delete.map { it.chapter.id }
+                    if (ids.isEmpty()) return@button
+                    host.confirm("Delete the audio of ${NarrationScreenPlanning.chapters(ids.size)}?", confirmLabel = "Delete") {
+                        host.narrationAction("Could not delete the audio") { deleteAudio(story.id, ids) }
+                        host.showStoryChapters(story.id)
+                    }
+                }
+            for (index in 0 until childCount) {
+                (getChildAt(index).layoutParams as LinearLayout.LayoutParams).apply {
+                    width = 0
+                    weight = 1f
+                    marginStart = if (index == 0) 0 else context.dp(Space.SM)
                 }
             }
+        }
+    }
+
+    fun update(selected: Set<String>) {
+        val chosen = items.filter { it.chapter.id in selected }
+        download = if (canDownload) chosen.filter { !it.chapter.downloaded } else emptyList()
+        generate = chosen.filter { TtsContinueListening.isPlayable(it.chapter) && it.chapter.id !in audio }
+        delete = chosen.filter { it.chapter.id in audio }
+        downloadButton.show("Download", download.size)
+        generateButton.show("Generate audio", generate.size)
+        deleteButton.show("Delete audio", delete.size)
+    }
+
+    private fun android.widget.Button.show(
+        label: String,
+        count: Int,
+    ) {
+        text = if (count > 0) count.toString() else ""
+        contentDescription =
+            if (count > 0) "$label ${NarrationScreenPlanning.chapters(count)}" else "$label (none of the selected chapters)"
+        isEnabled = count > 0
+        alpha = if (count > 0) 1f else DISABLED_ALPHA
     }
 }
 
@@ -223,4 +320,4 @@ private fun ScreenHost.selectionHintCard(hint: TextView): LinearLayout {
 }
 
 private const val DEFAULT_SELECTION_HINT =
-    "Tap chapters individually, or long-press one and drag to select or clear a range."
+    "Tap chapters, or long-press one and drag to select or clear a range. Then download them or make their audio."

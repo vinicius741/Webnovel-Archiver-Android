@@ -114,7 +114,7 @@ internal fun ScreenHost.showReaderSettingsPanel(
     blackRow.contentDescription = "Pure black"
     body.addView(blackRow)
     body.addView(
-        makeSheetRow(app, "Voice settings", supporting = voiceSummary, iconRes = R.drawable.wna_record_voice) {
+        makeSheetRow(app, "Listening settings", supporting = voiceSummary, iconRes = R.drawable.wna_record_voice) {
             sheet.dismiss()
             onOpenVoiceSettings()
         },

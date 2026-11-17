@@ -187,15 +187,6 @@ class TextCleanupTest {
     }
 
     @Test
-    fun generateQuickPatternBuildsWholeLineSeparatorRule() {
-        val generated = TextCleanup.generateQuickPattern("-", 5, wholeLine = true)
-
-        assertEquals("^[\\s]*\\-{5,}[\\s]*$", generated?.pattern)
-        assertEquals("gm", generated?.flags)
-        assertEquals("Remove - (5+) separator lines", generated?.name)
-    }
-
-    @Test
     fun cleanupSupportsDotMatchesAllRegexFlag() {
         val html = "<p>Before start middle end after</p>"
         val cleaned =

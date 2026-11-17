@@ -31,14 +31,6 @@ internal object StoryMutations {
             .takeIf { story -> story.chapters.any { it.id == chapterId } }
             ?.let { StoryBookmarkPlanning.withBookmark(it, chapterId, toggleExisting = true) }
 
-    fun setBookmark(
-        latest: Story,
-        chapterId: String,
-    ): Story? =
-        latest
-            .takeIf { story -> story.chapters.any { it.id == chapterId } }
-            ?.let { StoryBookmarkPlanning.withBookmark(it, chapterId, toggleExisting = false) }
-
     fun setEpubConfig(
         latest: Story,
         config: EpubConfig,

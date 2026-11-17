@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.feature.downloads
 
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
 import com.vinicius741.webnovelarchiver.download.DownloadQueueSectionPlanning
 import com.vinicius741.webnovelarchiver.download.SourceCheckCard
 import com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity
@@ -10,7 +9,7 @@ import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordin
 import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
 import com.vinicius741.webnovelarchiver.feature.browser.showBrowser
 import com.vinicius741.webnovelarchiver.feature.settings.resetSourceWebSessions
-import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
+import com.vinicius741.webnovelarchiver.feature.settings.shareDiagnostics
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.confirm
@@ -63,14 +62,7 @@ internal fun ScreenHost.showSourceCheckTrouble(card: SourceCheckCard) {
                     },
                 )
             }
-            add(
-                QueueMenuEntry("Share source access logs", R.drawable.wna_bug_report) {
-                    val network = app.appContainer.network
-                    exportAndShare(
-                        { BypassLogExporter.export(app.appContainer.repository.storage.backupRoot, network, repository.queue()) },
-                    )
-                },
-            )
+            add(QueueMenuEntry("Share diagnostics", R.drawable.wna_bug_report) { shareDiagnostics() })
             add(null)
             add(
                 QueueMenuEntry("Pause $name downloads", R.drawable.wna_pause) {

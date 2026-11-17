@@ -13,7 +13,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicLong
 
-/** One computer the Voice & Speech sample can generate on. */
+/** One computer the Listening settings sample can generate on. */
 internal interface NarrationSamplePlace {
     val name: String
 
@@ -27,7 +27,7 @@ internal interface NarrationSamplePlace {
 }
 
 /**
- * Generates the Voice & Speech sample on the user's computers before it plays, for a built-in model
+ * Generates the Listening settings sample on the user's computers before it plays, for a built-in model
  * that is not on this phone. Every chosen computer takes sentences from one shared list, so choosing
  * several finishes sooner; a computer that cannot be used leaves its sentences to the others, and once
  * the list is empty an idle computer also takes a sentence another is still on, so a slow or stuck

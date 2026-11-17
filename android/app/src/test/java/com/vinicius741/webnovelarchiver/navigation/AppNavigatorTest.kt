@@ -75,7 +75,7 @@ class AppNavigatorTest {
         val navigator = AppNavigator()
         navigator.navigate(AppRoute.Details("story"))
         navigator.navigate(AppRoute.ChapterSelection("story", setOf("one")))
-        navigator.navigate(AppRoute.LegacyEpubs("story"))
+        navigator.navigate(AppRoute.AuthorNovels("story"))
         navigator.navigate(AppRoute.ChapterSelection("story", setOf("two")))
 
         assertEquals(AppRoute.ChapterSelection("story", setOf("two")), navigator.current)
@@ -124,7 +124,7 @@ class AppNavigatorTest {
 
     @Test
     fun `back without history walks up the parent chain to the library`() {
-        val navigator = AppNavigator(AppRoute.Notifications)
+        val navigator = AppNavigator(AppRoute.TtsSettings)
 
         assertTrue(navigator.canGoBack)
         assertEquals(AppRoute.Settings, navigator.back())
@@ -164,7 +164,7 @@ class AppNavigatorTest {
         assertNull(AppRoute.Library.parent)
         assertEquals(AppRoute.Library, AppRoute.Trends("story", "score").parent)
         assertEquals(AppRoute.Details("story"), AppRoute.PatreonAccount("story").parent)
-        assertEquals(AppRoute.DataBackup, AppRoute.PatreonAccount().parent)
+        assertEquals(AppRoute.Settings, AppRoute.PatreonAccount().parent)
         assertEquals(AppRoute.Settings, AppRoute.CleanupRules.parent)
         assertEquals(AppRoute.Library, AppRoute.Player.parent)
     }
@@ -193,7 +193,7 @@ class AppNavigatorTest {
     fun `view memory survives for every tab of a story in the history`() {
         val navigator = AppNavigator()
         navigator.navigate(AppRoute.Details("story", chapters = true))
-        navigator.replace(AppRoute.NarrationStory("story"))
+        navigator.replace(AppRoute.AiControls("story"))
 
         assertTrue(AppRoute.Details("story", chapters = true).stableKey in navigator.viewMemoryKeys)
         assertTrue(AppRoute.Trends("story").stableKey in navigator.viewMemoryKeys)

@@ -21,6 +21,9 @@ internal class TtsLoadedSession {
     var currentOffsetMs = 0L
     private var spokenTitle: String? = null
 
+    /** See [PreparedTtsPlayback.olderText]. */
+    private var olderText = false
+
     /** Identifies the loaded text, to match it with the chapter's generated audio. */
     var fingerprint: String = ""
         private set
@@ -43,6 +46,7 @@ internal class TtsLoadedSession {
         narration = prepared.narration
         fingerprint = NarrationPlanning.fingerprint(prepared.chunks, TtsTextPreparation.CHUNKING_VERSION)
         spokenTitle = prepared.spokenTitle
+        olderText = prepared.olderText
         val loadedItems = TtsNarrationPlanning.items(prepared.narration, prepared.spokenTitle, prepared.settings)
         timeline = TtsTimeline(loadedItems, prepared.settings.phrasePauseMs)
         val startsAtTitle = prepared.spokenTitle != null && prepared.startIndex == 0 && prepared.startOffsetMs == 0L
@@ -80,6 +84,7 @@ internal class TtsLoadedSession {
         chunks = emptyList()
         narration = emptyList()
         timeline = null
+        olderText = false
     }
 
     fun savePoint(point: TtsTimelinePoint): TtsChunkPoint = TtsNarrationPlanning.savePoint(items, point)
@@ -146,6 +151,7 @@ internal class TtsLoadedSession {
             isLiveOutput = isLiveOutput,
             chapterIndex = chapterIndex,
             chapterCount = chapterCount,
+            olderText = olderText,
         )
     }
 }

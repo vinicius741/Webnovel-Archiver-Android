@@ -32,6 +32,11 @@ data class TtsPlaybackSnapshot(
     val capturedAtElapsedMs: Long = 0L,
     /** True when the speech engine plays the audio itself rather than this app. */
     val isLiveOutput: Boolean = false,
+    /**
+     * The chapter plays audio made from text that has changed since, so its sentences do not line up
+     * with the page: the reader shows no highlight and sentence taps do not seek.
+     */
+    val olderText: Boolean = false,
     /** Zero-based; -1 when the session is not a chapter. */
     val chapterIndex: Int = -1,
     val chapterCount: Int = 0,

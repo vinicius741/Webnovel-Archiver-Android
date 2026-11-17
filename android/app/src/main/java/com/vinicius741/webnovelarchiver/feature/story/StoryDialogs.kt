@@ -105,7 +105,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
         view.addView(
             makeText(
                 app,
-                "Set a bookmark by reading a chapter to enable \"Start at the bookmark.\"",
+                "Bookmark a chapter in the reader to enable \"Start at the bookmark.\"",
                 Type.BODY_SMALL,
                 ThemeManager.colors.onSurfaceVariant,
             ).apply {

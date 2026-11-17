@@ -42,13 +42,13 @@ class EpubRetentionPolicyTest {
     }
 
     @Test
-    fun defaultRetentionIsBounded() {
+    fun defaultRetentionDeletesEveryReplacedFile() {
         val entries = (1..10).map { entry("legacy-$it", it.toLong(), it.toLong()) }
 
         val plan = EpubRetentionPolicy.plan(entries, emptySet())
 
         assertEquals(EpubRetentionPolicy.DEFAULT_LEGACY_FILES_TO_KEEP, plan.retainedLegacy.size)
-        assertEquals(7, plan.delete.size)
+        assertEquals(10, plan.delete.size)
         assertTrue(plan.referenced.isEmpty())
     }
 

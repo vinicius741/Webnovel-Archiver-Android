@@ -29,6 +29,8 @@ import com.vinicius741.webnovelarchiver.ui.strokeBg
 internal data class SelectableChapter(
     val originalIndex: Int,
     val chapter: Chapter,
+    /** The chapter's audio state ("Audio", "Audio queued"…), shown after its title. */
+    val audio: String? = null,
 )
 
 internal class ChapterSelectionAdapter(
@@ -127,7 +129,17 @@ internal class ChapterSelectionAdapter(
         val indexLabel = ChapterRowPlanning.indexLabel(item.originalIndex)
         val titleLabel = ChapterRowPlanning.displayTitle(item.chapter.title)
         holder.index.text = indexLabel
-        holder.title.text = titleLabel
+        holder.title.text =
+            item.audio?.let { audio ->
+                android.text.SpannableString("$titleLabel  ·  $audio").apply {
+                    setSpan(
+                        android.text.style.ForegroundColorSpan(colors.primary),
+                        length - audio.length,
+                        length,
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+            } ?: titleLabel
         holder.row.background = ripple(background, 0f, colors.onSurface)
         holder.row.contentDescription =
             "Chapter $indexLabel, $titleLabel, ${if (selected) "selected" else "not selected"}"

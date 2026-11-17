@@ -143,7 +143,7 @@ internal class NarrationLiveStatus(
         view.background = if (idle) quietBackground() else copperBackground()
         headline.text = banner.headline
         chapter.setTextOrHide(chapterLine(banner))
-        detail.setTextOrHide(if (idle) "Queue chapters from a story's Audio tab." else banner.detail)
+        detail.setTextOrHide(if (idle) NarrationScreenPlanning.HOW_TO_GENERATE else banner.detail)
         bar.visibility = if (banner.fraction != null || banner.indeterminate) View.VISIBLE else View.GONE
         bar.isIndeterminate = banner.indeterminate
         banner.fraction?.let { bar.progress = (it.coerceIn(0f, 1f) * PERCENT).toInt() }

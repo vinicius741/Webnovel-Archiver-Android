@@ -20,7 +20,7 @@ class StoryTabPlanningTest {
     @Test
     fun `routes with a focus or chapter still name their tab`() {
         assertEquals(StoryTab.TRENDS, StoryTabPlanning.tabOf(AppRoute.Trends("s1", "score")))
-        assertEquals(StoryTab.AUDIO, StoryTabPlanning.tabOf(AppRoute.NarrationStory("s1", "c4")))
+        assertEquals(StoryTab.CHAPTERS, StoryTabPlanning.tabOf(AppRoute.Details("s1", chapters = true)))
         assertNull(StoryTabPlanning.tabOf(AppRoute.Reader("s1", "c4")))
         assertNull(StoryTabPlanning.storyIdOf(AppRoute.Library))
     }
@@ -44,11 +44,10 @@ class StoryTabPlanningTest {
     }
 
     @Test
-    fun `counts show chapters and generated audio only when present`() {
-        assertEquals("210", StoryTabPlanning.count(StoryTab.CHAPTERS, 210, 0))
-        assertNull(StoryTabPlanning.count(StoryTab.AUDIO, 210, 0))
-        assertEquals("6", StoryTabPlanning.count(StoryTab.AUDIO, 210, 6))
-        assertNull(StoryTabPlanning.count(StoryTab.TRENDS, 210, 6))
+    fun `only the chapters tab shows a count`() {
+        assertEquals("210", StoryTabPlanning.count(StoryTab.CHAPTERS, 210))
+        assertNull(StoryTabPlanning.count(StoryTab.CHAPTERS, 0))
+        assertNull(StoryTabPlanning.count(StoryTab.TRENDS, 210))
         assertEquals("2,450", StoryTabPlanning.compactCount(2450))
         assertEquals("12.3K", StoryTabPlanning.compactCount(12_345))
         assertEquals("20K", StoryTabPlanning.compactCount(20_000))

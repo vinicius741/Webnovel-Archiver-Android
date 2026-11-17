@@ -24,12 +24,6 @@ object TextCleanup {
         flagsInput: String,
     ) = RegexRuleCleanup.validateRegexRule(name, patternInput, flagsInput)
 
-    fun generateQuickPattern(
-        characters: String,
-        minCount: Int,
-        wholeLine: Boolean,
-    ) = RegexRuleCleanup.generateQuickPattern(characters, minCount, wholeLine)
-
     fun previewRegexRule(
         pattern: String,
         flags: String,

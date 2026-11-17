@@ -40,16 +40,16 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /*
  * The Overview tab under the hero ("About" beside the hero pane on the inner screen): engagement
- * stat cards, content warnings, the Patreon card, the description with Read more and Listen, tags,
+ * stat cards, content warnings, the Patreon card, the description with Read more, tags,
  * and a short details list.
  */
 
-/** Builds the About part into [container]; returns the description's Listen button for the player observer. */
+/** Builds the About part into [container]. */
 internal fun ScreenHost.addDetailsAbout(
     container: LinearLayout,
     story: Story,
     twoPane: Boolean,
-): Button? {
+) {
     val isBusy = storyOperation?.storyId == story.id
     addStatCards(container, story, twoPane)
     addWarningsAndUpdated(container, story)
@@ -76,10 +76,9 @@ internal fun ScreenHost.addDetailsAbout(
         container.addView(buildNoPatreonCard(story, isBusy))
     }
     val aiOperation = aiOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_DESCRIPTION }
-    val listen = addDescription(container, story, aiOperation)
+    addDescription(container, story, aiOperation)
     addTags(container, story)
     addDetailsList(container, story)
-    return listen
 }
 
 /** Invites adding the author's Patreon, which tracks members and early access. */
@@ -129,16 +128,16 @@ private fun ScreenHost.buildNoPatreonCard(
 }
 
 /**
- * The active synopsis (source or AI) under an About header with Listen; the slim AI progress
+ * The active synopsis (source or AI) under an About header; the slim AI progress
  * block stays here so backing out of the AI tab mid-generation still shows the job running.
  */
 private fun ScreenHost.addDescription(
     container: LinearLayout,
     story: Story,
     operation: StoryOperationState?,
-): Button? {
+) {
     val description = AiDescriptionPlanning.activeDescription(story)
-    if (description == null && operation == null) return null
+    if (description == null && operation == null) return
     val colors = ThemeManager.colors
     val header =
         LinearLayout(app).apply {
@@ -157,14 +156,6 @@ private fun ScreenHost.addDescription(
             }
             addView(View(app), LinearLayout.LayoutParams(0, 1, 1f))
         }
-    val listen =
-        description?.let {
-            makeButton(app, "Listen", Btn.TEXT, R.drawable.wna_speaker) { toggleDescriptionTts(story) }.also { button ->
-                button.minHeight = dp(40)
-                button.minimumHeight = dp(40)
-                header.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            }
-        }
     container.addView(
         header,
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -178,7 +169,6 @@ private fun ScreenHost.addDescription(
             container.addView(it)
         }
     }
-    return listen
 }
 
 private fun ScreenHost.addTags(

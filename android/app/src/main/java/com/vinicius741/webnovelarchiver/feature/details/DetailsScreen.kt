@@ -2,19 +2,15 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
-import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.reader.readerTtsTransport
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.tickerFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -27,8 +23,6 @@ internal fun ScreenHost.showDetails(
     storyId: String,
     chapters: Boolean = false,
 ) {
-    // Drop the previous collector before its views are torn down.
-    detachDetailsTtsListener()
     val story = repository.story(storyId) ?: return showLibrary()
     val route = AppRoute.Details(story.id, chapters)
     rerender = { showDetails(storyId, chapters) }
@@ -49,49 +43,9 @@ internal fun ScreenHost.showDetails(
             chaptersTab = tab
             frame.chaptersTab = tab
         } else {
-            val listen = addDetailsAbout(this, story, frame.twoPane)
-            addDescriptionPlayer(frame.footer, story, listen)
+            addDetailsAbout(this, story, frame.twoPane)
         }
     }
-}
-
-/** Docked under the Overview, outside its scroller, while the description is read aloud. */
-private fun ScreenHost.addDescriptionPlayer(
-    footer: LinearLayout,
-    story: com.vinicius741.webnovelarchiver.domain.model.Story,
-    listenButton: android.widget.Button?,
-) {
-    var ttsSnapshot = detailsDescriptionSnapshotSeed(repository.getTtsSession(), ttsEngine.playbackState.value, story.id)
-    var ttsPlayPause: ImageView? = null
-    val transport =
-        readerTtsTransport(
-            snapshot = ttsSnapshot,
-            onPlayPause = { ttsPlayPause = it },
-            onPrev = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS) },
-            onPlayPauseTap = {
-                val action =
-                    if (ttsSnapshot?.isPaused !=
-                        false
-                    ) {
-                        TtsForegroundService.ACTION_RESUME_SESSION
-                    } else {
-                        TtsForegroundService.ACTION_PAUSE
-                    }
-                TtsForegroundService.command(app, action)
-            },
-            onNext = { TtsForegroundService.command(app, TtsForegroundService.ACTION_NEXT) },
-            onStop = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
-        )
-    transport.visibility = if (ttsSnapshot != null) View.VISIBLE else View.GONE
-    footer.addView(transport, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-    observeDetailsDescriptionTts(
-        story = story,
-        listenButton = listenButton,
-        transportBar = transport,
-        transportPlayPause = ttsPlayPause,
-        initialSnapshot = ttsSnapshot,
-        onSnapshot = { ttsSnapshot = it },
-    )
 }
 
 /**

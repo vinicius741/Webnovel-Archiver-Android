@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.feature.details.showStoryChapters
 import com.vinicius741.webnovelarchiver.feature.player.PlayerProgressLine
 import com.vinicius741.webnovelarchiver.narration.NarrationJob
 import com.vinicius741.webnovelarchiver.narration.NarrationJobState
@@ -32,7 +33,7 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /**
  * One story's card in the generation queue: a header (cover, title, counts; opens the story's audio,
- * ⋮ for the story's queue actions), its first jobs, and "Generate this story first" when it is not
+ * ⋮ for the story's queue actions), its first jobs, and "Move to front" when it is not
  * already first.
  */
 internal fun LinearLayout.queueStoryCard(
@@ -77,7 +78,7 @@ internal fun LinearLayout.queueStoryCard(
             leadIcon = R.drawable.wna_headphones,
             lead = cover,
             trailing = more,
-        ) { if (story != null) host.showNarrationStory(group.storyId) else host.showStoryQueueMenu(group, isFirst) },
+        ) { if (story != null) host.showStoryChapters(group.storyId) else host.showStoryQueueMenu(group, isFirst) },
     )
     group.jobs.take(MAX_ROWS_PER_STORY).forEach { job ->
         card.addView(jobRow(host, job, isRunning = job.id == runningJobId, runningRow))
@@ -91,7 +92,7 @@ internal fun LinearLayout.queueStoryCard(
     }
     if (!isFirst && queued > 0) {
         card.addView(
-            makeButton(context, "Generate this story first", Btn.TEXT, R.drawable.wna_up) {
+            makeButton(context, "Move to front", Btn.TEXT, R.drawable.wna_up) {
                 host.narrationAction("Could not reorder the queue") { moveStoryToTop(group.storyId) }
             },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -210,7 +211,7 @@ private fun ScreenHost.showStoryQueueMenu(
     if (!isFirst) {
         items +=
             OptionsDialogItem.Option(
-                "Generate this story first",
+                "Move to front",
             ) { narrationAction("Could not reorder the queue") { moveStoryToTop(group.storyId) } }
     }
     if (group.failed > 0) {
@@ -222,7 +223,7 @@ private fun ScreenHost.showStoryQueueMenu(
             }
     }
     if (repository.story(group.storyId) != null) {
-        items += OptionsDialogItem.Option("Open chapter audio") { showNarrationStory(group.storyId) }
+        items += OptionsDialogItem.Option("Open in the story") { showStoryChapters(group.storyId) }
     }
     items += OptionsDialogItem.Divider
     items +=
@@ -238,13 +239,13 @@ private fun ScreenHost.showJobMenu(
 ) {
     val items = mutableListOf<OptionsDialogItem>()
     if (!isRunning) {
-        items += OptionsDialogItem.Option("Generate next") { narrationAction("Could not move the chapter") { moveToTop(job.id) } }
+        items += OptionsDialogItem.Option("Move to front") { narrationAction("Could not move the chapter") { moveToTop(job.id) } }
     }
     if (job.state == NarrationJobState.FAILED) {
         items += OptionsDialogItem.Option("Retry") { narrationAction("Could not retry") { retry(job.id) } }
     }
     if (repository.story(job.storyId) != null) {
-        items += OptionsDialogItem.Option("Open chapter audio") { showNarrationStory(job.storyId, job.chapterId) }
+        items += OptionsDialogItem.Option("Open in the story") { showStoryChapters(job.storyId, job.chapterId) }
     }
     items += OptionsDialogItem.Divider
     items +=

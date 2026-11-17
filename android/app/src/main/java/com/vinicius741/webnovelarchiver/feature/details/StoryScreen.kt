@@ -5,13 +5,13 @@ import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import androidx.core.widget.NestedScrollView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.feature.story.StoryTab
 import com.vinicius741.webnovelarchiver.feature.story.StoryTabPlanning
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -61,8 +61,11 @@ internal object StoryTabMemory {
     /** Story whose Chapters tab should focus its search when it next opens (the app-bar search). */
     var focusChapterSearch: String? = null
 
-    /** Chapter filters the settings file cannot store ("Not downloaded"), per story, for this run of the app. */
+    /** Chapter filters the settings file cannot store ("Not downloaded", "Audio"), per story, for this run of the app. */
     val chapterFilters = HashMap<String, String>()
+
+    /** Chapter the Chapters tab scrolls to when it next opens (a chapter's audio was asked for), per story. */
+    val focusChapter = HashMap<String, String>()
 }
 
 @Suppress("LongParameterList", "LongMethod") // Scaffold wrapper: call sites pass named arguments, one linear layout build.
@@ -77,13 +80,11 @@ internal fun ScreenHost.storyScreen(
     block: LinearLayout.(StoryFrame) -> Unit,
 ) {
     val tab = requireNotNull(StoryTabPlanning.tabOf(route)) { "Not a story tab: ${route.name}" }
-    // Opening another tab of the story already on screen (a job chip, the Listen button) is a tab
+    // Opening another tab of the story already on screen (a job chip) is a tab
     // switch too: it replaces the entry, so Back still leaves the story.
     val current = navigator.current
     if (current.stableKey != route.stableKey && StoryTabPlanning.storyIdOf(current) == story.id) navigator.replace(route)
     activeStory = story
-    // The Overview's description player re-attaches its collector; other tabs must not keep it.
-    detachDetailsTtsListener()
     val twoPane = currentScreenLayout().isTwoPane
     // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
     detailsOperationSlot = null
@@ -190,12 +191,11 @@ private fun ScreenHost.buildStoryTabStrip(
     twoPane: Boolean,
 ): View {
     val colors = ThemeManager.colors
-    val audio = runCatching { narration.store.packsFor(story.id).size }.getOrDefault(0)
     val row = SpreadRow(app)
     StoryTab.entries.forEach { tab ->
         val on = tab == current
         val label = StoryTabPlanning.label(tab, twoPane)
-        val count = StoryTabPlanning.count(tab, story.chapters.size, audio)
+        val count = StoryTabPlanning.count(tab, story.chapters.size)
         val texts =
             LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -221,16 +221,10 @@ private fun ScreenHost.buildStoryTabStrip(
             View(app).apply {
                 background = if (on) roundedBg(colors.primary, dp(2).toFloat()) else null
             }
-        val item =
+        // The label and its gold bar share one width, centred in the tab however wide the tab grows.
+        val column =
             LinearLayout(app).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                isClickable = true
-                isFocusable = true
-                isSelected = on
-                contentDescription = listOfNotNull(label, count).joinToString(" ") + if (on) ", selected" else ""
-                background = selectableRipple(colors.onSurface)
-                setPadding(dp(TAB_SIDE_PADDING_DP), dp(Spacing.MD), dp(TAB_SIDE_PADDING_DP), 0)
                 addView(texts)
                 addView(
                     indicator,
@@ -238,6 +232,23 @@ private fun ScreenHost.buildStoryTabStrip(
                         topMargin =
                             dp(Spacing.MD - 1)
                     },
+                )
+            }
+        val item =
+            FrameLayout(app).apply {
+                isClickable = true
+                isFocusable = true
+                isSelected = on
+                contentDescription = listOfNotNull(label, count).joinToString(" ") + if (on) ", selected" else ""
+                background = selectableRipple(colors.onSurface)
+                setPadding(dp(TAB_SIDE_PADDING_DP), dp(Spacing.MD), dp(TAB_SIDE_PADDING_DP), 0)
+                addView(
+                    column,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.CENTER_HORIZONTAL,
+                    ),
                 )
                 setOnClickListener { if (!on) switchStoryTab(story.id, tab) }
             }
@@ -334,14 +345,22 @@ private class SpreadRow(
     ) {
         super.onMeasure(MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED), heightMeasureSpec)
         val available = MeasureSpec.getSize(widthMeasureSpec)
-        val spare = available - measuredWidth
         val tabs = (0 until childCount).map(::getChildAt).filter { it.visibility != GONE }
-        if (spare <= 0 || tabs.isEmpty()) return
+        if (available <= measuredWidth || tabs.isEmpty()) return
+        // Equal shares when even the widest tab fits in one; otherwise the spare width is split evenly.
+        val equal = available / tabs.size
+        val spare = available - measuredWidth
+        val evenly = tabs.all { it.measuredWidth <= equal }
         tabs.forEachIndexed { i, tab ->
             // The first tabs take the remainder pixel by pixel, so the row fills the strip exactly.
-            val extra = spare / tabs.size + if (i < spare % tabs.size) 1 else 0
+            val width =
+                if (evenly) {
+                    equal + if (i < available % tabs.size) 1 else 0
+                } else {
+                    tab.measuredWidth + spare / tabs.size + if (i < spare % tabs.size) 1 else 0
+                }
             tab.measure(
-                MeasureSpec.makeMeasureSpec(tab.measuredWidth + extra, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(tab.measuredHeight, MeasureSpec.EXACTLY),
             )
         }

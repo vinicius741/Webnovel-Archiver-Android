@@ -2,18 +2,13 @@ package com.vinicius741.webnovelarchiver.feature.settings
 
 import android.content.res.ColorStateList
 import android.view.View
-import android.webkit.WebView
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogExporter
-import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
-import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackupExportKind
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -22,6 +17,7 @@ import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
@@ -30,10 +26,9 @@ import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
-/** Backups and restore, the backup files kept on this phone, source-access tools, and the reset. */
+/** Backup and restore, the backup files kept on this phone, troubleshooting tools, and the reset. */
 internal fun ScreenHost.showDataBackup() {
     backupExportState.reconcile()
     val colors = ThemeManager.colors
@@ -41,52 +36,23 @@ internal fun ScreenHost.showDataBackup() {
         capSettingsWidth(this)
         section("Backup")
         settingsGroup {
-            lateinit var exportRow: LoadingRow
-            exportRow =
-                loadingRow(
-                    R.drawable.wna_upload,
-                    "Export backup",
-                    "Library, tabs and settings as JSON",
-                    backupExportState.activeKind == BackupExportKind.JSON,
-                ) {
-                    if (backupExportState.activeKind == null) {
-                        backupExportState.activeKind = BackupExportKind.JSON
-                        exportRow.setLoading(true)
-                        backupExportState.activeJob =
-                            exportAndShare({ repository.exportBackup() }) {
-                                backupExportState.activeKind = null
-                                if (navigator.current == AppRoute.DataBackup) showDataBackup()
-                            }
-                    }
-                }
-            navRow(R.drawable.wna_download, "Import backup", "Merge a JSON backup into this library", chevron = false) {
-                importBackupLauncher.launch(arrayOf("application/json", "text/*"))
-            }
             loadingRow(
                 R.drawable.wna_archive,
-                "Create full backup",
+                "Create backup",
                 "Everything, including chapters",
                 backupExportState.activeKind == BackupExportKind.FULL,
             ) {
                 startFullBackupExport()
             }
-            navRow(R.drawable.wna_restore, "Restore full backup", "Replace this library with a full ZIP backup", chevron = false) {
+            navRow(R.drawable.wna_restore, "Restore backup", "Replace this library with a backup", chevron = false) {
                 importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
-            }
-            navRow(
-                R.drawable.wna_history,
-                "Recover chapters from backup",
-                "Add back downloaded chapters a full backup has; nothing is replaced",
-                chevron = false,
-            ) {
-                recoverChaptersLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
             }
         }
         addFullBackupProgressCard(this)
         addBackupFilesSection(this)
 
-        section("Sources & storage")
-        settingsGroup { addSourceRows(this) }
+        section("Troubleshooting")
+        settingsGroup { addTroubleshootingRows(this) }
 
         section("Danger zone").setTextColor(colors.error)
         tintedCard(colors.error) {
@@ -95,7 +61,7 @@ internal fun ScreenHost.showDataBackup() {
                 addView(
                     makeText(
                         context,
-                        "Deletes every novel, chapter and setting on this phone.",
+                        "Deletes every novel, chapter and setting on this phone. Backups are kept.",
                         Type.BODY_SMALL,
                         colors.onSurfaceVariant,
                     ).apply {
@@ -105,7 +71,10 @@ internal fun ScreenHost.showDataBackup() {
             }
             addView(
                 makeButton(context, "Clear local storage", Btn.ERROR) {
-                    confirm("Delete all novels, settings, and downloads? Make a backup first.", confirmLabel = "Delete everything") {
+                    confirm(
+                        "Delete all novels, settings, and downloads? Backups on this phone are kept.",
+                        confirmLabel = "Delete everything",
+                    ) {
                         scope.launch {
                             repository.clearAll()
                             showLibrary()
@@ -120,7 +89,7 @@ internal fun ScreenHost.showDataBackup() {
     }
 }
 
-private fun ScreenHost.addSourceRows(group: LinearLayout) {
+private fun ScreenHost.addTroubleshootingRows(group: LinearLayout) {
     val colors = ThemeManager.colors
     val storageHealth = repository.getStorageHealth()
     if (storageHealth.requiresUserAttention) {
@@ -131,57 +100,13 @@ private fun ScreenHost.addSourceRows(group: LinearLayout) {
             tint = colors.error,
             chevron = false,
         ) {
-            toast(storageHealth.issues.joinToString("\n") { issue -> "${issue.document}: ${issue.detail}" })
+            alert("Storage recovery notice", storageHealth.issues.joinToString("\n") { issue -> "${issue.document}: ${issue.detail}" })
         }
     }
-    val sourceNetwork = app.appContainer.network
-    val browserSessionSources = SourceRegistry.all().filter { it.descriptor.managesBrowserSession }
-    val sourceSnapshots =
-        sourceNetwork
-            .reliabilitySnapshots()
-            .filter { snapshot -> SourceRegistry.providerForHost(snapshot.host)?.descriptor?.managesBrowserSession == true }
-    val webViewVersion = WebView.getCurrentWebViewPackage()?.versionName ?: "unavailable"
-    val (accessStatus, accessTint) =
-        when {
-            sourceSnapshots.any { it.manualVerificationRequired } -> "Verification required" to colors.primary
-            sourceSnapshots.any { it.browserTransportActive } -> "Chromium transport active" to colors.primary
-            sourceSnapshots.any { it.cooldownRemainingMillis > 0L } -> "Cooling down" to colors.secondary
-            else -> "Ready" to colors.tertiary
-        }
-    group.navRow(
-        R.drawable.wna_verified_user,
-        "Source access status",
-        tinted("$accessStatus · WebView $webViewVersion", accessTint),
-        chevron = false,
-    ) {
-        val detail =
-            if (sourceSnapshots.isEmpty()) {
-                "No protected-source requests in this app session"
-            } else {
-                sourceSnapshots.joinToString("\n") { snapshot ->
-                    "${snapshot.host}: requests ${snapshot.requestCount} • challenges ${snapshot.challengeCount} • " +
-                        "rate limits ${snapshot.rateLimitCount} • browser pages ${snapshot.browserRenderCount}"
-                }
-            }
-        toast(detail)
-    }
-    group.navRow(R.drawable.wna_article, "Share activity logs", "The last hour of syncs, downloads and errors") {
-        exportAndShare({
-            ActivityLogExporter.export(
-                directory = app.appContainer.repository.storage.backupRoot,
-                library = repository.library(),
-                queue = repository.queue(),
-                reliability = sourceNetwork.reliabilitySnapshots(),
-            )
-        })
-    }
-    group.navRow(R.drawable.wna_bug_report, "Share source access logs", "No URLs, titles or cookies") {
-        exportAndShare({ BypassLogExporter.export(app.appContainer.repository.storage.backupRoot, sourceNetwork, repository.queue()) })
-    }
-    group.navRow(R.drawable.wna_favorite, "Patreon account", patreonAccountSummary(), tint = colors.secondary) { showPatreonAccount() }
-    group.navRow(R.drawable.wna_restore, "Reset source web session", "Clears source cookies, browser storage and cooldowns") {
-        confirm("Reset source browser sessions? The next request may need a quick check again.", confirmLabel = "Reset") {
-            resetSourceWebSessions(browserSessionSources)
+    group.navRow(R.drawable.wna_bug_report, "Share diagnostics", "Recent activity and source access, for debugging") { shareDiagnostics() }
+    group.navRow(R.drawable.wna_restore, "Reset all source sessions", "Clears every site's cookies, browser storage and cooldowns") {
+        confirm("Reset every source's browser session? The next request may need a quick check again.", confirmLabel = "Reset") {
+            resetSourceWebSessions(SourceRegistry.all().filter { it.descriptor.managesBrowserSession })
         }
     }
 }

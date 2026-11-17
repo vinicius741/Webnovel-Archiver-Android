@@ -24,7 +24,6 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Spacing
@@ -48,6 +47,7 @@ class ChapterListAdapter internal constructor(
     private val host: ScreenHost,
     private var story: Story,
     private val onToggleBookmark: (Chapter) -> Unit,
+    private val onLongPress: (Chapter) -> Unit = {},
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     init {
         // Stable ids: RecyclerView tracks rows by chapter id across DiffUtil updates, not position.
@@ -59,6 +59,9 @@ class ChapterListAdapter internal constructor(
     private var filter = "all"
     private var chapterStatuses: Map<String, DownloadJobStatus> = emptyMap()
     private var waitingChapterIds: Set<String> = emptySet()
+
+    /** Each chapter's audio state ("Audio", "Audio queued"…), by id; absent when it has none. */
+    private var audioLabels: Map<String, String> = emptyMap()
 
     /** Skeleton built once in onCreateViewHolder; bind only mutates contents. */
     class RowHolder(
@@ -80,18 +83,21 @@ class ChapterListAdapter internal constructor(
         filter: String,
         statuses: Map<String, DownloadJobStatus> = chapterStatuses,
         waiting: Set<String> = waitingChapterIds,
+        audio: Map<String, String> = audioLabels,
     ) {
         val previous = chapters
+        val previousAudio = audioLabels
         val previousBookmarkId = this.story.lastReadChapterId
         val previousStatuses = chapterStatuses
         val previousWaiting = waitingChapterIds
-        val next = ChapterFilterPlanning.filter(story, query, filter)
+        val next = ChapterFilterPlanning.filter(story, query, filter, audio.keys)
         val wasEmpty = previous.isEmpty()
         this.story = story
         this.query = query
         this.filter = filter
         chapterStatuses = statuses
         waitingChapterIds = waiting
+        audioLabels = audio
         chapters = next
         // The empty row changes the tree shape, so it needs a full notify.
         if (wasEmpty || next.isEmpty()) {
@@ -124,6 +130,7 @@ class ChapterListAdapter internal constructor(
                             old.downloadedAt == new.downloadedAt &&
                             previousStatuses[old.id] == statuses[new.id] &&
                             (old.id in previousWaiting) == (new.id in waiting) &&
+                            previousAudio[old.id] == audio[new.id] &&
                             (previousBookmarkId == old.id) == (bookmarkId == new.id)
                     }
                 },
@@ -262,6 +269,11 @@ class ChapterListAdapter internal constructor(
         holder.row.isClickable = openable
         holder.row.isFocusable = openable
         holder.row.setOnClickListener { if (openable) host.showReader(story.id, chapter.id) }
+        holder.row.isLongClickable = true
+        holder.row.setOnLongClickListener {
+            onLongPress(chapter)
+            true
+        }
         val liveStatus = chapterStatuses[chapter.id]
         val waitingForDelay = chapter.id in waitingChapterIds
         setStatusLeading(holder.statusSlot, liveStatus, chapter.downloaded, waitingForDelay, context)
@@ -331,20 +343,15 @@ class ChapterListAdapter internal constructor(
                 waitingForDelay,
                 patreonCopy = chapter.isPatreonCopy,
                 removedFromSource = chapter.isRemovedFromSource,
-                hasAudio = host.narration.store.pack(story.id, chapter.id) != null,
+                audio = audioLabels[chapter.id],
             )
         val spanned = SpannableString(label)
-        // Generated audio reads in gold, like the Audio tab.
-        val audioAt = label.indexOf(AUDIO_LABEL)
-        if (audioAt >=
-            0
-        ) {
-            spanned.setSpan(
-                ForegroundColorSpan(colors.primary),
-                audioAt,
-                audioAt + AUDIO_LABEL.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
+        // The audio state reads in gold.
+        audioLabels[chapter.id]?.let { audio ->
+            val audioAt = label.indexOf(audio)
+            if (audioAt >= 0) {
+                spanned.setSpan(ForegroundColorSpan(colors.primary), audioAt, audioAt + audio.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
         }
         view.text = spanned
         view.setTextColor(
@@ -366,7 +373,6 @@ class ChapterListAdapter internal constructor(
         const val BOOKMARK_WASH_MASK = 0x17FFFFFF
         const val SPINNER_DP = 14
         const val DOT_DP = 8
-        const val AUDIO_LABEL = "Audio"
     }
 }
 

@@ -27,9 +27,9 @@ import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
-// Overview stat cards (engagement numbers and the chapter count) and the content-warning pills.
+// Overview stat cards (engagement numbers) and the content-warning pills.
 
-/** Engagement numbers the source shares, plus the chapter count; each opens its Trends chart. */
+/** Engagement numbers the source shares; each opens its Trends chart. */
 internal fun ScreenHost.addStatCards(
     container: LinearLayout,
     story: Story,
@@ -46,13 +46,9 @@ internal fun ScreenHost.addStatCards(
         metrics.map { metric ->
             statCard(metricIcon(metric.kind), formatCompactCount(metric.value), metric.kind.label) { openMetricTrends(story.id, metric) }
         }
-    val all =
-        cards +
-            statCard(
-                R.drawable.wna_book_open,
-                "%,d".format(story.chapters.size),
-                "Chapters",
-            ) { switchStoryTab(story.id, StoryTab.CHAPTERS) }
+    // The chapter count is on the coverage card and the Chapters tab already.
+    val all = cards
+    if (all.isEmpty()) return
     val columns = if (twoPane) all.size.coerceAtMost(MAX_STAT_COLUMNS_WIDE) else statColumns(all.size)
     container.addView(
         GridLayout(app).apply {

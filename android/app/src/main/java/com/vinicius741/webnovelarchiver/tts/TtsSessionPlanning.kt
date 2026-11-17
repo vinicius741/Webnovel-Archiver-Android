@@ -61,6 +61,8 @@ object TtsSessionPlanning {
     fun isResumeEligible(session: TtsSession?): Boolean {
         if (session == null) return false
         if (session.storyId.isBlank() || session.chapterId.isBlank()) return false
+        // Description read-aloud was removed: an old saved description session is not resumed.
+        if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId)) return false
         return session.wasPlaying || session.isPaused
     }
 

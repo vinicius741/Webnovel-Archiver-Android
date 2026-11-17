@@ -17,36 +17,6 @@ internal class BackupExporter(
 ) {
     private val gson get() = storage.gson
 
-    fun exportJson(): File {
-        val sourceLibrary = storage.getLibrary()
-        val library = sourceLibrary.map(::storyWithoutLocalFiles)
-        val payload =
-            mapOf(
-                "version" to 2,
-                "exportDate" to Instant.now().toString(),
-                "library" to library,
-                "tabs" to storage.tabsDoc.get(),
-            )
-        val json = gson.toJson(payload)
-        BackupExportPlanning.validateJsonBackup(sourceLibrary.size, json.toByteArray().size.toLong())?.let { error(it) }
-        return File(storage.backupRoot, "webnovel_backup_${System.currentTimeMillis()}.json").also {
-            AtomicFileWrites.writeText(it, json)
-        }
-    }
-
-    fun exportCleanupRules(): File {
-        val payload =
-            mapOf(
-                "version" to 1,
-                "exportDate" to Instant.now().toString(),
-                "sentenceRemovalList" to storage.sentencesDoc.get(),
-                "regexCleanupRules" to storage.regexRulesDoc.get(),
-            )
-        return File(storage.backupRoot, "webnovel_cleanup_rules_${System.currentTimeMillis()}.json").also {
-            AtomicFileWrites.writeText(it, gson.toJson(payload))
-        }
-    }
-
     /**
      * Writes the full-backup ZIP. [onProgress] receives user-facing messages from the zip loop
      * (called on the caller's dispatcher, not the UI thread); it is invoked only at throttled
@@ -208,18 +178,6 @@ internal class BackupExporter(
             "foldLayoutMode" to displayPreferences.foldLayoutMode,
         )
     }
-
-    private fun storyWithoutLocalFiles(story: Story): Story =
-        story.copy(
-            epubPath = null,
-            epubPaths = null,
-            aiCoverPath = null,
-            showAiCover = false,
-            chapters =
-                story.chapters
-                    .map { it.copy(content = null, filePath = null, downloaded = false, downloadedAt = null) }
-                    .toMutableList(),
-        )
 
     private fun storyWithoutTransientPaths(story: Story): Story =
         story.copy(

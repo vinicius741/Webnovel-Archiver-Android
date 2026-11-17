@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
@@ -83,7 +84,7 @@ internal fun ScreenHost.showTtsEnginePicker(
             // A built-in model needs no download: chapters generate on the computers.
             toast(
                 if (model != null && !modelInstaller(model).isInstalled) {
-                    "Engine changed. Chapters generate on your computers. Until you download it, descriptions use a saved profile (Google first)."
+                    "Engine changed. Chapters generate on your computers until you download it here."
                 } else {
                     "Engine changed. Pick a voice from it, or keep its default."
                 },
@@ -136,7 +137,15 @@ internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
                     LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         addView(
-                            makeText(context, "${model.family} voices", Type.TITLE_SMALL, colors.onSurface).apply { textSize = TITLE_SP },
+                            makeText(
+                                context,
+                                if (model.retired) "Kokoro v0.19 voices · no longer used" else "${model.family} voices",
+                                Type.TITLE_SMALL,
+                                colors.onSurface,
+                            ).apply {
+                                textSize =
+                                    TITLE_SP
+                            },
                         )
                         addView(status)
                     },
@@ -187,13 +196,7 @@ internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
                         makeButton(context, "Try again", Btn.FILLED, R.drawable.wna_download) { installer.install() },
                     )
                 is KokoroModelState.Installed -> {
-                    actions.addView(makeButton(context, "Test speed", Btn.SURFACE, R.drawable.wna_speed) { confirmKokoroSpeedTest(model) })
-                    if (hasKokoroSpeedTest(
-                            model,
-                        )
-                    ) {
-                        actions.addView(makeButton(context, "Last results", Btn.SURFACE) { showLastKokoroSpeedTest(model) })
-                    }
+                    addSpeedTestActions(actions, model)
                     actions.addView(
                         makeButton(context, "Remove", Btn.TEXT) { confirmKokoroRemoval(model) }.apply { setTextColor(colors.error) },
                     )
@@ -217,6 +220,16 @@ internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
         )
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
+}
+
+/** The speed test is a developer tool: its buttons show in debug builds only. */
+private fun ScreenHost.addSpeedTestActions(
+    actions: ViewGroup,
+    model: BuiltInModel,
+) {
+    if (!BuildConfig.DEBUG) return
+    actions.addView(makeButton(app, "Test speed", Btn.SURFACE, R.drawable.wna_speed) { confirmKokoroSpeedTest(model) })
+    if (hasKokoroSpeedTest(model)) actions.addView(makeButton(app, "Last results", Btn.SURFACE) { showLastKokoroSpeedTest(model) })
 }
 
 /** [draft] is what the settings screen currently shows, kept when picking a voice rebuilds it. */

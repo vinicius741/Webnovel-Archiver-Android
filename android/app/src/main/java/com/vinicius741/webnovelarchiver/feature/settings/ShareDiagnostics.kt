@@ -1,0 +1,33 @@
+package com.vinicius741.webnovelarchiver.feature.settings
+
+import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogExporter
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
+import com.vinicius741.webnovelarchiver.feature.story.shareAll
+import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.launch
+
+/**
+ * Exports the activity log and the source-access log together and shares both in one chooser:
+ * one action for "send this to debug a problem", wherever it is offered.
+ */
+internal fun ScreenHost.shareDiagnostics() {
+    val container = app.appContainer
+    val directory = container.repository.storage.backupRoot
+    scope.launch {
+        runCatching {
+            val queue = repository.queue()
+            listOf(
+                ActivityLogExporter.export(
+                    directory = directory,
+                    library = repository.library(),
+                    queue = queue,
+                    reliability = container.network.reliabilitySnapshots(),
+                ),
+                BypassLogExporter.export(directory, container.network, queue),
+            )
+        }.onSuccess { files -> shareAll(files, "Share diagnostics") }
+            .onFailure { toast(it.message ?: "Export failed") }
+    }
+}

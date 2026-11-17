@@ -57,7 +57,7 @@ internal fun ScreenHost.addAiCoverTab(
 ) {
     aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiNewCoverCard(container, story, draft) }
     addAiCoverStrip(container, story)
-    container.section("Make a new cover")
+    container.section("New cover")
     addAiCoverMakerCard(container, story, generating)
 }
 
@@ -139,7 +139,7 @@ private fun ScreenHost.addAiNewCoverCard(
             }
             row {
                 useButton =
-                    button("Use new cover", Btn.FILLED, R.drawable.wna_check, enabled = false) {
+                    button("Use it", Btn.FILLED, R.drawable.wna_check, enabled = false) {
                         resolveAiCoverDraft(story, draft, use = true)
                     }
                 button("Keep current", Btn.SURFACE, enabled = editable) { resolveAiCoverDraft(story, draft, use = false) }
@@ -175,7 +175,7 @@ private fun ScreenHost.showNewCoverViewer(
         actions = {
             listOf(
                 CoverViewerAction(KEEP_ACTION, "Keep current", enabled = editable),
-                CoverViewerAction(USE_ACTION, "Use new cover", R.drawable.wna_check, primary = true, enabled = editable),
+                CoverViewerAction(USE_ACTION, "Use it", R.drawable.wna_check, primary = true, enabled = editable),
             )
         },
     ) { action, viewer ->
@@ -229,11 +229,7 @@ private fun ScreenHost.addAiCoverMakerCard(
         container.addView(
             container.card {
                 text(
-                    if (story.isArchived == true) {
-                        "Archived snapshots are read-only — AI generation is disabled."
-                    } else {
-                        "Download at least one chapter before generating an AI cover."
-                    },
+                    "Download at least one chapter before generating an AI cover.",
                     Type.BODY_SMALL,
                     colors.onSurfaceVariant,
                 )
@@ -267,7 +263,6 @@ private fun ScreenHost.addAiCoverMakerCard(
                     setPadding(0, dp(Space.SM), 0, dp(Space.SM))
                 }
             var clearButton: Button? = null
-            var generateButton: Button? = null
 
             fun syncPromptState() {
                 val blank = field.text.isNullOrBlank()
@@ -278,18 +273,16 @@ private fun ScreenHost.addAiCoverMakerCard(
                         "Paints exactly this prompt. Only the image call uses credits."
                     }
                 clearButton?.visibility = if (blank || isBusy) View.GONE else View.VISIBLE
-                generateButton?.text = if (blank) "Generate cover" else "Generate from prompt"
             }
             row {
-                button("Write prompt with AI", Btn.OUTLINED, R.drawable.wna_auto_awesome, enabled = !isBusy) {
+                button("Draft a prompt", Btn.OUTLINED, R.drawable.wna_auto_awesome, enabled = !isBusy) {
                     writeAiCoverPrompt(story, field.text.toString())
                 }
                 clearButton = button("Clear", Btn.TEXT) { clearAiCoverPrompt(story) }
             }
-            generateButton =
-                fullButton("Generate cover", Btn.FILLED, R.drawable.wna_auto_awesome, enabled = !isBusy, topMarginDp = Space.SM) {
-                    generateAiCover(story, field.text.toString().trim())
-                }
+            fullButton("New cover", Btn.FILLED, R.drawable.wna_auto_awesome, enabled = !isBusy, topMarginDp = Space.SM) {
+                generateAiCover(story, field.text.toString().trim())
+            }
             // Keep typing across re-renders (progress ticks, results); it persists when a run starts.
             field.doAfterTextChanged { text ->
                 aiControlsScreenState.coverPrompts[story.id] = text?.toString().orEmpty()

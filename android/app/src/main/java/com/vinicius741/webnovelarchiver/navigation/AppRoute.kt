@@ -16,8 +16,8 @@ sealed class AppRoute(
 
     /**
      * The story page. Its tabs are routes of their own so Back and deep links address them: this
-     * route is the Overview tab, or the Chapters tab when [chapters] is set; [NarrationStory] is the
-     * Audio tab, [Trends] the Trends tab and [AiControls] the AI tab. Tab switches replace the
+     * route is the Overview tab, or the Chapters tab (with each chapter's audio) when [chapters] is
+     * set; [Trends] is the Trends tab and [AiControls] the AI tab. Tab switches replace the
      * current history entry, so Back leaves the story instead of walking its tabs.
      */
     data class Details(
@@ -29,10 +29,6 @@ sealed class AppRoute(
         val storyId: String,
         val selectedChapterIds: Set<String> = emptySet(),
     ) : AppRoute("chapter_selection")
-
-    data class LegacyEpubs(
-        val storyId: String,
-    ) : AppRoute("legacy_epubs")
 
     /**
      * Per-novel AI Controls sub-screen: the hub for AI-generated content (description today). Reached
@@ -74,21 +70,10 @@ sealed class AppRoute(
     /** Podcast-style Now Playing screen (TTS transport, progress, speed). */
     data object Player : AppRoute("player")
 
-    /** Generated chapter audio: the generation queue, keep-ahead, storage and every story's audio. */
+    /** The Listen destination: the player card, the generation queue and every story's audio. */
     data object Narration : AppRoute("narration")
 
-    /**
-     * One story's chapter audio: generate, regenerate, delete and play. [chapterId] is the chapter
-     * "Read aloud" asked for, shown first.
-     */
-    data class NarrationStory(
-        val storyId: String,
-        val chapterId: String? = null,
-    ) : AppRoute("narration_story")
-
     data object Settings : AppRoute("settings")
-
-    data object Notifications : AppRoute("notifications")
 
     data object DownloadSettings : AppRoute("download_settings")
 
@@ -121,13 +106,11 @@ sealed class AppRoute(
             when (this) {
                 is Details -> "$name:${AppRouteCodec.encodeArgument(storyId)}${if (chapters) ":$DETAILS_CHAPTERS_TAB" else ""}"
                 is Reader -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${AppRouteCodec.encodeArgument(chapterId)}"
-                is LegacyEpubs -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is AiControls -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is AuthorNovels -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is ChapterSelection -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is Trends -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${focus ?: ""}"
                 is PatreonAccount -> "$name:${storyId?.let(AppRouteCodec::encodeArgument).orEmpty()}"
-                is NarrationStory -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 else -> name
             }
 
@@ -139,7 +122,6 @@ sealed class AppRoute(
         get() =
             when (this) {
                 is Details -> storyId
-                is NarrationStory -> storyId
                 is Trends -> storyId
                 is AiControls -> storyId
                 else -> null
@@ -155,10 +137,9 @@ sealed class AppRoute(
                 Library -> null
                 is Reader -> Details(storyId)
                 is ChapterSelection -> Details(storyId)
-                is LegacyEpubs -> Details(storyId)
                 is AuthorNovels -> Details(storyId)
-                is PatreonAccount -> storyId?.let(::Details) ?: DataBackup
-                Notifications, DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
+                is PatreonAccount -> storyId?.let(::Details) ?: Settings
+                DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
                 else -> Library
             }
 }
@@ -171,7 +152,6 @@ internal fun storyTabRoutes(storyId: String): List<AppRoute> =
     listOf(
         AppRoute.Details(storyId),
         AppRoute.Details(storyId, chapters = true),
-        AppRoute.NarrationStory(storyId),
         AppRoute.Trends(storyId),
         AppRoute.AiControls(storyId),
     )
@@ -185,13 +165,11 @@ object AppRouteCodec {
             when (route) {
                 is AppRoute.Details -> listOfNotNull(route.storyId, DETAILS_CHAPTERS_TAB.takeIf { route.chapters })
                 is AppRoute.Reader -> listOf(route.storyId, route.chapterId)
-                is AppRoute.LegacyEpubs -> listOf(route.storyId)
                 is AppRoute.AiControls -> listOf(route.storyId)
                 is AppRoute.AuthorNovels -> listOf(route.storyId)
                 is AppRoute.Trends -> listOf(route.storyId) + listOfNotNull(route.focus?.takeIf { it.isNotBlank() })
                 is AppRoute.ChapterSelection -> listOf(route.storyId) + route.selectedChapterIds.sorted()
                 is AppRoute.PatreonAccount -> listOfNotNull(route.storyId)
-                is AppRoute.NarrationStory -> listOfNotNull(route.storyId, route.chapterId)
                 else -> emptyList()
             }
         return (listOf(route.name) + arguments.map(::hexEncode)).joinToString(":")
@@ -208,7 +186,8 @@ object AppRouteCodec {
             "player" -> AppRoute.Player
             "narration" -> AppRoute.Narration
             "settings" -> AppRoute.Settings
-            "notifications" -> AppRoute.Notifications
+            // The Notifications page was replaced by one Settings row; a saved route lands there.
+            "notifications" -> AppRoute.Settings
             "download_settings" -> AppRoute.DownloadSettings
             "tts_settings" -> AppRoute.TtsSettings
             "ai_settings" -> AppRoute.AiSettings
@@ -235,13 +214,15 @@ object AppRouteCodec {
                     else -> null
                 }
             "chapter_selection" -> arguments.firstOrNull()?.let { AppRoute.ChapterSelection(it, arguments.drop(1).toSet()) }
-            "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)
+            // The EPUB files screen was removed (leftovers are deleted automatically): its story instead.
+            "legacy_epubs" -> arguments.singleOrNull()?.let { AppRoute.Details(it) }
             "ai_controls" -> arguments.singleOrNull()?.let(AppRoute::AiControls)
             "author_novels" -> arguments.singleOrNull()?.let(AppRoute::AuthorNovels)
             "trends" -> arguments.firstOrNull()?.let { AppRoute.Trends(it, arguments.getOrNull(1)) }
             "patreon_account" -> if (arguments.size <= 1) AppRoute.PatreonAccount(arguments.firstOrNull()) else null
             "reader" -> if (arguments.size == 2) AppRoute.Reader(arguments[0], arguments[1]) else null
-            "narration_story" -> if (arguments.size in 1..2) AppRoute.NarrationStory(arguments[0], arguments.getOrNull(1)) else null
+            // The Audio tab merged into the Chapters tab.
+            "narration_story" -> if (arguments.size in 1..2) AppRoute.Details(arguments[0], chapters = true) else null
             else -> null
         }
 

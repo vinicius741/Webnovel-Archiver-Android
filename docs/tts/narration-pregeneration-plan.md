@@ -53,7 +53,7 @@ speed by time stretch, reader highlighting, anchored positions, history and the 
 stay. Only the source of each sentence's audio changes. A chapter plays from its pack: no Kokoro,
 no `TextToSpeech`, no rendering, no cache.
 
-Description narration (Details) and the Voice & Speech "Try it" sample keep real-time rendering.
+The Settings › Listening "Try it" sample keeps real-time rendering (description narration was removed in November 2026).
 They are a paragraph long and are not chapters. The exception: a sample in a built-in model that is
 not on the phone generates on the user's computers first, then plays (see `built-in-models.md`).
 
@@ -369,7 +369,7 @@ notification.
   every generated chapter's text on each open. Bottom bar: **Generate**
   (chapters without current audio), **Regenerate** (in the current voice), **Delete**.
 - Overflow: generate everything not generated, generate this story first, regenerate in the current
-  voice, Voice & Speech, the generation queue, remove this story from the queue, delete all audio.
+  voice, Settings › Listening, the generation queue, remove this story from the queue, delete all audio.
 
 ### Entry points
 

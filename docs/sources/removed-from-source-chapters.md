@@ -88,32 +88,7 @@ The fold is idempotent.
 
 ## Recovering chapters from a full backup
 
-**Settings → Data & Backup → Recover Chapters from Backup** merges a full-backup ZIP into the
-library without replacing anything. Unlike **Restore Full Backup**, it keeps every current novel,
-setting, bookmark, and download.
-
-- **Planning:** `BackupChapterRecoveryPlanning` treats each backup novel, and each legacy archive
-  snapshot the backup still holds, as a snapshot of the live novel with the same base id. It runs
-  them through `LegacyArchiveFoldPlanning.foldOne`, so the rules match the startup fold:
-  - **Downloaded backup chapters the live novel no longer lists** come back as removed-from-source
-    chapters, in their old reading position.
-  - **Live rows with no readable text** take the backup's copy.
-  - **Chapters the live novel already has readable** are left alone.
-- **Removal time:** recovered chapters keep an earlier `removedFromSourceAt`, or a snapshot's
-  `archivedAt`. Otherwise they get the backup's `exportDate`.
-- **Deleted novels:** novels missing from the live library are skipped and counted, never
-  recreated.
-- **Execution:** `data/storage/BackupChapterRecovery.kt` validates the ZIP with the restore's own
-  manifest and index checks and extracts it to cache. Per novel, it copies adopted files in as
-  `kept_<chapterId>.html` and verifies that every readable backup chapter is readable in the
-  result. Only then does it write the novel; a failed novel is left unchanged and its copied
-  files are removed.
-- **Locking:** it runs as `MaintenanceOperation.RecoverChapters` inside one repository
-  transaction. Unlike a restore, it keeps the library generation: an in-flight download still
-  commits instead of being stranded. A sync that started earlier commits through the safety net,
-  which keeps the recovered chapters its older list lacks.
-- **File names:** adopted files never overwrite an existing file. If another chapter's id
-  sanitizes to the same `kept_` name, the copy gets a numbered suffix.
-- **Result:** a dialog lists the recovered chapter count per novel. Activity-log events use the
-  `recovery` category.
-
+Removed in November 2026. **Settings → Data & backup** now offers only **Create backup** and
+**Restore backup** (which replaces the library). The former *Recover chapters from backup* merged
+a full backup's downloaded chapters through `LegacyArchiveFoldPlanning.foldOne`; that path,
+`BackupChapterRecoveryPlanning` and `BackupChapterRecovery` are gone.

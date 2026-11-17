@@ -4,21 +4,18 @@ import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.feature.details.showChapterSelection
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
-import com.vinicius741.webnovelarchiver.feature.details.showLegacyEpubs
 import com.vinicius741.webnovelarchiver.feature.details.showTrends
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showAuthorNovels
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.narration.showNarration
-import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.player.showPlayer
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showAiSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
-import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
 import com.vinicius741.webnovelarchiver.feature.settings.showPatreonAccount
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showTabs
@@ -41,7 +38,6 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
         AppRoute.Player -> showPlayer()
         AppRoute.Narration -> showNarration()
         AppRoute.Settings -> showSettings()
-        AppRoute.Notifications -> showNotifications()
         AppRoute.DownloadSettings -> showDownloadSettings()
         AppRoute.TtsSettings -> showTtsSettings()
         AppRoute.AiSettings -> showAiSettings()
@@ -60,12 +56,10 @@ private fun ScreenHost.renderStoryRouteDispatch(route: AppRoute) {
     when (route) {
         is AppRoute.Details -> showDetails(route.storyId, route.chapters)
         is AppRoute.ChapterSelection -> showChapterSelection(route.storyId, route.selectedChapterIds)
-        is AppRoute.LegacyEpubs -> showLegacyEpubs(route.storyId)
         is AppRoute.Trends -> showTrends(route.storyId, route.focus)
         is AppRoute.AiControls -> showAiControls(route.storyId)
         is AppRoute.AuthorNovels -> showAuthorNovels(route.storyId)
         is AppRoute.Reader -> showReader(route.storyId, route.chapterId)
-        is AppRoute.NarrationStory -> showNarrationStory(route.storyId, route.chapterId)
         else -> showLibrary()
     }
 }

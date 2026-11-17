@@ -35,7 +35,7 @@ The beta app lets large changes reach a phone without touching the stable app. I
 | Workflow | `android-release.yml`, `main` only | `android-beta.yml`, any branch |
 | Updates offered | Stable releases only (never one marked `channel=beta`) | Beta prereleases only |
 
-Installing, updating, or uninstalling one never affects the other's data. To try your real library in the beta, use **Create Full Backup** in the stable app (**Settings → Data & Backup**), then **Restore Full Backup** in the beta. Nothing flows back to the stable app automatically.
+Installing, updating, or uninstalling one never affects the other's data. To try your real library in the beta, use **Create backup** in the stable app (**Settings → Data & backup**), then **Restore backup** in the beta. Nothing flows back to the stable app automatically.
 
 ### Beta versions
 

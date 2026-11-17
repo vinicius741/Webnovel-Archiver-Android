@@ -48,10 +48,6 @@ internal fun ScreenHost.bindLibraryCoverTile(
     )
     val corner = mutableListOf<ImageView>()
     if (mayHaveNewChapter(story)) corner += cornerBadge(R.drawable.wna_sync, ThemeManager.colors.primary, NEW_CHAPTER_DESCRIPTION)
-    if (hasUnseenAiResult(story)) {
-        corner +=
-            cornerBadge(R.drawable.wna_auto_awesome, ThemeManager.colors.onPrimaryContainer, "New AI cover ready")
-    }
     corner.forEachIndexed { index, badge ->
         (badge.layoutParams as FrameLayout.LayoutParams).marginEnd = dp(Spacing.XS + 2) + index * dp(CORNER_BADGE_DP + Spacing.XS)
         frame.addView(badge)
@@ -85,26 +81,6 @@ internal fun ScreenHost.bindLibraryCoverTile(
         },
     )
     wireLibraryStoryContent(tile, story, selected)
-}
-
-/** A finished background AI cover nobody has looked at yet (persisted; cleared on opening AI Controls). */
-internal fun ScreenHost.hasUnseenAiResult(story: Story): Boolean = story.id in repository.aiCoverUnseen.value
-
-/** Bottom-end sparkle on a list card's cover marking an unseen AI result. */
-internal fun ScreenHost.aiResultBadge(): ImageView {
-    val size = dp(CORNER_BADGE_DP)
-    val inset = dp(Spacing.XS + 2)
-    return ImageView(app).apply {
-        contentDescription = "New AI cover ready"
-        setImageDrawable(app.tintedIcon(R.drawable.wna_auto_awesome, ThemeManager.colors.onPrimaryContainer))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(Spacing.XS + 1), dp(Spacing.XS + 1), dp(Spacing.XS + 1), dp(Spacing.XS + 1))
-        background = roundedBg(ColorUtils.setAlphaComponent(BADGE_DISC, BADGE_DISC_ALPHA), size / 2f)
-        layoutParams =
-            FrameLayout.LayoutParams(size, size, Gravity.BOTTOM or Gravity.END).apply {
-                setMargins(0, 0, inset, inset)
-            }
-    }
 }
 
 /** A small icon on a dark disc at the cover's top-end corner. */

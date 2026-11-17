@@ -5,12 +5,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class MaintenanceOperation {
-    ExportJson,
-    ExportCleanupRules,
     ExportFull,
     ImportJson,
     RestoreFull,
-    RecoverChapters,
 }
 
 sealed interface MaintenanceState {

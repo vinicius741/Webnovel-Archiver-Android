@@ -20,7 +20,7 @@ import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
-// Now Playing's middle: the "Now reading" card, the big play button and the transport row.
+// Now Playing's middle: the "Current sentence" card, the big play button and the transport row.
 
 internal fun ScreenHost.nowReadingCard(
     caption: TextView,
@@ -40,7 +40,7 @@ internal fun ScreenHost.nowReadingCard(
             )
         isClickable = true
         isFocusable = true
-        contentDescription = "Now reading. Open in the reader"
+        contentDescription = "Current sentence. Open in the reader"
         setOnClickListener { onClick() }
         val eyebrow =
             LinearLayout(app).apply {
@@ -51,7 +51,7 @@ internal fun ScreenHost.nowReadingCard(
                     LinearLayout.LayoutParams(dp(EYEBROW_ICON_DP), dp(EYEBROW_ICON_DP)).apply { marginEnd = dp(6) },
                 )
                 addView(
-                    makeText(app, "Now reading", Type.LABEL_MEDIUM, colors.primary).apply {
+                    makeText(app, "Current sentence", Type.LABEL_MEDIUM, colors.primary).apply {
                         isAllCaps = true
                         letterSpacing = EYEBROW_SPACING
                     },

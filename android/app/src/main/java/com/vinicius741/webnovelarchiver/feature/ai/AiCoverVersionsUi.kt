@@ -252,10 +252,8 @@ private fun ScreenHost.useCoverChoice(
     choice: CoverChoice,
     onSettled: (used: Boolean) -> Unit = {},
 ): Boolean {
-    if (story.isArchived == true) {
-        toast("Archived snapshots are read-only")
-        return false
-    }
+    // An unfolded legacy archive snapshot (startup folds them all) stays read-only.
+    if (story.isArchived == true) return false
     if (aiCoverOperationFor(story.id) != null) {
         toast("Wait for cover generation to finish")
         return false
@@ -337,7 +335,7 @@ private fun ScreenHost.showCoverChoiceDetails(
         }
     }
     if (version != null && version.prompt.isNotBlank() && editable && story.chapters.any { it.downloaded }) {
-        content.fullButton("Put prompt in the box", Btn.OUTLINED) {
+        content.fullButton("Reuse this prompt", Btn.OUTLINED) {
             dialog.dismiss()
             reuseCoverPrompt(story, version.prompt)
         }
