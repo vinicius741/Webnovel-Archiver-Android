@@ -39,7 +39,8 @@ internal class ChapterAudioAdapter(
     private val bookmarkId: String?,
     private val selection: ChapterRowSelection,
     private val onTap: (Chapter, NarrationChapterStatus) -> Unit,
-    private val onLongPress: (Chapter) -> Unit,
+    /** True when it handled the long-press; false leaves it to the list's drag gesture. */
+    private val onLongPress: (Chapter) -> Boolean,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     private var chapters: List<Chapter> = emptyList()
     private val statuses = HashMap<String, NarrationChapterStatus>()
@@ -199,10 +200,7 @@ internal class ChapterAudioAdapter(
         holder.row.setOnClickListener {
             if (selection.active) selection.toggle(chapter.id) else onTap(chapter, statuses[chapter.id] ?: NarrationChapterStatus.None)
         }
-        holder.row.setOnLongClickListener {
-            onLongPress(chapter)
-            true
-        }
+        holder.row.setOnLongClickListener { onLongPress(chapter) }
     }
 
     private fun bindStatus(

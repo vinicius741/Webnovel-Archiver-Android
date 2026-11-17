@@ -356,9 +356,17 @@ notification.
   story first** card while the story's jobs wait behind another story's, and the voice new audio
   uses.
 - Chapter list: title, status (with a live bar while generating) and a bookmark marker. Tap opens
-  the chapter's menu. **Long-press starts selection** (as does the app-bar Select action); in
-  selection mode a tap toggles, a long-press selects the whole visible range from the last chapter
-  touched, and the app-bar check selects or clears everything shown. Bottom bar: **Generate**
+  the chapter's menu. **Long-press and drag selects**: every chapter the finger passes over is
+  selected (or cleared, when the drag starts on a selected chapter), and the list scrolls near its
+  edges; starting outside selection mode enters it (as does the app-bar Select action). In
+  selection mode a tap toggles and the app-bar check selects or clears everything shown; a
+  long-click that is not a touch (TalkBack's actions menu) selects the visible range from the last
+  chapter touched. Statuses compare each
+  pack's text fingerprint with the chapter's current text; `NarrationFingerprints` keeps those in
+  memory and in `cacheDir/narration_fingerprints.txt`, reused while the chapter file's size and
+  modification time, download time and cleanup rules are unchanged (the file is ignored after an
+  app update), so the tab does not prepare
+  every generated chapter's text on each open. Bottom bar: **Generate**
   (chapters without current audio), **Regenerate** (in the current voice), **Delete**.
 - Overflow: generate everything not generated, generate this story first, regenerate in the current
   voice, Voice & Speech, the generation queue, remove this story from the queue, delete all audio.

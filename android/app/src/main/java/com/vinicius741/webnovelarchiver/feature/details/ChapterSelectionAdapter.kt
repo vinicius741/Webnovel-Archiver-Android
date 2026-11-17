@@ -166,6 +166,8 @@ internal class ChapterDragSelectionTouchListener(
     private val onDragStarted: (selecting: Boolean) -> Unit,
     private val onRangeChanged: (baseSelection: Set<String>, start: Int, end: Int, selecting: Boolean) -> Unit,
     private val onDragFinished: () -> Unit,
+    /** Whether a long-press on this adapter position may start a drag (false for header rows). */
+    private val isDraggable: (Int) -> Boolean = { true },
 ) : RecyclerView.SimpleOnItemTouchListener() {
     private val handler = Handler(Looper.getMainLooper())
     private val touchSlop = ViewConfiguration.get(list.context).scaledTouchSlop
@@ -182,6 +184,9 @@ internal class ChapterDragSelectionTouchListener(
     private var dragging = false
     private var scrollStep = 0
     private var baseSelection: Set<String> = emptySet()
+
+    /** A finger is down on a draggable row, so a long-press there is (or will become) a drag. */
+    val tracking: Boolean get() = dragging || downPosition != RecyclerView.NO_POSITION
 
     private val beginDrag =
         Runnable {
@@ -227,7 +232,8 @@ internal class ChapterDragSelectionTouchListener(
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x
                 downY = event.y
-                downPosition = positionUnder(event.x, event.y)
+                downPosition = positionUnder(event.x, event.y).takeIf { it == RecyclerView.NO_POSITION || isDraggable(it) }
+                    ?: RecyclerView.NO_POSITION
                 handler.removeCallbacks(beginDrag)
                 if (downPosition != RecyclerView.NO_POSITION) {
                     handler.postDelayed(beginDrag, ViewConfiguration.getLongPressTimeout().toLong())
@@ -237,7 +243,11 @@ internal class ChapterDragSelectionTouchListener(
             MotionEvent.ACTION_MOVE -> {
                 if (!dragging) {
                     val moved = kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop
-                    if (moved) handler.removeCallbacks(beginDrag)
+                    if (moved) {
+                        // Not a drag any more: the row's own long-press, if any, handles it.
+                        handler.removeCallbacks(beginDrag)
+                        downPosition = RecyclerView.NO_POSITION
+                    }
                     false
                 } else {
                     updateDragPosition(positionNear(event.x, event.y))
