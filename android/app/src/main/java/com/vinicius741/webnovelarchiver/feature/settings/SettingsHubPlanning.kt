@@ -44,7 +44,7 @@ internal object SettingsHubPlanning {
     fun downloadsSummary(
         parallelSources: Int,
         range: PaceRange,
-    ): String = "${plural(parallelSources, "source")} at once · ${DownloadPacePlanning.rangeLabel(range)} delay"
+    ): String = "${DownloadPacePlanning.paceLabel(range)} pace · ${plural(parallelSources, "site")} at once"
 
     fun plural(
         count: Int,

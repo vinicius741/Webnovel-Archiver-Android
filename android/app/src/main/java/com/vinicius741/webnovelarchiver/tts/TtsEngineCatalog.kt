@@ -36,7 +36,11 @@ internal object TtsEngineCatalog {
      * The built-in models, newest first. All are offered, even one this phone cannot run itself:
      * chapters generate on the user's computers, and live speech then borrows a saved profile.
      */
-    fun builtInChoices(): List<TtsEngineInfo> = BuiltInModel.entries.reversed().map { TtsEngineInfo(it.engineId, it.engineLabel) }
+    fun builtInChoices(): List<TtsEngineInfo> =
+        BuiltInModel.entries
+            .reversed()
+            .filterNot { it.retired }
+            .map { TtsEngineInfo(it.engineId, it.engineLabel) }
 
     /** Everything the engine setting can offer: the built-in voices first, then installed apps. */
     fun choices(context: Context): List<TtsEngineInfo> = builtInChoices() + installed(context)

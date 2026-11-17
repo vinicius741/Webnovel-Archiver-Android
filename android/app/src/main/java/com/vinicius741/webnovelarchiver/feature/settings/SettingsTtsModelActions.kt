@@ -65,7 +65,7 @@ internal fun ScreenHost.confirmKokoroRemoval(model: BuiltInModel) {
                 persistTtsSettings(settings.copy(enginePackage = null, voiceIdentifier = null))
                 toast("${model.family} removed. Speaking with the phone's engine again.")
             }
-            showTtsSettings(keepDraft = true)
+            showTtsSettings()
         }
     }
 }

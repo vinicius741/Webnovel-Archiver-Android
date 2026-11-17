@@ -78,7 +78,7 @@ private fun ScreenHost.runKokoroSpeedTest(model: BuiltInModel) {
         withContext(Dispatchers.IO) { runCatching { speedTestFile(model).writeText(report) } }
         if (dialog.isShowing) dialog.dismiss()
         showKokoroSpeedTestReport(report)
-        showTtsSettings(keepDraft = true)
+        showTtsSettings()
     }
 }
 

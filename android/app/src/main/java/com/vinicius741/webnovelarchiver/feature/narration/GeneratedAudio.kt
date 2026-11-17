@@ -48,7 +48,7 @@ internal fun LinearLayout.generatedSection(
     val free = host.narration.freeBytes()
     listenSectionLabel("Generated audio", "${NarrationPlanning.formatBytes(used)} · ${NarrationPlanning.formatBytes(free)} free")
     if (attached.isEmpty()) {
-        listenHint("No chapter audio yet. Open a chapter and tap Read aloud to generate it.")
+        listenHint("No chapter audio yet. ${NarrationScreenPlanning.HOW_TO_GENERATE}")
     } else {
         val list = makeListGroup(context)
         attached.entries
@@ -71,73 +71,41 @@ internal fun LinearLayout.generatedSection(
             }
         addView(list)
     }
-    storageCard(used, free)
-    if (detached.isNotEmpty()) detachedSection(host, detached)
+    if (detached.isNotEmpty()) detachedRow(host, detached)
 }
 
-private fun LinearLayout.storageCard(
-    used: Long,
-    free: Long,
-) {
-    val colors = ThemeManager.colors
-    val card =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            val pad = context.dp(Spacing.LG)
-            setPadding(pad, context.dp(Spacing.MD + 2), pad, context.dp(Spacing.MD + 2))
-            background = strokeBg(colors.elevation1, context.dp(STORAGE_RADIUS_DP).toFloat(), colors.line, context.dp(1).coerceAtLeast(1))
-            val top =
-                LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    addView(
-                        makeText(context, "Audio uses ${NarrationPlanning.formatBytes(used)}", Type.TITLE_SMALL, colors.onSurface),
-                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-                    )
-                    addView(makeText(context, "${NarrationPlanning.formatBytes(free)} free", Type.BODY_SMALL, colors.onSurfaceVariant))
-                }
-            addView(top)
-            val line =
-                PlayerProgressLine(context, rounded = true, trackColor = colors.elevation4).apply {
-                    fraction = if (used + free > 0) used.toFloat() / (used + free) else 0f
-                }
-            addView(
-                line,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(BAR_HEIGHT_DP)).apply {
-                    topMargin =
-                        context.dp(Spacing.SM + 2)
-                },
-            )
-        }
-    addView(
-        card,
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin =
-                context.dp(Spacing.MD)
-        },
-    )
-}
-
-private fun LinearLayout.detachedSection(
+/**
+ * Audio for chapters no longer in the library (after restoring an older backup): one row that
+ * deletes it all. Deleting a novel already deletes its audio, so this is only restore leftovers.
+ */
+private fun LinearLayout.detachedRow(
     host: ScreenHost,
     detached: Map<String, List<NarrationPack>>,
 ) {
-    listenSectionLabel("Detached audio")
-    listenHint("Audio for chapters no longer in the library, for example after restoring an older backup. It stays until you delete it.")
+    val packs = detached.values.flatten()
+    val bytes = NarrationPlanning.formatBytes(packs.sumOf { it.index.bytes })
     val list = makeListGroup(context)
-    detached.forEach { (storyId, storyPacks) ->
-        val title = host.repository.story(storyId)?.title ?: "Deleted story"
-        list.addView(
-            makeListRow(context, title, packSummary(storyPacks), leadIcon = R.drawable.wna_delete, leadTint = ThemeManager.colors.error) {
-                host.confirm(
-                    "Delete this audio (${NarrationPlanning.formatBytes(storyPacks.sumOf { it.index.bytes })})?",
-                    confirmLabel = "Delete",
-                ) {
-                    host.narrationAction("Could not delete the audio") { deleteAudio(storyId, storyPacks.map { it.chapterId }) }
+    list.addView(
+        makeListRow(
+            context,
+            "Audio for chapters no longer in the library",
+            "${packs.size} ${if (packs.size == 1) "chapter" else "chapters"} · $bytes · tap to delete",
+            leadIcon = R.drawable.wna_delete,
+            leadTint = ThemeManager.colors.error,
+        ) {
+            host.confirm("Delete this audio ($bytes)?", confirmLabel = "Delete") {
+                host.narrationAction("Could not delete the audio") {
+                    detached.forEach { (storyId, storyPacks) -> deleteAudio(storyId, storyPacks.map { it.chapterId }) }
                 }
-            },
-        )
-    }
-    addView(list)
+            }
+        },
+    )
+    addView(
+        list,
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = context.dp(Spacing.MD)
+        },
+    )
 }
 
 internal fun packSummary(packs: List<NarrationPack>): String {
@@ -149,5 +117,3 @@ internal fun packSummary(packs: List<NarrationPack>): String {
 
 private const val COVER_WIDTH_DP = 40
 private const val COVER_HEIGHT_DP = 60
-private const val STORAGE_RADIUS_DP = 14
-private const val BAR_HEIGHT_DP = 6

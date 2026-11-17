@@ -10,7 +10,7 @@ internal data class PaceRange(
     val maxMs: Long,
 )
 
-/** A "Quick fill" pace: only fills the delay steppers, which stay editable. */
+/** A named pace (Gentle / Balanced / Fast); exact delays stay editable under Advanced. */
 internal data class PacePreset(
     val label: String,
     val range: PaceRange,
@@ -75,9 +75,12 @@ internal object DownloadPacePlanning {
     fun rangeLabel(range: PaceRange): String =
         if (range.minMs == range.maxMs) "${seconds(range.minMs)} s" else "${seconds(range.minMs)}–${seconds(range.maxMs)} s"
 
+    /** "Balanced", or "Custom · 0.8–2.5 s" for a range no preset matches. */
+    fun paceLabel(range: PaceRange): String = matchingPreset(range)?.label ?: "Custom · ${rangeLabel(range)}"
+
     /** The per-site row's second line. */
     fun overrideSummary(override: SourceDownloadSettings?): String =
-        override?.let { "${rangeLabel(PaceRange(it.delay, maxOf(it.delay, it.delayMax)))} delay" } ?: "Uses the defaults"
+        override?.let { paceLabel(PaceRange(it.delay, maxOf(it.delay, it.delayMax))) } ?: "Default pace"
 
     /** The delay steppers' usual upper limit: two minutes between chapters. */
     const val STEPPER_MAX_MS = 120_000L

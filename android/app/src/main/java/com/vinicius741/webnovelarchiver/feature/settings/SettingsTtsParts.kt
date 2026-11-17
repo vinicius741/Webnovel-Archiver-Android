@@ -9,12 +9,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.domain.model.TtsProfile
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.narration.NarrationServer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.tts.TtsProfilePlanning
 import com.vinicius741.webnovelarchiver.tts.TtsSampleFailure
 import com.vinicius741.webnovelarchiver.tts.TtsSamplePlanning
 import com.vinicius741.webnovelarchiver.tts.TtsSamplePreview
@@ -41,118 +39,8 @@ import com.vinicius741.webnovelarchiver.ui.showBottomSheet
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
-import java.util.UUID
 
-// Voice & Speech's profile card (switch / save as / delete) and its "Try it" sample card.
-
-/** Named voice setups: switch to one, save the screen's values as one, or delete one. */
-internal fun ScreenHost.ttsProfileCard(
-    saved: TtsSettings,
-    draft: () -> TtsSettings,
-): View {
-    val colors = ThemeManager.colors
-    val active = TtsProfilePlanning.active(saved)
-    val status =
-        when {
-            active == null && saved.profiles.isEmpty() -> "Save these settings as a profile to come back to them later."
-            active == null -> "These settings are not saved as a profile."
-            TtsProfilePlanning.matches(active, saved) -> "Using \"${active.name}\"."
-            else -> "Based on \"${active.name}\", with changes not saved to it."
-        }
-    return makeCard(app).apply {
-        iconColumnRow(R.drawable.wna_tune, colors.primary, Gravity.CENTER_VERTICAL).addView(
-            makeText(context, status, Type.BODY_MEDIUM, colors.onSurfaceVariant),
-        )
-        addView(
-            WrapLayout(context).apply {
-                horizontalSpacingDp = Spacing.SM
-                verticalSpacingDp = Spacing.SM
-                if (saved.profiles.isNotEmpty()) addView(makeButton(context, "Switch", Btn.SURFACE) { showTtsProfileSwitcher(saved) })
-                addView(makeButton(context, "Save as profile", Btn.SURFACE) { saveTtsProfile(active, draft) })
-                if (saved.profiles.isNotEmpty()) {
-                    addView(makeButton(context, "Delete", Btn.TEXT) { showTtsProfileDeleter(saved) }.apply { setTextColor(colors.error) })
-                }
-            },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin =
-                    dp(Spacing.MD)
-            },
-        )
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
-}
-
-private fun ScreenHost.showTtsProfileSwitcher(saved: TtsSettings) {
-    val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
-    var sheet: BottomSheetHandle? = null
-    saved.profiles.forEach { profile ->
-        body.addView(
-            makeSheetRow(
-                app,
-                profile.name,
-                supporting = SettingsHubPlanning.rateLabel(profile.rate),
-                iconRes = R.drawable.wna_record_voice,
-                checked = profile.id == saved.activeProfileId,
-            ) {
-                sheet?.dismiss()
-                scope.launch {
-                    persistTtsSettings(TtsProfilePlanning.apply(repository.ttsSettings.get(), profile))
-                    toast("Using profile \"${profile.name}\"")
-                    showTtsSettings()
-                }
-            },
-        )
-    }
-    sheet = showBottomSheet(app, title = "Switch profile", body = body)
-}
-
-/** Saves what the screen shows under a name; reusing a name updates that profile. */
-private fun ScreenHost.saveTtsProfile(
-    active: TtsProfile?,
-    draft: () -> TtsSettings,
-) {
-    prompt("Profile name", active?.name.orEmpty()) { raw ->
-        val name = TtsProfilePlanning.cleanName(raw)
-        if (name == null) {
-            toast("Enter a name for the profile")
-            return@prompt
-        }
-        val current = draft()
-        val save = {
-            scope.launch {
-                persistTtsSettings(TtsProfilePlanning.save(current, name) { UUID.randomUUID().toString() })
-                toast("Saved profile \"$name\"")
-                showTtsSettings()
-            }
-        }
-        val existing = TtsProfilePlanning.named(current.profiles, name)
-        if (existing != null && existing.id != active?.id) {
-            confirm("Replace the profile \"${existing.name}\" with these settings?", "Replace") { save() }
-        } else {
-            save()
-        }
-    }
-}
-
-private fun ScreenHost.showTtsProfileDeleter(saved: TtsSettings) {
-    val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
-    var sheet: BottomSheetHandle? = null
-    saved.profiles.forEach { profile ->
-        body.addView(
-            makeSheetRow(app, profile.name, iconRes = R.drawable.wna_delete, destructive = true) {
-                sheet?.dismiss()
-                confirm("Delete the profile \"${profile.name}\"? Your current settings stay as they are.", "Delete") {
-                    scope.launch {
-                        repository.ttsSettings.save(TtsProfilePlanning.delete(repository.ttsSettings.get(), profile.id))
-                        toast("Deleted profile \"${profile.name}\"")
-                        showTtsSettings(keepDraft = true)
-                    }
-                }
-            },
-        )
-    }
-    sheet = showBottomSheet(app, title = "Delete profile", body = body)
-}
+// The Listening page's "Try it" sample card.
 
 private var sampleTextDraft: String? = null
 
@@ -168,7 +56,7 @@ private val DEFAULT_SAMPLE_TEXT =
     """.trimIndent()
 
 /**
- * Editable text played with the unsaved values above, so they can be judged by ear before saving. A
+ * Editable text played with the values above, so they can be judged by ear. A
  * built-in model that is not on this phone is generated on the chosen computers first, then played.
  */
 internal fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {

@@ -52,7 +52,7 @@ internal data class KokoroVoice(
 )
 
 /**
- * The voice models the app can download and run itself, each a separate engine in Voice & Speech.
+ * The voice models the app can download and run itself, each a separate engine in Settings › Listening.
  * [dirName] is the model's folder under `tts_models` and its name on a narration server.
  */
 internal enum class BuiltInModel(
@@ -78,6 +78,15 @@ internal enum class BuiltInModel(
     /** Gradium's Phonon 31M, full-precision weights. */
     PHONON("builtin:phonon-31m-en", "Phonon (built in)", "Phonon", "phonon-31m-en", BuiltInRuntime.PHONON),
     ;
+
+    /**
+     * No longer offered as an engine (settings move to [replacement]). The model stays defined so
+     * its generated audio, queued jobs, an installed copy (removable in Settings) and servers work.
+     */
+    val retired: Boolean get() = this == KOKORO_V019
+
+    /** The model a retired one's settings move to. */
+    val replacement: BuiltInModel? get() = if (this == KOKORO_V019) KOKORO_V1 else null
 
     /** Prefix of this model's voice identifiers: the model version, so another model cannot pick the wrong speaker. */
     val idPrefix: String get() = "$dirName:"

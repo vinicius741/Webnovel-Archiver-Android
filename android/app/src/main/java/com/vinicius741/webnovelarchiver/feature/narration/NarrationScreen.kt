@@ -48,10 +48,9 @@ private const val SIDE_BY_SIDE_MIN_DP = 720
 
 /**
  * The Listen destination (v3): the Now playing / Continue listening card, then Queue (the
- * generation queue grouped by story, with the live banner, reordering, retry and removal),
- * Generated (every story's audio and its storage) and Setup (where to generate, computers, and
- * chapters ahead). A segmented control picks one section on a phone; the inner display shows the
- * queue beside the other two.
+ * generation queue grouped by story, with the live banner, reordering, retry and removal) and
+ * Generated (every story's audio and its storage). Where audio generates lives in Settings ›
+ * Listening. A segmented control picks one section on a phone; the inner display shows both.
  */
 internal fun ScreenHost.showNarration() {
     rerender = { showNarration() }
@@ -65,10 +64,10 @@ internal fun ScreenHost.showNarration() {
     val shown = ListenBuild(document.withoutLiveFields(), coordinator.packsRevision.value, runningJobId)
     val host = this
     val sideBySide = app.resources.configuration.screenWidthDp >= SIDE_BY_SIDE_MIN_DP
-    val liveStatus = NarrationLiveStatus(this, hideWhenIdle = false) { banner -> banner.storyId?.let { showNarrationStory(it) } }
+    // Idle says nothing the empty queue does not, so the banner shows only while something happens.
+    val liveStatus = NarrationLiveStatus(this, hideWhenIdle = true) { banner -> banner.storyId?.let { showNarrationStory(it) } }
     val runningRow = RunningJobRow()
     val nowCard = ListenNowCard(this)
-    var serverRows: ServerRows? = null
     val scroller =
         ScrollView(app).apply {
             isFillViewport = true
@@ -78,7 +77,7 @@ internal fun ScreenHost.showNarration() {
         }
     val actions =
         buildList {
-            add(AppBarAction(R.drawable.wna_record_voice, "Voice & Speech") { showTtsSettings() })
+            add(AppBarAction(R.drawable.wna_settings, "Listening settings") { showTtsSettings() })
             if (document.jobs.isNotEmpty()) add(AppBarAction(R.drawable.wna_more_vert, "Queue options") { host.showQueueMenu() })
         }
     screen(route = AppRoute.Narration, title = "Listen", subtitle = "Player and audio generation", actions = actions) {
@@ -96,11 +95,10 @@ internal fun ScreenHost.showNarration() {
         }
         val queueBox = section { queueSection(host, document, runningRow, liveStatus.takeIf { sideBySide }) }
         val generatedBox = section { generatedSection(host, audio) }
-        val setupBox = section { serverRows = setupSection(host, document) }
         if (sideBySide) {
-            content.addView(sideBySide(queueBox, generatedBox, setupBox))
+            content.addView(sideBySide(queueBox, generatedBox))
         } else {
-            val boxes = mapOf(ListenSegment.QUEUE to queueBox, ListenSegment.GENERATED to generatedBox, ListenSegment.SETUP to setupBox)
+            val boxes = mapOf(ListenSegment.QUEUE to queueBox, ListenSegment.GENERATED to generatedBox)
 
             fun show(segment: ListenSegment) =
                 boxes.forEach { (key, box) ->
@@ -134,19 +132,6 @@ internal fun ScreenHost.showNarration() {
             liveStatus.observe(host, this)
             launch { ttsEngine.playbackState.collect { nowCard.bind(it.snapshot) } }
             launch { coordinator.progress.collect(runningRow::bind) }
-            launch { coordinator.serverStatus.collect { statuses -> serverRows?.bind(statuses) } }
-            // Online checks while the screen is visible. Each rebuild restarts this loop, so it ticks
-            // often and asks only computers not checked within the interval.
-            if (document.servers.isNotEmpty()) {
-                launch {
-                    app.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                        while (true) {
-                            coordinator.refreshServerStatus(SERVER_CHECK_INTERVAL_MS)
-                            delay(SERVER_CHECK_TICK_MS)
-                        }
-                    }
-                }
-            }
             val runningJob = coordinator.progress.map { it?.job?.id }.distinctUntilChanged()
             // Keep-ahead and speed measurements change without anything to rebuild (the stepper and
             // the live banner show them), so they are left out; a rebuild would also cut a held stepper.
@@ -173,20 +158,14 @@ private fun LinearLayout.section(block: LinearLayout.() -> Unit): LinearLayout =
         block()
     }
 
-/** Queue on the left; Generated and Setup stacked on the right. */
+/** Queue on the left; Generated on the right. */
 private fun LinearLayout.sideBySide(
     queue: View,
     generated: View,
-    setup: View,
 ): View =
     LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
-        val right =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(generated)
-                addView(setup)
-            }
+        val right = generated
         addView(
             queue,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, QUEUE_WEIGHT).apply {
@@ -214,7 +193,7 @@ private fun LinearLayout.queueSection(
             makeEmptyState(
                 context,
                 title = "Queue is empty",
-                message = "Generate chapters from a story's Audio tab.",
+                message = NarrationScreenPlanning.HOW_TO_GENERATE,
                 iconRes = R.drawable.wna_headphones,
             ),
         )
@@ -325,7 +304,3 @@ internal class RunningJobRow {
         }
     }
 }
-
-// Online checks for the user's computers while Listen is visible (see NarrationServerMonitor).
-private const val SERVER_CHECK_INTERVAL_MS = 30_000L
-private const val SERVER_CHECK_TICK_MS = 5_000L

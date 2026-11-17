@@ -31,14 +31,20 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import kotlinx.coroutines.launch
 
 /*
- * Model-selection controls for AI Settings. All three global model choices live in one "Models"
- * card there — they apply to every novel, so the per-novel AI Controls screen only names the model
+ * Model-selection controls for AI Settings. The global model choices live there (the chapter
+ * selection model under Advanced) — they apply to every novel, so the per-novel AI Controls screen only names the model
  * each tab uses and links here. Confirmed text-model and reasoning choices are saved together into
  * AiSettings and mirrored inside the model field. Manual ids remain reachable.
  */
 
-/** The single Models card: description, cover image, and cover selection (decision model) selectors. */
-internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
+/**
+ * The Models card (description and cover image) in [container], and the chapter selection
+ * (decision) model in its own card in [advancedContainer].
+ */
+internal fun ScreenHost.addAiModelsCard(
+    container: LinearLayout,
+    advancedContainer: LinearLayout,
+) {
     val modelRefreshers = mutableListOf<() -> Unit>()
     aiControlsScreenState.refreshModels = { modelRefreshers.forEach { it() } }
 
@@ -77,24 +83,24 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
             ),
         )
 
-    val cardView =
-        container.card {
-            rows.forEachIndexed { index, row ->
-                if (index > 0) spacer(Space.SM)
-                modelRefreshers +=
-                    addAiModelRow(
-                        container = this,
-                        label = row.label,
-                        currentModel = row.current,
-                        kind = row.kind,
-                    ) { picked ->
-                        val settings = repository.aiSettings.get()
-                        repository.aiSettings.save(row.save(settings, picked.modelId, picked.reasoningEffort))
-                        refreshAiModelFields()
-                    }
-            }
+    fun LinearLayout.addRows(shown: List<ModelRow>) =
+        shown.forEachIndexed { index, row ->
+            if (index > 0) spacer(Space.SM)
+            modelRefreshers +=
+                addAiModelRow(
+                    container = this,
+                    label = row.label,
+                    currentModel = row.current,
+                    kind = row.kind,
+                ) { picked ->
+                    val settings = repository.aiSettings.get()
+                    repository.aiSettings.save(row.save(settings, picked.modelId, picked.reasoningEffort))
+                    refreshAiModelFields()
+                }
         }
-    container.addView(cardView)
+    val (advancedRows, mainRows) = rows.partition { it.kind == AiModelRowKind.DECISIONS }
+    container.addView(container.card { addRows(mainRows) })
+    advancedContainer.addView(advancedContainer.card { addRows(advancedRows) })
     scope.launch {
         loadAiModelCatalog()
         refreshAiModelFields()

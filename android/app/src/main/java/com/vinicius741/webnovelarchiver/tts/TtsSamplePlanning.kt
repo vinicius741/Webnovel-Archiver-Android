@@ -5,7 +5,7 @@ import com.vinicius741.webnovelarchiver.narration.NarrationServer
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoice
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 
-/** Where the Voice & Speech sample is generated. */
+/** Where the Listening settings sample is generated. */
 internal sealed interface TtsSamplePlace {
     /** In real time on this phone, with the chosen engine. */
     data object Phone : TtsSamplePlace

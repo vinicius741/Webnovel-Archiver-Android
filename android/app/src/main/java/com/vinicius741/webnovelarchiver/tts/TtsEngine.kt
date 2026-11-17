@@ -252,7 +252,7 @@ class TtsEngine(
                     sessionStore.schedule(updated)
                     outputs.active?.setRate(settings.rate)
                 }
-                val newVoice = previous != null && TtsProfilePlanning.soundsDifferent(previous, settings)
+                val newVoice = previous != null && TtsEnginePlanning.soundsDifferent(previous, settings)
                 // A chapter keeps the voice it was generated in; only a description speaks with the settings.
                 if (loaded.hasChapter && loaded.speaksLive && (newVoice || speech.needsRestart(settings))) {
                     reloadVoiceLocked(settings)

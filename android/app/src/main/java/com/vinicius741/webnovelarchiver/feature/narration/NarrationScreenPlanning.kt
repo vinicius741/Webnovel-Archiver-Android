@@ -49,6 +49,9 @@ internal data class QueueGroup(
 /** Pure rules behind the narration screens, kept apart from the Views for unit tests. */
 @Suppress("TooManyFunctions") // Small pure rules, each unit-tested.
 internal object NarrationScreenPlanning {
+    /** The one instruction for making chapter audio, wherever the app explains it. */
+    const val HOW_TO_GENERATE = "Tap the headphones on a chapter to generate its audio."
+
     /** Index of the bookmarked chapter in [Story.chapters], or -1. */
     fun bookmarkIndex(story: Story): Int = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
 

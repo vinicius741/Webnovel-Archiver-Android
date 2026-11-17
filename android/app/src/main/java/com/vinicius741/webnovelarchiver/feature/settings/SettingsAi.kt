@@ -1,8 +1,11 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
 import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -20,16 +23,7 @@ import com.vinicius741.webnovelarchiver.ui.makeField
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
-
-/** The key and scan limit typed on AI settings but not saved yet; survives a fold re-render. */
-private data class AiSettingsDraft(
-    val apiKey: String,
-    val scanLimit: Int,
-)
-
-private var aiDraft: AiSettingsDraft? = null
 
 private val SCAN_SPEC =
     StepperSpec(
@@ -39,63 +33,78 @@ private val SCAN_SPEC =
         label = "Chapter scan limit",
     )
 
-/**
- * OpenRouter-backed AI settings (v3): the device-local API key (never backed up), the global model
- * choices (saved as picked), the automatic cover scan limit, and spend. Key and scan limit save
- * from the docked Save bar.
- */
-internal fun ScreenHost.showAiSettings(keepDraft: Boolean = false) {
-    rerender = { showAiSettings(keepDraft = true) }
-    val saved = repository.aiSettings.get()
-    val savedDraft = AiSettingsDraft(saved.apiKey.orEmpty(), saved.coverEvidenceChapters)
-    if (!keepDraft || aiDraft == null) aiDraft = savedDraft
-    lateinit var bar: DockedSaveBar
+/** A typed key not saved yet, so a re-render (fold) shows it rather than the older saved one. */
+private var unsavedAiKey: String? = null
 
-    fun update(change: (AiSettingsDraft) -> AiSettingsDraft) {
-        val next = change(aiDraft ?: savedDraft)
-        aiDraft = next
-        val now = repository.aiSettings.get()
-        bar.show(next != AiSettingsDraft(now.apiKey.orEmpty(), now.coverEvidenceChapters))
-    }
-    bar =
-        DockedSaveBar(app, "Save") {
-            val draft = aiDraft ?: return@DockedSaveBar
+/** A typed key is saved once typing pauses this long (and when the page closes). */
+private const val KEY_SAVE_DELAY_MS = 600L
+
+/**
+ * OpenRouter-backed AI settings (v3): the device-local API key (never backed up), the model
+ * choices, spending, and an Advanced group with the chapter selection model and scan limit.
+ * Everything saves as it changes.
+ */
+internal fun ScreenHost.showAiSettings() {
+    rerender = { showAiSettings() }
+    val saved = repository.aiSettings.get()
+    val handler = Handler(Looper.getMainLooper())
+    var pendingKey: String? = null
+    val saveKey =
+        Runnable {
+            val key = pendingKey ?: return@Runnable
+            pendingKey = null
             scope.launch {
-                repository.aiSettings.save(
-                    repository.aiSettings.get().copy(
-                        apiKey = draft.apiKey.trim().ifBlank { null },
-                        coverEvidenceChapters = draft.scanLimit,
-                    ),
-                )
-                toast("AI settings saved")
-                bar.show(false)
-            }
-        }
-    screen(route = AppRoute.AiSettings, title = "AI settings", subtitle = "OpenRouter", fullWidthBody = true) {
-        scrollWithDockedBar(this, bar) {
-            section("API key")
-            val keyField = addApiKeyField(this, aiDraft?.apiKey.orEmpty()) { key -> update { it.copy(apiKey = key) } }
-            settingsNote(
-                "Get a key at openrouter.ai/keys. Requests use paid credits and share novel details and excerpts with model providers.",
-            )
-            section("Models")
-            addAiModelsCard(this)
-            section("Automatic cover selection")
-            settingsGroup {
-                groupStepper(
-                    "Chapter scan limit",
-                    "How many chapters the AI may read",
-                    (aiDraft?.scanLimit ?: saved.coverEvidenceChapters).toDouble(),
-                    SCAN_SPEC,
-                ) { value ->
-                    update { it.copy(scanLimit = value.toInt()) }
-                    null
+                try {
+                    val current = repository.aiSettings.get()
+                    val next = key.trim().ifBlank { null }
+                    if (current.apiKey != next) repository.aiSettings.save(current.copy(apiKey = next))
+                } finally {
+                    if (unsavedAiKey === key) unsavedAiKey = null
                 }
             }
-            settingsNote("Picking chapters by hand skips the scan.")
-            showAiUsageSection(this) { keyField.text?.toString() }
         }
-        bar.show(aiDraft != savedDraft)
+    screen(route = AppRoute.AiSettings, title = "AI settings", subtitle = "OpenRouter", scrollable = true) {
+        capSettingsWidth(this)
+        section("API key")
+        val keyField =
+            addApiKeyField(this, unsavedAiKey ?: saved.apiKey.orEmpty()) { key ->
+                pendingKey = key
+                unsavedAiKey = key
+                handler.removeCallbacks(saveKey)
+                handler.postDelayed(saveKey, KEY_SAVE_DELAY_MS)
+            }
+        settingsNote(
+            "Get a key at openrouter.ai/keys. Requests use paid credits and share novel details and excerpts with model providers.",
+        )
+        section("Models")
+        val advanced = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        addAiModelsCard(this, advanced)
+        showAiUsageSection(this) { keyField.text?.toString() }
+        section("Advanced")
+        addView(advanced)
+        advanced.settingsGroup {
+            groupStepper(
+                "Chapter scan limit",
+                "How many chapters automatic cover selection may read",
+                saved.coverEvidenceChapters.toDouble(),
+                SCAN_SPEC,
+            ) { value ->
+                scope.launch { repository.aiSettings.save(repository.aiSettings.get().copy(coverEvidenceChapters = value.toInt())) }
+                null
+            }
+        }
+        settingsNote("Picking chapters by hand on a novel skips the automatic scan.")
+        // Leaving the page saves a key still waiting for the typing pause.
+        addOnAttachStateChangeListener(
+            object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(view: View) = Unit
+
+                override fun onViewDetachedFromWindow(view: View) {
+                    handler.removeCallbacks(saveKey)
+                    saveKey.run()
+                }
+            },
+        )
     }
 }
 

@@ -16,8 +16,8 @@ import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
@@ -71,7 +71,10 @@ internal fun ScreenHost.showDataBackup() {
             }
             addView(
                 makeButton(context, "Clear local storage", Btn.ERROR) {
-                    confirm("Delete all novels, settings, and downloads? Backups on this phone are kept.", confirmLabel = "Delete everything") {
+                    confirm(
+                        "Delete all novels, settings, and downloads? Backups on this phone are kept.",
+                        confirmLabel = "Delete everything",
+                    ) {
                         scope.launch {
                             repository.clearAll()
                             showLibrary()

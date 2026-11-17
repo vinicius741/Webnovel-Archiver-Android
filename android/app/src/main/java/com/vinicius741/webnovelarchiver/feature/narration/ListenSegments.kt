@@ -22,7 +22,6 @@ internal enum class ListenSegment(
 ) {
     QUEUE("Queue"),
     GENERATED("Generated"),
-    SETUP("Setup"),
 }
 
 /**

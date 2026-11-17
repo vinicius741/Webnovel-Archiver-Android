@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
@@ -83,7 +84,7 @@ internal fun ScreenHost.showTtsEnginePicker(
             // A built-in model needs no download: chapters generate on the computers.
             toast(
                 if (model != null && !modelInstaller(model).isInstalled) {
-                    "Engine changed. Chapters generate on your computers. Until you download it, descriptions use a saved profile (Google first)."
+                    "Engine changed. Chapters generate on your computers until you download it here."
                 } else {
                     "Engine changed. Pick a voice from it, or keep its default."
                 },
@@ -187,12 +188,14 @@ internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
                         makeButton(context, "Try again", Btn.FILLED, R.drawable.wna_download) { installer.install() },
                     )
                 is KokoroModelState.Installed -> {
-                    actions.addView(makeButton(context, "Test speed", Btn.SURFACE, R.drawable.wna_speed) { confirmKokoroSpeedTest(model) })
-                    if (hasKokoroSpeedTest(
-                            model,
+                    // The speed test is a developer tool: debug builds only.
+                    if (BuildConfig.DEBUG) {
+                        actions.addView(
+                            makeButton(context, "Test speed", Btn.SURFACE, R.drawable.wna_speed) { confirmKokoroSpeedTest(model) },
                         )
-                    ) {
-                        actions.addView(makeButton(context, "Last results", Btn.SURFACE) { showLastKokoroSpeedTest(model) })
+                        if (hasKokoroSpeedTest(model)) {
+                            actions.addView(makeButton(context, "Last results", Btn.SURFACE) { showLastKokoroSpeedTest(model) })
+                        }
                     }
                     actions.addView(
                         makeButton(context, "Remove", Btn.TEXT) { confirmKokoroRemoval(model) }.apply { setTextColor(colors.error) },

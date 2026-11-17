@@ -24,6 +24,7 @@ class SettingsHubPlanningTest {
         assertEquals("No tabs yet", SettingsHubPlanning.tabsSummary(emptyList()))
         assertEquals("2 tabs · Reading, Plan", SettingsHubPlanning.tabsSummary(listOf("Reading", "Plan")))
         assertEquals("5 tabs · A, B, C, D, …", SettingsHubPlanning.tabsSummary(listOf("A", "B", "C", "D", "E")))
-        assertEquals("1 source at once · 0.8–2.5 s delay", SettingsHubPlanning.downloadsSummary(1, PaceRange(800, 2_500)))
+        assertEquals("Custom · 0.8–2.5 s pace · 1 site at once", SettingsHubPlanning.downloadsSummary(1, PaceRange(800, 2_500)))
+        assertEquals("Balanced pace · 2 sites at once", SettingsHubPlanning.downloadsSummary(2, PaceRange(1_000, 3_000)))
     }
 }

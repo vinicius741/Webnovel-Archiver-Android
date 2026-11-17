@@ -1,48 +1,46 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
-import android.view.ViewGroup
+import android.os.Handler
+import android.os.Looper
+import android.view.View
 import android.widget.LinearLayout
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.data.repository.clearTtsSession
-import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.feature.narration.ServerRows
+import com.vinicius741.webnovelarchiver.feature.narration.narration
+import com.vinicius741.webnovelarchiver.feature.narration.setupSection
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
 import com.vinicius741.webnovelarchiver.tts.TtsEnginePlanning
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
-import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
-import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.StepperSpec
-import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.makeButton
-import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
-import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
- * What Voice & Speech shows but has not saved. It outlives a fold re-render; opening the screen
- * again starts from the saved settings. Engine, voice and profile changes save straight away (with
- * the draft); the draft holds only the fields the Save bar saves, so it never restores a stale
- * engine, voice or profile list.
+ * What the Listening page shows but has not finished saving (a held stepper saves once it settles).
+ * Cleared once that save finishes, so a quick re-render never shows older values.
  */
-private var ttsDraft: TtsSpeechDraft? = null
+private var unsavedTts: TtsSettings? = null
 
-private val RATE_SPEC =
+private val PITCH_SPEC =
     StepperSpec(
         step = 0.05,
         min = SettingsValidation.TTS_MIN.toDouble(),
         max = SettingsValidation.TTS_MAX.toDouble(),
         unit = "×",
         decimals = 2,
-        label = "Rate",
+        label = "Pitch",
     )
-private val PITCH_SPEC = RATE_SPEC.copy(label = "Pitch")
 
 private fun pauseSpec(
     label: String,
@@ -51,139 +49,115 @@ private fun pauseSpec(
     zeroLabel: String = "None",
 ) = StepperSpec(step = step, min = 0.0, max = maxMs.toDouble(), unit = " ms", zeroLabel = zeroLabel, label = label)
 
-/** Voice & Speech settings (v3), reached from Settings, Listen, and the reader's settings sheet. */
-internal fun ScreenHost.showTtsSettings(keepDraft: Boolean = false) {
-    rerender = { showTtsSettings(keepDraft = true) }
-    val saved = repository.ttsSettings.get()
-    if (!keepDraft || ttsDraft == null) ttsDraft = TtsSpeechDraft.of(saved)
+/**
+ * The Listening settings page (v3): the voice (engine, voice, Google's pitch, built-in models),
+ * where chapter audio generates and how far ahead, behavior, pauses, and a sample. Everything saves
+ * as it changes; playback speed lives on the player.
+ */
+internal fun ScreenHost.showTtsSettings() {
+    rerender = { showTtsSettings() }
+    val host = this
+    val saved = unsavedTts ?: repository.ttsSettings.get()
     val engines = TtsEngineCatalog.choices(app)
     val phoneEngine = TtsEngineCatalog.phoneDefault(app)
     val engineLabel = TtsEnginePlanning.label(saved.enginePackage, engines, phoneEngine)
-    // The draft laid over the latest saved settings, so engine, voice and profiles are always current.
-    val current: () -> TtsSettings = {
-        val latest = repository.ttsSettings.get()
-        ttsDraft?.applyTo(latest) ?: latest
-    }
-    lateinit var bar: DockedSaveBar
-
-    fun update(change: (TtsSettings) -> TtsSettings) {
-        ttsDraft = TtsSpeechDraft.of(change(current()))
-        bar.show(current() != repository.ttsSettings.get())
-    }
-    bar =
-        DockedSaveBar(app, "Save TTS") {
-            val toSave = current()
+    val current: () -> TtsSettings = { unsavedTts ?: repository.ttsSettings.get() }
+    val handler = Handler(Looper.getMainLooper())
+    val save =
+        Runnable {
+            val toSave = unsavedTts ?: return@Runnable
             scope.launch {
-                persistTtsSettings(toSave)
-                ttsDraft = null
-                toast("Voice settings saved")
-                showTtsSettings()
+                try {
+                    persistTtsSettings(toSave)
+                } finally {
+                    if (unsavedTts === toSave) unsavedTts = null
+                }
             }
         }
-    val subtitle = "${engineLabel.removeSuffix(
-        " (built in)",
-    )} · ${ttsVoiceLabel(saved.voiceIdentifier, saved.enginePackage).substringBefore(" (")}"
-    screen(route = AppRoute.TtsSettings, title = "Voice & Speech", subtitle = subtitle, fullWidthBody = true) {
-        scrollWithDockedBar(this, bar) {
-            addSavedSessionCard(this)
-            section("Profile")
-            addView(ttsProfileCard(saved, current))
-            section("Voice")
-            settingsGroup {
-                valueRow("Engine", engineLabel, R.drawable.wna_speaker) { showTtsEnginePicker(engines, phoneEngine, current) }
-                valueRow(
-                    "Voice",
-                    ttsVoiceLabel(saved.voiceIdentifier, saved.enginePackage),
-                    R.drawable.wna_record_voice,
-                ) { showTtsVoicePicker(current) }
-                groupStepper("Rate", "Speaking speed", current().rate.toDouble(), RATE_SPEC) { value ->
-                    update { it.copy(rate = value.toFloat()) }
+
+    fun update(change: (TtsSettings) -> TtsSettings) {
+        unsavedTts = change(current())
+        handler.removeCallbacks(save)
+        handler.postDelayed(save, SAVE_DELAY_MS)
+    }
+    val document = narration.queueState.value
+    var serverRows: ServerRows? = null
+    screen(route = AppRoute.TtsSettings, title = "Listening", scrollable = true) {
+        capSettingsWidth(this)
+        section("Voice")
+        settingsGroup {
+            valueRow("Engine", engineLabel, R.drawable.wna_speaker) { showTtsEnginePicker(engines, phoneEngine, current) }
+            valueRow(
+                "Voice",
+                ttsVoiceLabel(saved.voiceIdentifier, saved.enginePackage),
+                R.drawable.wna_record_voice,
+            ) { showTtsVoicePicker(current) }
+            // Only Google's engine has a pitch control that does something.
+            if (TtsEnginePlanning.hasPitch(saved.enginePackage)) {
+                groupStepper("Pitch", null, saved.pitch.toDouble(), PITCH_SPEC) { value ->
+                    update { it.copy(pitch = value.toFloat()) }
                     null
                 }
-                // The built-in models have no pitch control, so a stepper would do nothing.
-                if (KokoroVoices.isEngine(saved.enginePackage)) {
-                    infoRow("Pitch", "Not available for built-in voices")
-                } else {
-                    groupStepper("Pitch", null, current().pitch.toDouble(), PITCH_SPEC) { value ->
-                        update { it.copy(pitch = value.toFloat()) }
-                        null
+            }
+        }
+        modelCards(saved).forEach { model ->
+            addView(
+                kokoroModelCard(model).apply {
+                    (layoutParams as LinearLayout.LayoutParams).topMargin = dp(Spacing.MD)
+                },
+            )
+        }
+        serverRows = setupSection(host, document)
+        section("Behavior")
+        settingsGroup {
+            switchRow(
+                "Replay a little after long breaks",
+                checked = saved.contextReplay,
+            ) { on -> update { it.copy(contextReplay = on) } }
+            switchRow("Say chapter titles", checked = saved.announceChapters) { on -> update { it.copy(announceChapters = on) } }
+            switchRow(
+                "Headphone and lock-screen skips move whole chapters",
+                "Off: they skip a short way within the chapter",
+                saved.chapterSkipButtons,
+            ) { on -> update { it.copy(chapterSkipButtons = on) } }
+        }
+        section("Pauses")
+        addPausesGroup(this, current) { change -> update(change) }
+        section("Try it")
+        addView(ttsSampleCard(current))
+        // Leaving the page saves a change still waiting for the stepper to settle.
+        addOnAttachStateChangeListener(
+            object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(view: View) = Unit
+
+                override fun onViewDetachedFromWindow(view: View) {
+                    handler.removeCallbacks(save)
+                    save.run()
+                }
+            },
+        )
+    }
+    screenObserver =
+        scope.launch {
+            launch { narration.serverStatus.collect { statuses -> serverRows?.bind(statuses) } }
+            // Online checks for the computers while the page is visible.
+            if (document.servers.isNotEmpty()) {
+                launch {
+                    app.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        while (true) {
+                            narration.refreshServerStatus(SERVER_CHECK_INTERVAL_MS)
+                            delay(SERVER_CHECK_TICK_MS)
+                        }
                     }
                 }
             }
-            modelCards(saved).forEach { model ->
-                addView(
-                    kokoroModelCard(model).apply {
-                        (layoutParams as LinearLayout.LayoutParams).topMargin = dp(Spacing.MD)
-                    },
-                )
-            }
-            section("Behavior")
-            settingsGroup {
-                switchRow(
-                    "Replay a little after long breaks",
-                    checked = current().contextReplay,
-                ) { on -> update { it.copy(contextReplay = on) } }
-                switchRow("Say chapter titles", checked = current().announceChapters) { on -> update { it.copy(announceChapters = on) } }
-                switchRow(
-                    "Headphone and lock-screen skips move whole chapters",
-                    "Off: they skip a short way within the chapter",
-                    current().chapterSkipButtons,
-                ) { on -> update { it.copy(chapterSkipButtons = on) } }
-            }
-            section("Pauses")
-            addPausesGroup(this, current) { change -> update(change) }
-            section("Try it")
-            addView(ttsSampleCard(current))
+            // A computer added, removed or chosen rebuilds the page; keep-ahead shows on its stepper.
+            narration.queueState
+                .map { Triple(it.servers, it.generateOnIds, it.phoneFallback) }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { if (navigator.current == AppRoute.TtsSettings) showTtsSettings() }
         }
-        bar.show(current() != repository.ttsSettings.get())
-    }
-}
-
-private fun ScreenHost.addSavedSessionCard(container: LinearLayout) {
-    val session = repository.getTtsSession() ?: return
-    val colors = ThemeManager.colors
-    container.tintedCard(colors.primary) {
-        addView(makeEyebrow(context, "Saved TTS session"))
-        addView(
-            makeText(
-                context,
-                "${session.chapterTitle}  ·  sentence ${session.currentChunkIndex + 1}",
-                Type.TITLE_SMALL,
-                colors.onSurface,
-            ).apply {
-                textSize = TITLE_SP
-            },
-        )
-        if (session.storyTitle.isNotBlank()) {
-            addView(makeText(context, session.storyTitle, Type.BODY_SMALL, colors.onSurfaceVariant).apply { setPadding(0, dp(2), 0, 0) })
-        }
-        addView(
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(
-                    makeButton(context, "Resume TTS", Btn.FILLED, R.drawable.wna_play) {
-                        TtsForegroundService.command(app, TtsForegroundService.ACTION_RESUME_SESSION)
-                    },
-                )
-                addView(
-                    makeButton(context, "Clear session", Btn.TEXT) {
-                        scope.launch {
-                            repository.clearTtsSession()
-                            showTtsSettings(keepDraft = true)
-                        }
-                    },
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        marginStart =
-                            dp(Spacing.SM)
-                    },
-                )
-            },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin =
-                    dp(Spacing.MD)
-            },
-        )
-    }
 }
 
 /** Real-time pauses: each lasts this long at any playback speed. */
@@ -230,9 +204,11 @@ private fun addPausesGroup(
             null
         }
     }
-    container.settingsNote("Pauses last this long at any speed. Only Rate changes the gaps between words.")
+    container.settingsNote("Pauses last this long at any speed. Playback speed changes only the gaps between words.")
 }
 
-private const val TITLE_SP = 15f
 private const val PHRASE_STEP_MS = 25.0
 private const val LONG_STEP_MS = 50.0
+private const val SAVE_DELAY_MS = 400L
+private const val SERVER_CHECK_INTERVAL_MS = 30_000L
+private const val SERVER_CHECK_TICK_MS = 5_000L
