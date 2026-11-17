@@ -568,6 +568,17 @@ class AppStorage(
         return resolveChapterPath(chapter.filePath)?.let { File(it).takeIf(File::exists)?.readText() }
     }
 
+    /**
+     * Changes whenever the chapter's stored text may have changed (its size and modification time,
+     * or its inline content), without reading the file; null when it has no text.
+     */
+    @Synchronized
+    fun chapterTextStamp(chapter: Chapter): String? {
+        chapter.content?.let { return "c${it.length}:${it.hashCode()}" }
+        val file = resolveChapterPath(chapter.filePath)?.let(::File)?.takeIf(File::isFile) ?: return null
+        return "f${file.length()}:${file.lastModified()}:${chapter.filePath}"
+    }
+
     /** File-metadata availability check: no full chapter read just to test for content. */
     @Synchronized
     fun chapterAvailable(chapter: Chapter): Boolean =

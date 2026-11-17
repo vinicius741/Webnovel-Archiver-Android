@@ -284,6 +284,9 @@ class AppRepository private constructor(
 
     suspend fun readChapter(chapter: Chapter): String? = withContext(ioDispatcher) { requiredStorage.readChapter(chapter) }
 
+    /** A cheap stamp of the chapter's stored text (no read); see [AppStorage.chapterTextStamp]. Call off the main thread. */
+    fun chapterTextStamp(chapter: Chapter): String? = requiredStorage.chapterTextStamp(chapter)
+
     suspend fun overwriteChapter(
         chapter: Chapter,
         html: String,

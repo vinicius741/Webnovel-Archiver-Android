@@ -11,6 +11,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.details.ChapterDragSelectionTouchListener
+import com.vinicius741.webnovelarchiver.feature.details.ChapterSelectionPlanning
 import com.vinicius741.webnovelarchiver.feature.details.storyScreen
 import com.vinicius741.webnovelarchiver.feature.narration.NarrationScreenPlanning.needsAudio
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
@@ -73,7 +75,7 @@ private val chapterAudioStates = HashMap<String, ChapterAudioViewState>()
 /**
  * One story's chapter audio: what "Read aloud" opens when a chapter is not generated yet. The live
  * generation banner stays pinned at the top; the list starts at the bookmark, and long-pressing a
- * chapter selects chapters to generate, regenerate or delete (a second long-press selects the range).
+ * chapter and dragging selects the chapters it passes over, to generate, regenerate or delete them.
  */
 internal fun ScreenHost.showNarrationStory(
     storyId: String,
@@ -114,15 +116,25 @@ internal fun ScreenHost.showNarrationStory(
     val header = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     val dynamicHeader = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     val chips = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
+    val drag = chapterAudioDrag(list, state, selection, ::rebuild)
     val adapter =
         ChapterAudioAdapter(
             header = header,
             bookmarkId = story.lastReadChapterId,
             selection = selection,
             onTap = { chapter, status -> host.showChapterMenu(storyId, chapter, status) },
-            onLongPress = { chapter -> selection.longPress(chapter.id, ::rebuild) },
+            onLongPress = { chapter ->
+                // A finger on the list makes the long-press a drag; this path is for TalkBack's long-press action.
+                if (drag.tracking) {
+                    false
+                } else {
+                    selection.longPress(chapter.id, ::rebuild)
+                    true
+                }
+            },
         )
     list.adapter = adapter
+    list.addOnItemTouchListener(drag)
     list.addItemDecoration(CardListDecoration(app) { position -> position >= 1 })
     selection.onChanged = { adapter.refreshSelection() }
     val liveStatus = NarrationLiveStatus(this, hideWhenIdle = true) { showNarration() }
@@ -254,6 +266,44 @@ private fun restorePosition(
     state.scrolledToFocus = focusId
 }
 
+/**
+ * Long-press a chapter and drag: every chapter the finger passes over is selected (or cleared, when
+ * the drag starts on a selected one), and the list scrolls near its edges. Starting outside selection
+ * mode enters it; the screen rebuilds with the selection bar once the finger lifts.
+ */
+private fun chapterAudioDrag(
+    list: RecyclerView,
+    state: ChapterAudioViewState,
+    selection: ChapterAudioSelection,
+    rebuild: () -> Unit,
+): ChapterDragSelectionTouchListener {
+    var enteredSelection = false
+    // The rows as the drag found them: the list can refresh under the finger (a chapter finishing).
+    var ids = emptyList<String>()
+    return ChapterDragSelectionTouchListener(
+        list = list,
+        currentSelection = { if (state.selecting) state.selected.toSet() else emptySet() },
+        // Position 0 is the header; chapter rows follow it.
+        isSelected = { position -> state.selecting && state.visible.getOrNull(position - 1)?.id in state.selected },
+        onDragStarted = {
+            ids = state.visible.map { it.id }
+            enteredSelection = selection.beginDrag()
+        },
+        onRangeChanged = { baseSelection, start, end, selecting ->
+            selection.paint(
+                ChapterSelectionPlanning.applyRange(baseSelection, ids, start - 1, end - 1, selecting),
+                anchor = ids.getOrNull(end - 1),
+            )
+        },
+        onDragFinished = {
+            // Posted: this runs inside the list's touch dispatch, which must not swap the screen out from under it.
+            if (enteredSelection) list.post { if (state.selecting) rebuild() }
+            enteredSelection = false
+        },
+        isDraggable = { position -> position >= 1 },
+    )
+}
+
 private fun selectionTitle(count: Int): String = if (count == 0) "Select chapters" else "$count selected"
 
 /** Selection of chapter rows; it never rebuilds the screen, only retitles it and refreshes rows. */
@@ -272,7 +322,28 @@ private class ChapterAudioSelection(
         changed()
     }
 
-    /** Long-press: the first one starts selecting from that chapter, a later one selects the range up to it. */
+    /** Starts selection mode for a drag, unless already selecting; true when it did. */
+    fun beginDrag(): Boolean {
+        if (state.selecting) return false
+        state.selecting = true
+        state.selected.clear()
+        state.anchor = null
+        changed()
+        return true
+    }
+
+    /** A drag moved: [selected] is the whole new selection. */
+    fun paint(
+        selected: Set<String>,
+        anchor: String?,
+    ) {
+        state.selected.clear()
+        state.selected += selected
+        if (anchor != null) state.anchor = anchor
+        changed()
+    }
+
+    /** Long-press without touch (TalkBack): the first starts selecting from that chapter, a later one selects the range up to it. */
     fun longPress(
         chapterId: String,
         rebuild: () -> Unit,
@@ -356,7 +427,7 @@ private fun ScreenHost.buildStoryHeader(
         queuePositionCard(this@buildStoryHeader, story)
         if (state.selecting) {
             text(
-                "Tap chapters to select them. Long-press another chapter to select everything in between.",
+                "Tap chapters to select them, or long-press one and drag over the others.",
                 Type.BODY_SMALL,
                 ThemeManager.colors.onSurfaceVariant,
             ).apply { setPadding(0, dp(Space.SM), 0, 0) }

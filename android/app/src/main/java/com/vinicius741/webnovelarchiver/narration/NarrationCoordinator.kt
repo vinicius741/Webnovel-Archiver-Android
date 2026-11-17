@@ -3,10 +3,13 @@ package com.vinicius741.webnovelarchiver.narration
 import android.app.ActivityManager
 import android.content.Context
 import android.os.StatFs
+import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
@@ -64,8 +67,8 @@ class NarrationCoordinator internal constructor(
             generationAllowed = generationAllowed,
         )
 
-    /** Fingerprints of chapters with packs, by story/chapter and library content stamp. */
-    private val fingerprints = HashMap<Pair<String, String>, Pair<String, String?>>()
+    /** Fingerprints of chapters with packs, so chapter lists need not prepare every chapter's text. */
+    private val fingerprints = NarrationFingerprints(File(context.cacheDir, FINGERPRINTS_FILE), BuildConfig.VERSION_CODE.toString())
 
     /** The queue and its settings. */
     val queueState: StateFlow<NarrationQueueDocument> get() = queue.state
@@ -229,7 +232,6 @@ class NarrationCoordinator internal constructor(
     }
 
     private suspend fun onPublished(pack: NarrationPack) {
-        synchronized(fingerprints) { fingerprints.remove(pack.storyId to pack.chapterId) }
         // Keep-ahead refills only while that story is the one being listened to.
         val listening = listeningTo
         if (listening != null && listening.first == pack.storyId) keepAhead(pack.storyId, listening.second, listening.third)
@@ -284,8 +286,8 @@ class NarrationCoordinator internal constructor(
 
     /**
      * Statuses of a story's chapters ([only] limits which), for the screens. A chapter with a pack
-     * reads its text once to check it still matches; later calls reuse that while the chapter's
-     * download time and the cleanup rules are unchanged.
+     * reads its text once to check it still matches; later calls, also after a restart, reuse that
+     * while the chapter's stored text, download time and the cleanup rules are unchanged.
      */
     suspend fun statuses(
         story: Story,
@@ -293,39 +295,66 @@ class NarrationCoordinator internal constructor(
     ): Map<String, NarrationChapterStatus> =
         withContext(Dispatchers.IO) {
             store.awaitLoaded()
+            val startedAt = System.nanoTime()
             val document = queue.state.value
             val running = generator.progress.value
-            val queued = document.jobs.filter { it.storyId == story.id }
+            // The first job of each of this story's chapters, with its 1-based place in the whole queue.
+            val jobs = HashMap<String, IndexedValue<NarrationJob>>()
+            document.jobs.forEachIndexed { index, job ->
+                if (job.storyId == story.id) jobs.putIfAbsent(job.chapterId, IndexedValue(index + 1, job))
+            }
+            val chapters = story.chapters.filter { only == null || it.id in only }
+            val packs = chapters.filter { it.id !in jobs }.mapNotNull { chapter -> store.pack(story.id, chapter.id)?.let { chapter to it } }
+            val texts = fingerprintsOf(story, packs.map { it.first })
+            val packById = packs.associate { (chapter, pack) -> chapter.id to pack }
             val result = HashMap<String, NarrationChapterStatus>()
-            story.chapters.filter { only == null || it.id in only }.forEach { chapter ->
-                val job = queued.firstOrNull { it.chapterId == chapter.id }
-                val pack = store.pack(story.id, chapter.id)
+            chapters.forEach { chapter ->
+                val queued = jobs[chapter.id]
+                val job = queued?.value
                 result[chapter.id] =
                     when {
                         job != null && running?.job?.id == job.id -> NarrationChapterStatus.Generating(running.fraction)
                         job?.state == NarrationJobState.FAILED -> NarrationChapterStatus.Failed(job.error ?: "Failed")
-                        job != null -> NarrationChapterStatus.Queued(document.jobs.indexOf(job) + 1)
-                        pack == null -> NarrationChapterStatus.None
-                        fingerprintOf(story, chapter.id) == pack.recipe.textFingerprint -> NarrationChapterStatus.Ready(pack)
-                        else -> NarrationChapterStatus.Outdated(pack)
+                        queued != null -> NarrationChapterStatus.Queued(queued.index)
+                        else -> packStatus(packById[chapter.id], texts[chapter.id])
                     }
             }
+            val elapsedMs = (System.nanoTime() - startedAt) / NANOS_PER_MS
+            if (elapsedMs >= SLOW_STATUSES_MS) Timber.i("Narration statuses for %d chapters took %d ms", chapters.size, elapsedMs)
             result
         }
 
-    private suspend fun fingerprintOf(
+    private fun packStatus(
+        pack: NarrationPack?,
+        fingerprint: String?,
+    ): NarrationChapterStatus =
+        when {
+            pack == null -> NarrationChapterStatus.None
+            fingerprint == pack.recipe.textFingerprint -> NarrationChapterStatus.Ready(pack)
+            else -> NarrationChapterStatus.Outdated(pack)
+        }
+
+    /** Fingerprints of [chapters]' current text, by chapter id, from the cache where still valid. */
+    private suspend fun fingerprintsOf(
         story: Story,
-        chapterId: String,
-    ): String? {
-        val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return null
-        val key = story.id to chapterId
-        val stamp =
-            "${repository.libraryGeneration()}|${repository.downloadState.value.libraryVersion}|" +
-                "${chapter.downloadedAt}|${repository.regexRules.get().hashCode()}|${TtsTextPreparation.CHUNKING_VERSION}"
-        synchronized(fingerprints) { fingerprints[key]?.takeIf { it.first == stamp }?.let { return it.second } }
-        val fingerprint = source.chapter(story.id, chapterId)?.fingerprint
-        synchronized(fingerprints) { fingerprints[key] = stamp to fingerprint }
-        return fingerprint
+        chapters: List<Chapter>,
+    ): Map<String, String?> {
+        if (chapters.isEmpty()) return emptyMap()
+        val rules = repository.regexRules.get()
+        val rulesStamp = rules.hashCode()
+        val byId = chapters.associateBy { it.id }
+        return fingerprints.of(
+            storyId = story.id,
+            chapterIds = chapters.map { it.id },
+            stampOf = { id ->
+                val chapter = byId.getValue(id)
+                repository.chapterTextStamp(chapter)?.let { text ->
+                    "$text|${chapter.downloadedAt}|$rulesStamp|${TtsTextPreparation.CHUNKING_VERSION}"
+                }
+            },
+            compute = { id -> source.chapter(story, byId.getValue(id), rules)?.fingerprint },
+            keep = { storyId, chapterId -> store.pack(storyId, chapterId) != null },
+        )
     }
 
     /** Estimated audio length of chapters from their text length (reads them; off the main thread). */
@@ -583,6 +612,9 @@ class NarrationCoordinator internal constructor(
     companion object {
         const val ROOT_DIR = "narration"
         private const val QUEUE_FILE = "queue.json"
+        private const val FINGERPRINTS_FILE = "narration_fingerprints.txt"
+        private const val NANOS_PER_MS = 1_000_000L
+        private const val SLOW_STATUSES_MS = 100L
         private const val GOOGLE_TTS = "com.google.android.tts"
         private const val SPEED_TEST_WAIT_MS = 60_000L
         private val TEST_SENTENCES =
@@ -606,8 +638,17 @@ private class RepositoryNarrationSource(
     ): NarrationChapterText? {
         val story = repository.story(storyId) ?: return null
         val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return null
+        return chapter(story, chapter, repository.regexRules.get())
+    }
+
+    /** [chapter]'s text, for callers that already hold the story and the cleanup rules. */
+    suspend fun chapter(
+        story: Story,
+        chapter: Chapter,
+        rules: List<RegexCleanupRule>,
+    ): NarrationChapterText? {
         val html = repository.readChapter(chapter) ?: chapter.content ?: return null
-        val narration = TtsTextPreparation.prepareTtsNarration(html, repository.regexRules.get())
+        val narration = TtsTextPreparation.prepareTtsNarration(html, rules)
         return NarrationChapterText(
             storyTitle = story.title,
             chapterTitle = chapter.title,
