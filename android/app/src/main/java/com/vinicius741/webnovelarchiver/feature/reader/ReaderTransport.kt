@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.reader
 
 import android.view.Gravity
-import android.webkit.WebView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
@@ -50,19 +49,6 @@ internal fun currentReaderSnapshot(
         totalChunks = chunkCount,
         isPlaying = !session.isPaused,
     )
-}
-
-internal fun applyHighlight(
-    reader: WebView,
-    chunkIndex: Int?,
-    totalChunks: Int,
-) {
-    if (totalChunks <= 0 && chunkIndex == null) {
-        reader.evaluateJavascript("if(window.WnaTts){WnaTts.setActive(null);}", null)
-        return
-    }
-    val safeIndex = chunkIndex ?: return
-    reader.evaluateJavascript("if(window.WnaTts){WnaTts.setActive($safeIndex);}", null)
 }
 
 internal fun ScreenHost.readerTtsTransport(

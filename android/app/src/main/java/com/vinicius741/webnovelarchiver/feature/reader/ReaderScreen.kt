@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.feature.reader
 
 import android.view.Gravity
 import android.view.View
-import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
@@ -15,7 +14,6 @@ import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.feature.narration.playIfGenerated
 import com.vinicius741.webnovelarchiver.feature.player.nextRatePreset
@@ -29,50 +27,28 @@ import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
-import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
-import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutPlanning
 import com.vinicius741.webnovelarchiver.ui.layout.readerSidePadding
 import com.vinicius741.webnovelarchiver.ui.makeSheetRow
-import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.ripple
-import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.showBottomSheet
 import com.vinicius741.webnovelarchiver.ui.showReaderSettingsPanel
-import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import java.lang.ref.WeakReference
-
-internal var activeReaderTtsStateJob: Job? = null
-
-/** The page of the reader rendered last, so a sheet left open across a re-render reaches the new one. */
-private var activeReaderPage: WeakReference<WebView>? = null
-
-internal fun ScreenHost.detachReaderTtsListener() {
-    activeReaderTtsStateJob?.cancel()
-    activeReaderTtsStateJob = null
-}
 
 internal fun ScreenHost.showReader(
     storyId: String,
     chapterId: String,
 ) {
-    detachReaderTtsListener()
-    lastRequestedReaderChapterId = chapterId
     ActivityLog.record(ActivityCategory.READER, "chapter_opened", "storyId" to storyId, "chapterId" to chapterId)
     rerender = { showReader(storyId, chapterId) }
     val palette = readerDocumentPalette()
@@ -105,6 +81,7 @@ internal fun ScreenHost.showReader(
                     if (readerStillCurrent()) {
                         renderReaderUnavailable(
                             storyId,
+                            chapterId,
                             "Chapter unavailable",
                             "This story or chapter is no longer in your library.",
                         )
@@ -115,6 +92,7 @@ internal fun ScreenHost.showReader(
                         timber.log.Timber.w(preparation.cause, "Reader preparation failed")
                         renderReaderUnavailable(
                             storyId,
+                            chapterId,
                             "Could not open chapter",
                             "Couldn't open this chapter.",
                             retry = true,
@@ -127,6 +105,7 @@ internal fun ScreenHost.showReader(
 /** Terminal Reader state for missing/failed preparation: explicit message + Back/Retry. */
 private fun ScreenHost.renderReaderUnavailable(
     storyId: String,
+    chapterId: String,
     title: String,
     message: String,
     retry: Boolean = false,
@@ -143,21 +122,16 @@ private fun ScreenHost.renderReaderUnavailable(
                 message = message,
                 iconRes = R.drawable.wna_menu_book,
                 actionLabel = if (retry) "Retry" else null,
-                onAction = if (retry) ({ showReader(storyId, lastRequestedReaderChapterId ?: return@makeEmptyState) }) else null,
+                onAction = if (retry) ({ showReader(storyId, chapterId) }) else null,
             ),
         )
     }
 }
 
-/** The chapter id of the most recent Reader request, so Retry can re-issue it after a failure. */
-internal var lastRequestedReaderChapterId: String? = null
-
 private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
     val story = document.story
     val chapter = document.chapter
     val currentIndex = document.chapterIndex
-    val annotated = document.annotated
-    val display = document.display
     val layout = currentScreenLayout()
     val pageColor = cssColorToInt(document.colors.background)
     val reader =
@@ -167,35 +141,12 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             // Perf sessions only: onPageFinished marks actual content presentation.
             attachReaderPaintTracking(this)
             setBackgroundColor(pageColor)
+            tag = READER_PAGE_TAG
         }
-    activeReaderPage = WeakReference(reader)
-
-    // Replay + live snapshots drive the highlight and transport; other chapters' snapshots are ignored.
-    var transportSnapshot: TtsPlaybackSnapshot? =
-        currentReaderSnapshot(document.persistedSession, story.id, chapter.id, annotated.chunks.size)
-    var following = true
-    val pill = followPill { reader.evaluateJavascript("if(window.WnaTts&&WnaTts.follow){WnaTts.follow();}", null) }
-
-    fun refreshPill() {
-        val snapshot = transportSnapshot
-        pill.visibility = if (!following && snapshot != null && !snapshot.isPaused) View.VISIBLE else View.GONE
-    }
-
-    val ttsBridge =
-        ReaderTtsBridge(
-            this,
-            story,
-            chapter,
-            onFollowChanged = { value ->
-                following = value
-                refreshPill()
-            },
-        )
-    ttsBridge.activeChunk = transportSnapshot?.chunkIndex ?: -1
-    reader.addJavascriptInterface(ttsBridge, "AndroidBridge")
 
     // While this chapter is read aloud the bottom chrome swaps to the docked player: chapter
     // navigation is too easy to hit by accident and would break playback.
+    lateinit var readAlong: ReaderReadAlong
     val dock =
         ReaderPlayerDock(
             app,
@@ -205,7 +156,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                     // live engine session shows a phantom Pause icon — resume then.
                     val live = ttsEngine.playbackState.value.snapshot
                     val action =
-                        if (live == null || transportSnapshot?.isPaused != false) {
+                        if (live == null || readAlong.state.snapshot?.isPaused != false) {
                             TtsForegroundService.ACTION_RESUME_SESSION
                         } else {
                             TtsForegroundService.ACTION_PAUSE
@@ -216,59 +167,32 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                 cycleRate = {
                     val rate =
                         ttsEngine.playbackState.value.snapshot
-                            ?.rate ?: transportSnapshot?.rate ?: 1f
+                            ?.rate ?: readAlong.state.snapshot?.rate ?: 1f
                     TtsForegroundService.setRate(app, nextRatePreset(rate))
                 },
                 openPlayer = { showPlayer() },
                 close = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
             ),
         )
-    transportSnapshot?.let(dock::applySnapshot)
+    val pill = followPill { readAlong.follow() }
     var dockHolder: View? = null
     var navHolder: View? = null
 
-    fun applyBottomChrome(ttsActive: Boolean) {
-        dockHolder?.visibility = if (ttsActive) View.VISIBLE else View.GONE
-        navHolder?.visibility = if (ttsActive) View.GONE else View.VISIBLE
-        refreshPill()
+    fun showReadAlong(state: ReadAlongState) {
+        state.snapshot?.let(dock::applySnapshot)
+        dockHolder?.visibility = if (state.showsPlayer) View.VISIBLE else View.GONE
+        navHolder?.visibility = if (state.showsPlayer) View.GONE else View.VISIBLE
+        pill.visibility = if (state.showsPill) View.VISIBLE else View.GONE
     }
-    activeReaderTtsStateJob?.cancel()
-    activeReaderTtsStateJob =
-        scope.launch {
-            ttsEngine.playbackState.collect { update ->
-                val snapshot = update.snapshot
-                // Auto-follow only while this reader chapter is the screen the user is looking at —
-                // otherwise a chapter transition elsewhere (player skip, background auto-advance)
-                // would hijack whatever screen is currently open.
-                val route = navigator.current
-                val readerIsCurrent =
-                    route is AppRoute.Reader && route.storyId == story.id && route.chapterId == chapter.id
-                val chapterToOpen = TtsPlaybackState.readerChapterTransition(story.id, chapter.id, snapshot)
-                if (readerIsCurrent && chapterToOpen != null && story.chapters.any { it.id == chapterToOpen }) {
-                    // Auto-advance swaps the session before the next chapter's first snapshot: rebuild to follow.
-                    showReader(story.id, chapterToOpen)
-                    return@collect
-                }
-                val relevant =
-                    TtsPlaybackState.snapshotAfterUpdate(
-                        current = transportSnapshot,
-                        update = update,
-                        storyId = story.id,
-                        chapterId = chapter.id,
-                    )
-                // A session that starts (again) in this chapter follows the spoken sentence afresh.
-                if (transportSnapshot == null && relevant != null && !following) {
-                    reader.evaluateJavascript("if(window.WnaTts&&WnaTts.follow){WnaTts.follow();}", null)
-                }
-                transportSnapshot = relevant
-                ttsBridge.activeChunk = relevant?.chunkIndex ?: -1
-                // Toggled (not add/remove) so a session starting after this build swaps the chrome live.
-                if (relevant != null) dock.applySnapshot(relevant)
-                applyBottomChrome(relevant != null)
-                // Async + non-reloading, so no page flash; a null snapshot clears the highlight.
-                applyHighlight(reader, relevant?.chunkIndex, relevant?.totalChunks ?: 0)
-            }
-        }
+    readAlong =
+        ReaderReadAlong(
+            host = this,
+            page = reader,
+            storyId = story.id,
+            chapterId = chapter.id,
+            initial = currentReaderSnapshot(document.persistedSession, story.id, chapter.id, document.annotated.chunks.size),
+            onChange = ::showReadAlong,
+        )
 
     screen(
         route = AppRoute.Reader(story.id, chapter.id),
@@ -279,7 +203,6 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         setBackgroundColor(pageColor)
         reader.loadDataWithBaseURL(null, document.webViewHtml, "text/html", "utf-8", null)
         recordReaderPresentedForPerf()
-        // The initial highlight is pulled by the page itself through ttsBridge.activeTtsGroup().
         val sidePad = readerSidePadding(layout.widthClass)
         val page =
             FrameLayout(context).apply {
@@ -322,9 +245,14 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             )
         navHolder = bottomDock(nav).also { addView(it) }
         dockHolder = bottomDock(dock.view).also { addView(it) }
-        applyBottomChrome(transportSnapshot != null)
+        showReadAlong(readAlong.state)
     }
 }
+
+/** The reader page on screen now, if any: sheets that outlive a re-render act on this one. */
+private fun ScreenHost.currentReaderPage(): WebView? = frame.findViewWithTag(READER_PAGE_TAG)
+
+private const val READER_PAGE_TAG = "reader_page"
 
 /** App-bar actions: bookmark (ivory when this chapter holds it), read aloud, reader settings. */
 private fun ScreenHost.readerActions(document: ReaderDocument): List<AppBarAction> {
@@ -357,7 +285,7 @@ private fun ScreenHost.readerActions(document: ReaderDocument): List<AppBarActio
                 onFontScale = { scale ->
                     val px = (BASE_FONT_PX * scale).toInt()
                     if (readerOfStory(story) != null) {
-                        activeReaderPage?.get()?.evaluateJavascript("document.body.style.fontSize='${px}px';", null)
+                        currentReaderPage()?.evaluateJavascript("document.body.style.fontSize='${px}px';", null)
                     }
                 },
                 onRerender = { readerOfStory(story)?.let { showReader(it.storyId, it.chapterId) } },
@@ -369,60 +297,6 @@ private fun ScreenHost.readerActions(document: ReaderDocument): List<AppBarActio
             )
         },
     )
-}
-
-/**
- * Minimal JS-to-native surface: the injected script calls onTtsStart(index) on a double-tap,
- * onFollowChanged when the reader drags away from (or back to) the spoken sentence, and
- * onNextChapter from the end-of-chapter card; it reads activeTtsGroup() once the page has loaded,
- * since highlights sent before then are lost.
- */
-private class ReaderTtsBridge(
-    private val host: ScreenHost,
-    private val story: Story,
-    private val chapter: Chapter,
-    private val onFollowChanged: (Boolean) -> Unit,
-) {
-    /** Written on the main thread by the playback collector; read on the WebView's bridge thread. */
-    @Volatile
-    var activeChunk: Int = -1
-
-    @JavascriptInterface
-    fun activeTtsGroup(): Int = activeChunk
-
-    @JavascriptInterface
-    fun onTtsStart(index: Int) {
-        val clamped = index.coerceAtLeast(0)
-        host.app.runOnUiThread {
-            val latest = host.repository.story(story.id) ?: story
-            val currentChapter = latest.chapters.firstOrNull { it.id == chapter.id } ?: return@runOnUiThread
-            host.playIfGenerated(latest.id, currentChapter.id) {
-                TtsForegroundService.startFromChunk(host.app, latest.id, currentChapter.id, clamped)
-            }
-        }
-    }
-
-    @JavascriptInterface
-    fun onFollowChanged(following: Boolean) {
-        host.app.runOnUiThread { onFollowChanged.invoke(following) }
-    }
-
-    @JavascriptInterface
-    fun onNextChapter() {
-        host.app.runOnUiThread {
-            val route = host.navigator.current
-            if (route !is AppRoute.Reader || route.storyId != story.id || route.chapterId != chapter.id) return@runOnUiThread
-            // With this story's session loaded the reader follows the spoken chapter, so opening the
-            // next one directly would bounce back; move the session instead (it keeps a pause).
-            if (host.ttsEngine.playbackState.value.snapshot
-                    ?.storyId == story.id
-            ) {
-                TtsForegroundService.command(host.app, TtsForegroundService.ACTION_NEXT_CHAPTER)
-            } else {
-                host.navigateChapter(host.repository.story(story.id) ?: story, chapter, 1)
-            }
-        }
-    }
 }
 
 /**
