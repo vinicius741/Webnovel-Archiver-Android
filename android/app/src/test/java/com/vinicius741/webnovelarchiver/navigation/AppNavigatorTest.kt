@@ -124,7 +124,7 @@ class AppNavigatorTest {
 
     @Test
     fun `back without history walks up the parent chain to the library`() {
-        val navigator = AppNavigator(AppRoute.Notifications)
+        val navigator = AppNavigator(AppRoute.TtsSettings)
 
         assertTrue(navigator.canGoBack)
         assertEquals(AppRoute.Settings, navigator.back())
@@ -164,7 +164,7 @@ class AppNavigatorTest {
         assertNull(AppRoute.Library.parent)
         assertEquals(AppRoute.Library, AppRoute.Trends("story", "score").parent)
         assertEquals(AppRoute.Details("story"), AppRoute.PatreonAccount("story").parent)
-        assertEquals(AppRoute.DataBackup, AppRoute.PatreonAccount().parent)
+        assertEquals(AppRoute.Settings, AppRoute.PatreonAccount().parent)
         assertEquals(AppRoute.Settings, AppRoute.CleanupRules.parent)
         assertEquals(AppRoute.Library, AppRoute.Player.parent)
     }

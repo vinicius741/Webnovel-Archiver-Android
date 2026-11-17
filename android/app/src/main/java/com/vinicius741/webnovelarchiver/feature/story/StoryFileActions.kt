@@ -92,6 +92,20 @@ internal fun ScreenHost.share(file: File) {
     app.startActivity(Intent.createChooser(intent, "Share ${file.name}"))
 }
 
+/** Shares several files in one chooser, for exports that belong together. */
+internal fun ScreenHost.shareAll(
+    files: List<File>,
+    title: String,
+) {
+    if (files.size == 1) return share(files.single())
+    val intent =
+        Intent(Intent.ACTION_SEND_MULTIPLE)
+            .setType("*/*")
+            .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(files.map(::fileUri)))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    app.startActivity(Intent.createChooser(intent, title))
+}
+
 internal fun ScreenHost.exportAndShare(
     exporter: suspend () -> File,
     onFinally: (() -> Unit)? = null,

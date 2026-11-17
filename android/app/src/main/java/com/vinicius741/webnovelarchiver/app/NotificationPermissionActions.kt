@@ -14,16 +14,10 @@ import com.vinicius741.webnovelarchiver.notification.NotificationSettingsPlannin
  * Notification-permission actions, split out of [MainActivity] so the activity keeps only lifecycle
  * wiring. These run against the [ScreenHost.app] activity (for the launcher, SharedPreferences, and
  * lifecycle state) — they read no private activity fields beyond the launcher exposed on
- * [ScreenHost]. Mirrors the existing `importBackupLauncher` exposure pattern.
+ * [ScreenHost]. Mirrors the existing `importFullBackupLauncher` exposure pattern.
  */
 private const val NOTIFICATION_PERMISSION_PREFERENCES = "notification_permission"
 private const val KEY_AUTOMATIC_NOTIFICATION_PROMPT_SHOWN = "automatic_prompt_shown"
-
-internal fun ScreenHost.notificationPermissionActionLabel(): String =
-    when (notificationPermissionAction()) {
-        NotificationPermissionAction.REQUEST_PERMISSION -> "Allow notifications"
-        NotificationPermissionAction.OPEN_APP_SETTINGS -> "Open app notification settings"
-    }
 
 internal fun ScreenHost.performNotificationPermissionAction() {
     when (notificationPermissionAction()) {

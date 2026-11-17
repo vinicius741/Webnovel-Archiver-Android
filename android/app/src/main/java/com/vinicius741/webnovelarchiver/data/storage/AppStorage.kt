@@ -300,7 +300,8 @@ class AppStorage(
 
     @Synchronized
     fun clearAll() {
-        root.deleteRecursively()
+        // Backups survive: the confirm tells the user to make one first, and they live in here.
+        root.listFiles()?.filter { it.canonicalPath != backupRoot.canonicalPath }?.forEach { it.deleteRecursively() }
         root.mkdirs()
         storyDir.mkdirs()
         metricDir.mkdirs()
@@ -690,25 +691,13 @@ class AppStorage(
     // ──────────────────────────────────────────────────────────────────────────────
     // Backup / restore. The full implementation lives in
     // [BackupRestoreCoordinator] so this class stays focused on JSON CRUD + path resolution.
-    // These methods keep the original public surface so callers (SettingsScreen, MainActivity,
-    // CleanupScreen) are unchanged.
     // ──────────────────────────────────────────────────────────────────────────────
-
-    fun exportBackup(): File = backupRestore.exportBackup()
-
-    fun exportCleanupRules(): File = backupRestore.exportCleanupRules()
 
     fun exportFullBackup(onProgress: (String) -> Unit = {}): File = backupRestore.exportFullBackup(onProgress)
 
     fun importBackupUri(uri: Uri): String = backupRestore.importBackupUri(uri)
 
     fun importFullBackupUri(uri: Uri): String = backupRestore.importFullBackupUri(uri)
-
-    /** Merges downloaded chapters from a full backup into the live library; see [BackupChapterRecovery]. */
-    fun recoverChaptersFromBackup(
-        uri: Uri,
-        keyFor: (Story) -> (Chapter) -> String,
-    ): BackupChapterRecoveryResult = backupRestore.recoverChaptersFromBackup(uri, keyFor)
 
     private fun saveStoryOnly(story: Story) {
         story.totalChapters = story.chapters.size

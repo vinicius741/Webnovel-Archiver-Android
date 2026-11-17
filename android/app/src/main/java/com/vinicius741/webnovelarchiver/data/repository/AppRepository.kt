@@ -9,7 +9,6 @@ import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogLibraryStats
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverResultKind
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
-import com.vinicius741.webnovelarchiver.data.storage.BackupChapterRecoveryResult
 import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
 import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
@@ -311,10 +310,6 @@ class AppRepository private constructor(
         path: String,
     ): Boolean = withContext(ioDispatcher) { requiredStorage.deleteEpubFile(storyId, path) }
 
-    suspend fun exportBackup(): File = loggedBackup("json_export") { withContext(ioDispatcher) { requiredStorage.exportBackup() } }
-
-    suspend fun exportCleanupRules(): File = withContext(ioDispatcher) { requiredStorage.exportCleanupRules() }
-
     suspend fun exportFullBackup(onProgress: (String) -> Unit = {}): File =
         loggedBackup("full_export") { withContext(ioDispatcher) { requiredStorage.exportFullBackup(onProgress) } }
 
@@ -349,22 +344,6 @@ class AppRepository private constructor(
             throw error
         }
     }
-
-    /**
-     * Adds back downloaded chapters a full backup has and the live library lacks, without replacing
-     * anything. Unlike a restore it does not invalidate the library generation: the library and the
-     * download queue stay, so an in-flight download must still be able to commit (a rejected one
-     * would sit in Downloading until the next cold start). A sync that started before it is covered
-     * by [keepDownloadedChapters], which keeps the recovered chapters its stale list lacks.
-     */
-    suspend fun recoverChaptersFromBackup(uri: Uri): BackupChapterRecoveryResult =
-        storageTransaction {
-            try {
-                requiredStorage.recoverChaptersFromBackup(uri, ::storyChapterKey)
-            } finally {
-                refresh()
-            }
-        }
 
     suspend fun clearAll() = replaceLibrary { requiredStorage.clearAll() }
 

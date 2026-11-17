@@ -88,8 +88,6 @@ sealed class AppRoute(
 
     data object Settings : AppRoute("settings")
 
-    data object Notifications : AppRoute("notifications")
-
     data object DownloadSettings : AppRoute("download_settings")
 
     data object TtsSettings : AppRoute("tts_settings")
@@ -157,8 +155,8 @@ sealed class AppRoute(
                 is ChapterSelection -> Details(storyId)
                 is LegacyEpubs -> Details(storyId)
                 is AuthorNovels -> Details(storyId)
-                is PatreonAccount -> storyId?.let(::Details) ?: DataBackup
-                Notifications, DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
+                is PatreonAccount -> storyId?.let(::Details) ?: Settings
+                DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
                 else -> Library
             }
 }
@@ -208,7 +206,8 @@ object AppRouteCodec {
             "player" -> AppRoute.Player
             "narration" -> AppRoute.Narration
             "settings" -> AppRoute.Settings
-            "notifications" -> AppRoute.Notifications
+            // The Notifications page was replaced by one Settings row; a saved route lands there.
+            "notifications" -> AppRoute.Settings
             "download_settings" -> AppRoute.DownloadSettings
             "tts_settings" -> AppRoute.TtsSettings
             "ai_settings" -> AppRoute.AiSettings

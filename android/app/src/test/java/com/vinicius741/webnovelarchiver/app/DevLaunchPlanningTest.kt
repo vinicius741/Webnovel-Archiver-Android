@@ -43,10 +43,6 @@ class DevLaunchPlanningTest {
             DevLaunchPlanning.resolve("settings", null, null, provider),
         )
         assertEquals(
-            AppRoute.Notifications,
-            DevLaunchPlanning.resolve("notifications", null, null, provider),
-        )
-        assertEquals(
             AppRoute.AppUpdate,
             DevLaunchPlanning.resolve("appupdate", null, null, provider),
         )

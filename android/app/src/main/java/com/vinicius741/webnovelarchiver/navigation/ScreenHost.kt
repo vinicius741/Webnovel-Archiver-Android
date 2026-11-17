@@ -49,7 +49,6 @@ class AddStoryScreenState {
 }
 
 enum class BackupExportKind {
-    JSON,
     FULL,
 }
 
@@ -156,10 +155,7 @@ interface ScreenHost {
     /** Renders an already-selected route, used by back navigation and saved-state restoration. */
     fun renderRoute(route: AppRoute)
 
-    /** User-facing label for the current app-level notification permission action. */
-    fun notificationPermissionActionLabel(): String
-
-    /** Performs the explicit notification action shown on the Notifications settings screen. */
+    /** Performs the notification action behind the Settings "Notifications" row. */
     fun performNotificationPermissionAction()
 
     /** Shows the one-time contextual Android 13+ permission request before a user-started download. */
@@ -234,8 +230,6 @@ interface ScreenHost {
 
     /** Foldable hinge/inner-display detector (androidx.window). Read on every screen render. */
     val foldTracker: FoldTracker
-    val importBackupLauncher: ActivityResultLauncher<Array<String>>
     val importFullBackupLauncher: ActivityResultLauncher<Array<String>>
-    val recoverChaptersLauncher: ActivityResultLauncher<Array<String>>
     val notificationPermissionLauncher: ActivityResultLauncher<String>
 }

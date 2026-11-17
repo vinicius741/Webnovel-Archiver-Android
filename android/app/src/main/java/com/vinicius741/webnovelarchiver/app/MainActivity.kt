@@ -37,7 +37,7 @@ import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
-import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
+import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
@@ -74,7 +74,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.vinicius741.webnovelarchiver.app.notificationPermissionActionLabel as notificationPermissionActionLabelExt
 import com.vinicius741.webnovelarchiver.app.performNotificationPermissionAction as performNotificationPermissionActionExt
 import com.vinicius741.webnovelarchiver.app.requestNotificationPermissionForDownload as requestNotificationPermissionForDownloadExt
 
@@ -149,7 +148,7 @@ class MainActivity :
 
     override val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-            if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
+            if (uiReady && navigator.current == AppRoute.Settings) showSettings()
         }
 
     override var screenBack: ScreenBack? = null
@@ -161,23 +160,6 @@ class MainActivity :
     override fun refreshBackCallback() {
         backCallback.isEnabled = screenBack?.handlesBack == true
     }
-
-    override val importBackupLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            uri ?: return@registerForActivityResult
-            // A failed import must return the user to the backup screen with a visible error,
-            // not die in the coroutine handler.
-            runUiOperation(
-                "import json backup",
-                onExpectedError = { error ->
-                    toast(error.message ?: "Import failed")
-                    showDataBackup()
-                },
-            ) {
-                toast(repository.importBackupUri(uri))
-                showDataBackup()
-            }
-        }
 
     override val importFullBackupLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -199,26 +181,6 @@ class MainActivity :
                 } else {
                     showLibrary()
                 }
-            }
-        }
-
-    override val recoverChaptersLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            uri ?: return@registerForActivityResult
-            runUiOperation(
-                "recover chapters from backup",
-                onExpectedError = { error ->
-                    toast(error.message ?: "Recovery failed")
-                    showDataBackup()
-                },
-            ) {
-                toast("Recovering chapters from the backup...")
-                val result = repository.recoverChaptersFromBackup(uri)
-                showDataBackup()
-                alert(
-                    if (result.succeeded) "Chapter recovery" else "Chapter recovery incomplete",
-                    (listOf(result.message) + result.details).joinToString("\n"),
-                )
             }
         }
 
@@ -394,7 +356,8 @@ class MainActivity :
         super.onResume()
         SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
         SourceCheckOutcomes.returnedToApp(DevEnvironment.active?.time?.nowMillis() ?: System.currentTimeMillis())
-        if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
+        // Returning from Android's notification settings: refresh the Settings row.
+        if (uiReady && navigator.current == AppRoute.Settings) showSettings()
         // Returning from Firefox: refresh which setup steps are done.
         if (uiReady && navigator.current is AppRoute.PatreonAccount) rerender?.invoke()
         // Returning from the browser: refresh the "checked" time and state.
@@ -543,8 +506,6 @@ class MainActivity :
         window.navigationBarColor = ThemeManager.colors.background
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
     }
-
-    override fun notificationPermissionActionLabel(): String = notificationPermissionActionLabelExt()
 
     override fun performNotificationPermissionAction() {
         performNotificationPermissionActionExt()

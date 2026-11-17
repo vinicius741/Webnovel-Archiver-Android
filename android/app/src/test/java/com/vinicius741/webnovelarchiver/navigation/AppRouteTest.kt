@@ -21,7 +21,6 @@ class AppRouteTest {
                 AppRoute.ChapterSelection("story", setOf("chapter:2", "chapter 1")),
                 AppRoute.AiControls("story:/ ünicode"),
                 AppRoute.AuthorNovels("story:/ ünicode"),
-                AppRoute.Notifications,
                 AppRoute.CleanupRules,
                 AppRoute.AppUpdate,
             )
