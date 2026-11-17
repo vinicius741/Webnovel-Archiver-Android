@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -220,16 +221,10 @@ private fun ScreenHost.buildStoryTabStrip(
             View(app).apply {
                 background = if (on) roundedBg(colors.primary, dp(2).toFloat()) else null
             }
-        val item =
+        // The label and its gold bar share one width, centred in the tab however wide the tab grows.
+        val column =
             LinearLayout(app).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                isClickable = true
-                isFocusable = true
-                isSelected = on
-                contentDescription = listOfNotNull(label, count).joinToString(" ") + if (on) ", selected" else ""
-                background = selectableRipple(colors.onSurface)
-                setPadding(dp(TAB_SIDE_PADDING_DP), dp(Spacing.MD), dp(TAB_SIDE_PADDING_DP), 0)
                 addView(texts)
                 addView(
                     indicator,
@@ -237,6 +232,23 @@ private fun ScreenHost.buildStoryTabStrip(
                         topMargin =
                             dp(Spacing.MD - 1)
                     },
+                )
+            }
+        val item =
+            FrameLayout(app).apply {
+                isClickable = true
+                isFocusable = true
+                isSelected = on
+                contentDescription = listOfNotNull(label, count).joinToString(" ") + if (on) ", selected" else ""
+                background = selectableRipple(colors.onSurface)
+                setPadding(dp(TAB_SIDE_PADDING_DP), dp(Spacing.MD), dp(TAB_SIDE_PADDING_DP), 0)
+                addView(
+                    column,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.CENTER_HORIZONTAL,
+                    ),
                 )
                 setOnClickListener { if (!on) switchStoryTab(story.id, tab) }
             }
@@ -333,14 +345,22 @@ private class SpreadRow(
     ) {
         super.onMeasure(MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED), heightMeasureSpec)
         val available = MeasureSpec.getSize(widthMeasureSpec)
-        val spare = available - measuredWidth
         val tabs = (0 until childCount).map(::getChildAt).filter { it.visibility != GONE }
-        if (spare <= 0 || tabs.isEmpty()) return
+        if (available <= measuredWidth || tabs.isEmpty()) return
+        // Equal shares when even the widest tab fits in one; otherwise the spare width is split evenly.
+        val equal = available / tabs.size
+        val spare = available - measuredWidth
+        val evenly = tabs.all { it.measuredWidth <= equal }
         tabs.forEachIndexed { i, tab ->
             // The first tabs take the remainder pixel by pixel, so the row fills the strip exactly.
-            val extra = spare / tabs.size + if (i < spare % tabs.size) 1 else 0
+            val width =
+                if (evenly) {
+                    equal + if (i < available % tabs.size) 1 else 0
+                } else {
+                    tab.measuredWidth + spare / tabs.size + if (i < spare % tabs.size) 1 else 0
+                }
             tab.measure(
-                MeasureSpec.makeMeasureSpec(tab.measuredWidth + extra, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(tab.measuredHeight, MeasureSpec.EXACTLY),
             )
         }

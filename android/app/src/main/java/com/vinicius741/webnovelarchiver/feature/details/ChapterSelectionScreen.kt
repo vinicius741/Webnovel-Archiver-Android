@@ -28,6 +28,7 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.strokeBg
@@ -244,19 +245,20 @@ private class SelectionActions(
     private lateinit var deleteButton: android.widget.Button
 
     init {
-        container.flow(spacing = Space.SM) {
+        // Icons with the count each action applies to, in one row of equal buttons; the full label is spoken.
+        container.row {
             downloadButton =
-                button("Download", Btn.FILLED, R.drawable.wna_download) {
+                button("", Btn.FILLED, R.drawable.wna_download) {
                     if (download.isNotEmpty()) host.queueDownload(story, download.map { it.originalIndex })
                 }
             generateButton =
-                button("Generate audio", Btn.TONAL, R.drawable.wna_headphones) {
+                button("", Btn.TONAL, R.drawable.wna_headphones) {
                     if (generate.isEmpty()) return@button
                     host.queueNarration(story.id, generate.map { it.chapter.id })
                     host.showStoryChapters(story.id)
                 }
             deleteButton =
-                button("Delete audio", Btn.ERROR, R.drawable.wna_delete) {
+                button("", Btn.ERROR, R.drawable.wna_delete) {
                     val ids = delete.map { it.chapter.id }
                     if (ids.isEmpty()) return@button
                     host.confirm("Delete the audio of ${NarrationScreenPlanning.chapters(ids.size)}?", confirmLabel = "Delete") {
@@ -264,6 +266,13 @@ private class SelectionActions(
                         host.showStoryChapters(story.id)
                     }
                 }
+            for (index in 0 until childCount) {
+                (getChildAt(index).layoutParams as LinearLayout.LayoutParams).apply {
+                    width = 0
+                    weight = 1f
+                    marginStart = if (index == 0) 0 else context.dp(Space.SM)
+                }
+            }
         }
     }
 
@@ -281,7 +290,9 @@ private class SelectionActions(
         label: String,
         count: Int,
     ) {
-        text = if (count > 0) "$label $count" else label
+        text = if (count > 0) count.toString() else ""
+        contentDescription =
+            if (count > 0) "$label ${NarrationScreenPlanning.chapters(count)}" else "$label (none of the selected chapters)"
         isEnabled = count > 0
         alpha = if (count > 0) 1f else DISABLED_ALPHA
     }
