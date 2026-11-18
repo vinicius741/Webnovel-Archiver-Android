@@ -13,7 +13,7 @@ Supports **Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFicti
 - Pre-generated narration: chapter audio is generated in full, in the background, before it plays (bulk queue, keep the next chapters ready while listening, per-chapter voice, the headphones on a chapter generate it first and then play; generate, regenerate and delete from each novel's Chapters tab or the Listen screen; audio made from older text keeps playing), so playback never waits on the voice model. Built-in-voice chapters can also generate on your own computers over Wi-Fi or Tailscale (`scripts/narration-server`), several times faster than on the phone and with the same voice; choose several computers and they share each chapter, with the phone optionally standing in while none can be reached.
 - New-chapter tracking with a next-release estimate from each novel's recent release dates: the Updates screen groups novels whose next chapter may be out, is expected soon or is running late, and syncs one or all of them. Library tabs, search, filters, a tap-the-author view of their other novels in your library, and novel popularity trends.
 - EPUB export, text cleanup, and full library backup and restore.
-- One shareable diagnostics export (the last hour of syncs, downloads, library changes and errors, plus source access) for troubleshooting; the phone keeps 7 days.
+- One shareable diagnostics export (the last hour of syncs, downloads, library changes and errors, plus source access) for troubleshooting, also saved to Downloads/Webnovel Archiver; the phone keeps 7 days.
 - Patreon early-access chapters available through your own account.
 - Optional AI cover art and synopses using your own OpenRouter API key, with cost tracking.
 

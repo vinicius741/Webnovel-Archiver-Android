@@ -103,7 +103,9 @@ private fun ScreenHost.addTroubleshootingRows(group: LinearLayout) {
             alert("Storage recovery notice", storageHealth.issues.joinToString("\n") { issue -> "${issue.document}: ${issue.detail}" })
         }
     }
-    group.navRow(R.drawable.wna_bug_report, "Share diagnostics", "Recent activity and source access, for debugging") { shareDiagnostics() }
+    group.navRow(R.drawable.wna_bug_report, "Share diagnostics", "Recent activity and source access; a copy goes to Downloads") {
+        shareDiagnostics()
+    }
     group.navRow(R.drawable.wna_restore, "Reset all source sessions", "Clears every site's cookies, browser storage and cooldowns") {
         confirm("Reset every source's browser session? The next request may need a quick check again.", confirmLabel = "Reset") {
             resetSourceWebSessions(SourceRegistry.all().filter { it.descriptor.managesBrowserSession })
