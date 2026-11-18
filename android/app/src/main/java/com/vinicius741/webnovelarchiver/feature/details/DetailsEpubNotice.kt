@@ -22,18 +22,14 @@ internal fun ScreenHost.buildStaleEpubNotice(
     isBusy: Boolean,
 ): LinearLayout =
     LinearLayout(app).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER_HORIZONTAL
-        addView(
-            makeText(app, "EPUB out of date", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-                gravity = Gravity.CENTER
-                layoutParams =
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    )
-            },
-        )
+        // One centred row — label then button — so the note reads as a unit under the EPUB action.
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+        layoutParams =
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(Space.SM)
+            }
+        addView(makeText(app, "EPUB out of date", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
         val regenerateButton =
             makeButton(app, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
                 generateConfiguredEpub(story)
@@ -42,7 +38,7 @@ internal fun ScreenHost.buildStaleEpubNotice(
         addView(
             regenerateButton,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(Space.XS)
+                marginStart = dp(Space.XS)
             },
         )
     }
