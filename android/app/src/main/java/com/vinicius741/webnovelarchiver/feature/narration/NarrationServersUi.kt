@@ -83,12 +83,7 @@ private fun LinearLayout.generateOnSection(
     val card =
         makeCard(context).apply {
             if (document.servers.isNotEmpty()) {
-                flow(spacing = Space.SM) {
-                    chip("This phone", selected = choice.phoneChosen) { host.chooseGenerateOn(choice, null) }
-                    document.servers.forEach { server ->
-                        chip(server.name, selected = server.id in choice.serverIds) { host.chooseGenerateOn(choice, server.id) }
-                    }
-                }
+                generateOnChips(host, document)
                 spacer(Space.SM + 2)
             }
             text(
@@ -164,6 +159,34 @@ internal class ServerRows(
             .append("\n")
             .append(NarrationServerPlanning.addressesLine(server))
     }
+}
+
+/** The Generate on chips: "This phone" and each computer; a tap saves the choice and the screen rebuilds. */
+private fun LinearLayout.generateOnChips(
+    host: ScreenHost,
+    document: NarrationQueueDocument,
+) {
+    val choice = document.generateOnChoice
+    flow(spacing = Space.SM) {
+        chip("This phone", selected = choice.phoneChosen) { host.chooseGenerateOn(choice, null) }
+        document.servers.forEach { server ->
+            chip(server.name, selected = server.id in choice.serverIds) { host.chooseGenerateOn(choice, server.id) }
+        }
+    }
+}
+
+/**
+ * The Listen queue's Generate on row, so where chapters generate can change without leaving the
+ * queue. Shown only when there is a computer to choose and the current voice can generate on one.
+ */
+internal fun LinearLayout.queueGenerateOnSection(
+    host: ScreenHost,
+    document: NarrationQueueDocument,
+) {
+    if (document.servers.isEmpty()) return
+    if (KokoroVoices.model(host.narration.currentVoice().engine) == null) return
+    listenSectionLabel("Generate on")
+    generateOnChips(host, document)
 }
 
 /** Saves what a tap on a Generate on chip chooses ([serverId] null is "This phone"). */

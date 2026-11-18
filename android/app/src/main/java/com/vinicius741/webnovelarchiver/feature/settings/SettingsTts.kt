@@ -51,7 +51,7 @@ private fun pauseSpec(
 
 /**
  * The Listening settings page (v3): the voice (engine, voice, Google's pitch, built-in models),
- * where chapter audio generates and how far ahead, behavior, pauses, and a sample. Everything saves
+ * a sample to try the voice, where chapter audio generates and how far ahead, behavior, and pauses. Everything saves
  * as it changes; playback speed lives on the player.
  */
 internal fun ScreenHost.showTtsSettings() {
@@ -101,6 +101,9 @@ internal fun ScreenHost.showTtsSettings() {
                 }
             }
         }
+        // The sample sits right under the voice so a new voice can be tried at once.
+        section("Try it")
+        addView(ttsSampleCard(current))
         modelCards(saved).forEach { model ->
             addView(
                 kokoroModelCard(model).apply {
@@ -124,8 +127,6 @@ internal fun ScreenHost.showTtsSettings() {
         }
         section("Pauses")
         addPausesGroup(this, current) { change -> update(change) }
-        section("Try it")
-        addView(ttsSampleCard(current))
         // Leaving the page saves a change still waiting for the stepper to settle.
         addOnAttachStateChangeListener(
             object : View.OnAttachStateChangeListener {

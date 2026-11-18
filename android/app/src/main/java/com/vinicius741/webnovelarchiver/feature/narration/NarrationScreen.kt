@@ -186,6 +186,7 @@ private fun LinearLayout.queueSection(
 ) {
     liveStatus?.let { addView(it.view.apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = context.dp(Space.MD) }) }
     if (!host.app.isIgnoringBatteryOptimizations()) batteryCard(host)
+    queueGenerateOnSection(host, document)
     val jobs = document.jobs
     val failed = jobs.count { it.state == NarrationJobState.FAILED }
     if (jobs.isEmpty()) {
