@@ -50,8 +50,8 @@ private fun pauseSpec(
 ) = StepperSpec(step = step, min = 0.0, max = maxMs.toDouble(), unit = " ms", zeroLabel = zeroLabel, label = label)
 
 /**
- * The Listening settings page (v3): the voice (engine, voice, Google's pitch, built-in models),
- * a sample to try the voice, where chapter audio generates and how far ahead, behavior, and pauses. Everything saves
+ * The Listening settings page (v3): the voice (engine, voice, Google's pitch), a sample right under it to
+ * try the voice, the built-in models, where chapter audio generates and how far ahead, behavior, and pauses. Everything saves
  * as it changes; playback speed lives on the player.
  */
 internal fun ScreenHost.showTtsSettings() {

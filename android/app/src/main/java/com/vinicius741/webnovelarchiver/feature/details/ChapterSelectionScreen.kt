@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.feature.details
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -316,8 +317,9 @@ private class SelectionActions(
         onClick: () -> Unit,
     ): ImageView {
         val size = context.dp(ROUND_ACTION_DP)
+        // An ImageButton so TalkBack announces it as a button.
         val action =
-            ImageView(context).apply {
+            ImageButton(context).apply {
                 setImageDrawable(context.tintedIcon(iconRes, tint))
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                 val pad = context.dp(Space.MD)
