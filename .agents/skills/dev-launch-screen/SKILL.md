@@ -118,7 +118,7 @@ Not sure which screen a change affects? Open the changed file's `feature/<x>/` d
 
 ## Device safety (per AGENTS.md)
 
-Default target is the `webnovel_api36` **emulator**. This feature is debug-only; **never** use it on the owner's physical phone (it is a no-op there anyway because release ignores the extra). Resolve an `emulator-` serial explicitly and pass it with `adb -s`. The only unqualified adb call allowed is `adb devices -l` (discovery). `scripts/dev_library.sh` and `scripts/redeploy.sh` both resolve an `emulator-` serial themselves and fail closed if you try to point them at a phone serial — so they're emulator-safe. Set `EMULATOR_SERIAL=<emulator-serial>` to pin one when several are running.
+Default target is the `webnovel_api36` **emulator**. This feature is debug-only (release builds ignore the extra). Resolve an `emulator-` serial explicitly and pass it with `adb -s`. The only unqualified adb call allowed is `adb devices -l` (discovery). `scripts/dev_library.sh` and `scripts/redeploy.sh` both resolve an `emulator-` serial themselves and fail closed on any other serial. Set `EMULATOR_SERIAL=<emulator-serial>` to pin one when several are running.
 
 ## Verify after a rebuild (the common case)
 

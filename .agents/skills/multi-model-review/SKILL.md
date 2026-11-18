@@ -33,8 +33,7 @@ job is to brief them well, then act as the skeptical judge. Reviewer output is
   with another thread's work, scope the brief (and your fixes) to the files that
   belong to the change, and tell the reviewers which files are out of scope.
 - Device rules from root `AGENTS.md` apply to your own validation: emulator
-  only (`emulator-*` serial, debug variant), never the phone unless authorized
-  in the current message.
+  only (`emulator-*` serial, debug variant).
 
 ## Reviewer roster
 

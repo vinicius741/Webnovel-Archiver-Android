@@ -10,9 +10,8 @@ description: >
   "go through the pages and see if anything is wrong". Also trigger after a broad
   rebuild when the user wants visual/manual verification across the product, not
   just one screen. Use when the user runs /emulator-qa. Do NOT use for a pure
-  build with no device check, phone/release installs (unless phone use is
-  explicitly authorized), or a single-screen feature check (use dev-launch-screen
-  instead). Companion skills: build-and-install-apk, dev-launch-screen.
+  build with no device check or a single-screen feature check (use
+  dev-launch-screen instead). Companion skills: build-and-install-apk, dev-launch-screen.
 ---
 
 # Skill: emulator-qa
@@ -23,8 +22,7 @@ prevents the common agent failure mode: screenshotting too early (spinner /
 
 ## Hard rules (same as AGENTS.md)
 
-- Target **only** an `emulator-*` serial (default AVD `webnovel_api36`). Never
-  touch the physical phone unless the current message explicitly authorizes it.
+- Target **only** an `emulator-*` serial (default AVD `webnovel_api36`).
 - Debug package only: `com.vinicius741.webnovelarchiver.nativeapp.debug`
 - `webnovel_api36` now uses the Galaxy Z Fold7 approximation documented in `android/AGENTS.md`. Check the major screens folded and unfolded, then live transitions on Library and Reader. Use explicit `adb -s "$SERIAL" emu fold` / `emu unfold` and wait for settled content after each switch. Leave Library unfolded at the end.
 - Main activity: `com.vinicius741.webnovelarchiver.app.MainActivity`

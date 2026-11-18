@@ -2,7 +2,7 @@
 
 ---
 name: build-and-install-apk
-description: Builds the native Android debug and release APKs for the Webnovel-Archiver-Android project and optionally installs a built APK onto the user's physical phone (serial resolved per session from adb devices) or the webnovel_api36 emulator. Use whenever the user asks to build, compile, assemble, package, or make the APK (debug or release), sign the release build, install/push/replace/deploy/flash the app onto a device, update the app on their phone, or rebuild and reinstall. Trigger on phrases like "build the APK", "build release APK", "install on my phone", "rebuild and replace the app", "deploy to device", "update the app on my phone". Do NOT trigger for legacy React Native (app/src/modules) work unless the user explicitly asks.
+description: Builds the native Android debug and release APKs for the Webnovel-Archiver-Android project and optionally installs the debug APK onto the webnovel_api36 emulator. Use whenever the user asks to build, compile, assemble, package, or make the APK (debug or release), sign the release build, install/push/replace/deploy the app onto the emulator, or rebuild and reinstall. Trigger on phrases like "build the APK", "build release APK", "rebuild and replace the app", "deploy to the emulator". The owner's phone updates from GitHub releases, not adb. Do NOT trigger for legacy React Native (app/src/modules) work unless the user explicitly asks.
 ---
 
 ## What this skill does
@@ -95,80 +95,46 @@ ls -l android/app/build/outputs/apk/release/app-release.apk
 
 If the file is older than your latest `assembleRelease` run or owned by another user, it's stale from a previous build — a failed downstream task (like the copy in Trap 1) can leave an old APK in place. A successful `assembleRelease` always rewrites it.
 
-## Installing onto a device
+## Installing onto the emulator
 
-### Which target — the hard rule
-
-Per `AGENTS.md` (Device Safety): **never operate the owner's physical phone unless the user explicitly requests phone use in the current message.** Previous permission does not carry forward. Default target is the `webnovel_api36` **emulator**.
-
-When the user *does* ask for the phone (e.g. "replace the one that's currently on my phone"), it's connected via USB. Resolve its serial via discovery and verify it explicitly — never run unqualified device-targeting adb commands:
+The target is the `webnovel_api36` emulator; no phone is connected (the owner's phone updates from GitHub releases through the in-app updater). Installing on the emulator needs no permission. Resolve the serial and pass it to every device-targeting command:
 
 ```bash
-# Discover only — this is the ONLY unqualified adb call allowed
-adb devices -l
+adb devices -l   # discovery only — the one unqualified adb call allowed
+EMULATOR_SERIAL=emulator-5554   # the row starting with emulator- in state "device"
 ```
 
-Look for the row whose serial does NOT start with `emulator-` and whose state is `device` (a line like `<serial>    device usb:...`). Note it as `PHONE_SERIAL`. If no phone or more than one is listed, stop and ask the user instead of guessing. Then pass the serial to every device-targeting command:
-
-```bash
-adb -s "$PHONE_SERIAL" <command>
-```
-
-### "unauthorized" phone — restart the adb server
-
-If `adb devices -l` shows the phone as `unauthorized` (common — the auth dialog times out, or the phone screen was locked), don't keep retrying the listing. Restart the daemon:
-
-```bash
-adb kill-server
-adb start-server
-sleep 2
-adb devices -l
-```
-
-This forces a fresh RSA handshake and re-prompts the phone. If it still says `unauthorized`, ask the user to tap "Allow USB debugging?" on the phone (check "Always allow from this computer"). Don't fall back to another device — stop and surface it.
-
-For the emulator, if `webnovel_api36` isn't listed or won't start, surface that rather than substituting another device.
+If `webnovel_api36` isn't listed or won't start, use the `emulator-recovery` skill rather than substituting another device.
 
 ### Replace install (preserve app data)
 
 Application IDs:
-- Release variant: `com.vinicius741.webnovelarchiver.nativeapp`
-- Debug variant:   `com.vinicius741.webnovelarchiver.nativeapp.debug` (has `.debug` suffix)
+- Debug variant:   `com.vinicius741.webnovelarchiver.nativeapp.debug` (has `.debug` suffix) — the one to install on the emulator; the owner's test library lives in it.
+- Release variant: `com.vinicius741.webnovelarchiver.nativeapp` — published through GitHub releases; starts empty on the emulator.
 - Legacy RN app:   `com.vinicius741.webnovelarchiver` (reference-only; don't install)
 
-Replace in place, keeping the user's data:
-
 ```bash
-adb -s "$PHONE_SERIAL" install -r android/app/build/outputs/apk/release/app-release.apk
+adb -s "$EMULATOR_SERIAL" install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-`-r` = reinstall, keep data. Watch for two failure modes:
-- `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / signature mismatch → the installed APK was signed by a different key. Uninstall first (`adb -s <serial> uninstall com.vinicius741.webnovelarchiver.nativeapp`), then install fresh (data will be lost — tell the user before doing this).
-- `INSTALL_FAILED_VERIFICATION_FAILURE` / unknown-sources → on the phone, enable "Install unknown apps" for whatever is invoking the install, or use `adb install -r` which bypasses the prompt.
+`-r` = reinstall, keep data. On `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / signature mismatch, do not uninstall without telling the user: uninstalling deletes the debug library.
 
 ### Verify the install
 
 ```bash
-adb -s "$PHONE_SERIAL" shell dumpsys package com.vinicius741.webnovelarchiver.nativeapp | grep -E 'versionName|versionCode|lastUpdateTime'
+adb -s "$EMULATOR_SERIAL" shell dumpsys package com.vinicius741.webnovelarchiver.nativeapp.debug | grep -E 'versionName|versionCode|lastUpdateTime'
 ```
 
-Confirm `lastUpdateTime` is the current session's time and `versionName` matches the build (currently `1.0.1-native`, versionCode `2`).
-
-A trailing `SecurityException: Shell does not have permission to access user 150` from `pm list packages` on this device is a harmless work-profile lookup artifact — ignore it.
+Confirm `lastUpdateTime` is the current session's time.
 
 ## Quick reference — the whole flow
 
 ```bash
 cd android
-./gradlew assembleDebug assembleRelease -x copyDebugApkToProjectRoot -x copyReleaseApkToProjectRoot
-
-# Phone install (ONLY when user explicitly authorized phone use this message)
-adb devices -l                      # confirm the phone serial shows "device", not "unauthorized"
-adb -s "$PHONE_SERIAL" install -r app/build/outputs/apk/release/app-release.apk
-adb -s "$PHONE_SERIAL" shell dumpsys package com.vinicius741.webnovelarchiver.nativeapp | grep -E 'versionName|lastUpdateTime'
+./gradlew assembleDebug -x copyDebugApkToProjectRoot
+adb devices -l
+adb -s "$EMULATOR_SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
 ```
-
-For emulator instead of phone: target serial starts with `emulator-` (resolve from `adb devices -l`), same install commands. No per-message authorization needed for the emulator. Debug package ID ends in `.debug`; install the **debug** APK for emulator QA.
 
 ### After install — verification / QA
 

@@ -19,12 +19,12 @@
 - When committing, stage only task-related changes. Preserve unrelated worktree changes.
 - The owner develops this project on two different computers, so the local checkout is often behind `origin`. Before building, installing, QA, or starting new work, run `git fetch origin` and compare `main` with `origin/main`. If the local branch is behind and the worktree is clean, fast-forward with `git pull --ff-only`. If local changes or diverged commits are in the way, stop and report instead of merging, rebasing, or stashing. A build that Gradle reports as up to date can still be stale relative to `origin`.
 
-## Device Safety
+## Emulator
 
-- Never target, inspect, install to, uninstall from, launch on, or otherwise operate the owner's physical phone unless the user explicitly requests phone use in the current message. Previous permission does not carry forward.
-- Use the `webnovel_api36` Android emulator by default for builds, installs, launches, and QA.
+- Development and QA run on the `webnovel_api36` Android emulator. No phone is connected; the owner's phone gets new versions through the in-app updater from GitHub releases.
+- Using the emulator is pre-approved: build, install, launch, and check changes there without asking. A change that shows on screen should be seen on the emulator before you report it done or release it.
 - Use unqualified `adb devices -l` only to discover targets. For every device-targeting ADB operation, resolve a healthy serial whose name starts with `emulator-` and pass it with `adb -s "$EMULATOR_SERIAL" ...`.
-- Never run an unqualified device-targeting `adb` command. If no emulator is available, or multiple emulators are running and no serial was explicitly selected, stop instead of falling back to another device.
+- Never run an unqualified device-targeting `adb` command. If no emulator is available, start it with `scripts/emulator/start_emulator.sh` (see the `emulator-recovery` skill). If multiple emulators are running and no serial was explicitly selected, stop and report.
 
 ### T3 Device panel sessions: always release the emulator
 
@@ -46,8 +46,8 @@
 The native app ships as distinct application IDs — each is a separate app with its own isolated data sandbox. Always use the variant that matches the target so you don't install the empty sibling over the user's working app:
 
 - **Simulator / emulator:** always the **debug** variant — `com.vinicius741.webnovelarchiver.nativeapp.debug` (APK: `android/app/build/outputs/apk/debug/app-debug.apk`). This is where the user's in-progress library and test data live; the release variant on the emulator starts empty.
-- **Owner's phone:** always the **release** variant — `com.vinicius741.webnovelarchiver.nativeapp` (APK: `android/app/build/outputs/apk/release/app-release.apk`), and only when phone use is explicitly authorized for the current message.
-- **Beta:** the **beta** variant — `com.vinicius741.webnovelarchiver.nativeapp.beta` (APK: `android/app/build/outputs/apk/beta/app-beta.apk`) — is a separate app beside the stable one, with its own name, icon, and library. Install it on the phone only when the user asks for the beta specifically; never install it in place of, or to replace, the stable release. Its track is described in `docs/release/build-and-publish.md#beta-track`.
+- **Release:** the **release** variant — `com.vinicius741.webnovelarchiver.nativeapp` (APK: `android/app/build/outputs/apk/release/app-release.apk`) — is what GitHub releases publish for the owner's phone.
+- **Beta:** the **beta** variant — `com.vinicius741.webnovelarchiver.nativeapp.beta` (APK: `android/app/build/outputs/apk/beta/app-beta.apk`) — is a separate app beside the stable one, with its own name, icon, and library, published as a GitHub prerelease only when the user asks for a beta. Its track is described in `docs/release/build-and-publish.md#beta-track`.
 - **Instrumentation tests:** use the **instrumentation** variant — `com.vinicius741.webnovelarchiver.nativeapp.instrumentation` — so connected tests do not read, clear, or overwrite the debug library sandbox.
 
 ## Build and Validation

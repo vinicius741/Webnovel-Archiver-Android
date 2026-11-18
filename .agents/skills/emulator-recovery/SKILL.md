@@ -5,10 +5,9 @@ description: >
   boot: a device panel or `emulator` command reporting "failed to boot", "could not start",
   "killed by SIGSEGV", adb "error: closed" while waiting for the device, a qemu core dump, or
   no emulator-* serial in `adb devices`. USE THIS whenever the emulator is needed (QA,
-  screenshots, installs, redeploy) and it is not running or crashes, before falling back to
-  another device. The known fix on this Linux host is booting with the host GPU through
+  screenshots, installs, redeploy) and it is not running or crashes. The known fix on this Linux host is booting with the host GPU through
   scripts/emulator/start_emulator.sh. Do NOT use for app crashes inside a healthy emulator
-  (use logcat) or for the owner's physical phone.
+  (use logcat).
 ---
 
 # Emulator recovery (webnovel_api36)
@@ -116,7 +115,6 @@ Work through these in order. Read the log after each attempt.
 
 - `-wipe-data`, `pm clear`, deleting `userdata-qemu.img*`, or recreating the AVD. The user's
   debug library lives in this AVD.
-- Fall back to the owner's physical phone without explicit permission in the current message.
 - Use `-gpu auto`, `-gpu swiftshader_indirect`, or `-gpu guest` as the "fix".
 
 ## After recovery
