@@ -3,7 +3,9 @@ package com.vinicius741.webnovelarchiver.tts
 import com.vinicius741.webnovelarchiver.cleanup.TtsChunkBoundary
 import com.vinicius741.webnovelarchiver.cleanup.TtsNarrationChunk
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
+import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsHistoryEntry
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 
 /** A saved place in a chapter, by sentence number plus the text that was there. */
 internal data class TtsSavedPoint(
@@ -111,4 +113,44 @@ internal object TtsPositionPlanning {
         entry: TtsHistoryEntry,
     ): List<TtsHistoryEntry> =
         (listOf(entry) + history.filterNot { it.chapterId == entry.chapterId && it.chunkIndex == entry.chunkIndex }).take(MAX_HISTORY)
+
+    /**
+     * The history a new start carries. Unless the start continues from the story's saved place, that
+     * place joins the history first, so leaving it (even with nothing playing) can be undone from
+     * "Go back to" instead of being overwritten. [resumedSavedPlace] is true when the start was
+     * resolved from that very place, whose sentence number may have shifted since it was saved.
+     */
+    fun historyForStart(
+        story: Story,
+        position: TtsStoryPosition?,
+        start: TtsHistoryEntry,
+        resumedSavedPlace: Boolean = false,
+    ): List<TtsHistoryEntry> {
+        if (position == null || position.storyId != story.id || position.chapterId.isBlank()) return emptyList()
+        if (resumedSavedPlace || continuesFrom(story, position, start)) return position.history
+        val saved =
+            TtsHistoryEntry(
+                chapterId = position.chapterId,
+                chapterTitle = position.chapterTitle,
+                chunkIndex = position.currentChunkIndex,
+                chunkOffsetMs = position.chunkOffsetMs,
+                anchorText = position.anchorText,
+                chunkingVersion = position.chunkingVersion,
+                recordedAt = start.recordedAt,
+            )
+        return withHistoryEntry(position.history, saved)
+    }
+
+    private fun continuesFrom(
+        story: Story,
+        position: TtsStoryPosition,
+        start: TtsHistoryEntry,
+    ): Boolean {
+        if (position.caughtUp) {
+            val at = story.chapters.indexOfFirst { it.id == position.chapterId }
+            if (at >= 0 && story.chapters.getOrNull(at + 1)?.id == start.chapterId && start.chunkIndex == 0) return true
+        }
+        // By number only: a repeated line ("He nodded.") elsewhere in the chapter is not the same place.
+        return position.chapterId == start.chapterId && position.currentChunkIndex == start.chunkIndex
+    }
 }

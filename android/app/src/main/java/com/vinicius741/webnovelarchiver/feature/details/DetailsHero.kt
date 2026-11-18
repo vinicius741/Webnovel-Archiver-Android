@@ -93,6 +93,7 @@ internal fun ScreenHost.buildStoryHero(
     val ctaSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     renderDetailsCta(ctaSlot, story, summary, isBusy)
     column.addView(ctaSlot)
+    column.addView(buildListenPlaceLine(story))
     column.addView(buildQuickActions(story, operation?.kind))
     val hasEpub = !story.epubPaths.isNullOrEmpty() || !story.epubPath.isNullOrBlank()
     if (story.epubStale == true && hasEpub) column.addView(buildStaleEpubNotice(story, isBusy))

@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 
 /**
  * The Overview's contextual primary action: keep reading from the bookmark, or, once every
@@ -61,4 +62,29 @@ object DetailsActionPlanning {
         val verb = if (target.resume) "Continue" else "Start"
         return if (short) "$verb · Ch. ${target.number}" else "$verb reading · Ch. ${target.number}"
     }
+
+    /** The story's own listening place, kept apart from the bookmark: [number] is its 1-based chapter. */
+    data class ListenPlace(
+        val number: Int,
+        /** Playback reached the end of this chapter, the last one there was. */
+        val finished: Boolean,
+        val updatedAt: Long,
+    )
+
+    /** Where listening stopped, when it stopped in a chapter the story still has. */
+    fun listenPlace(
+        story: Story,
+        position: TtsStoryPosition?,
+    ): ListenPlace? {
+        if (position == null || position.storyId != story.id) return null
+        val index = story.chapters.indexOfFirst { it.id == position.chapterId }
+        if (index < 0) return null
+        return ListenPlace(index + 1, position.caughtUp, position.updatedAt)
+    }
+
+    /** "Listening at Ch. 142 · 2 days ago", or "Finished Ch. 200 · 2 days ago" once caught up. */
+    fun listenPlaceLabel(
+        place: ListenPlace,
+        ago: CharSequence,
+    ): String = if (place.finished) "Finished Ch. ${place.number} · $ago" else "Listening at Ch. ${place.number} · $ago"
 }

@@ -1,26 +1,31 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
+import android.text.format.DateUtils
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
-import com.vinicius741.webnovelarchiver.feature.narration.playChapter
+import com.vinicius741.webnovelarchiver.feature.narration.continueListening
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
+import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import kotlinx.coroutines.launch
 
 /**
  * The Overview's contextual actions ([DetailsActionPlanning]): Continue reading with a Listen
@@ -112,7 +117,10 @@ internal fun ScreenHost.renderDetailsCta(
     }
 }
 
-/** Listens to the chapter Continue would open, generating its audio first when needed (see [playChapter]). */
+/**
+ * Continues listening from the story's own listening place, which the bookmark never moves; only a
+ * story never listened to starts at the chapter Continue reading would open (see [continueListening]).
+ */
 private fun ScreenHost.listenButton(
     storyId: String,
     chapterId: String,
@@ -126,8 +134,37 @@ private fun ScreenHost.listenButton(
         background = ripple(roundedBg(colors.primaryContainer, radius), radius, colors.onPrimaryContainer)
         isClickable = true
         isFocusable = true
-        setOnClickListener { playChapter(storyId, chapterId) }
+        setOnClickListener { continueListening(storyId, chapterId) }
     }
+}
+
+/**
+ * "Listening at Ch. 142 · 2 days ago" under the actions, so the listening place can be seen apart from
+ * the bookmark. Read once when the hero is built; download events never rebuild it.
+ */
+internal fun ScreenHost.buildListenPlaceLine(story: Story): View {
+    val colors = ThemeManager.colors
+    val line =
+        makeText(app, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+            visibility = View.GONE
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            compoundDrawablePadding = dp(Spacing.XS + 2)
+            setCompoundDrawablesRelativeWithIntrinsicBounds(
+                app.tintedIcon(R.drawable.wna_headphones, colors.onSurfaceVariant),
+                null,
+                null,
+                null,
+            )
+            setPadding(0, dp(Spacing.SM + 2), 0, 0)
+        }
+    scope.launch {
+        val position = runCatching { repository.getTtsStoryPosition(story.id) }.getOrNull()
+        val place = DetailsActionPlanning.listenPlace(story, position) ?: return@launch
+        val ago = DateUtils.getRelativeTimeSpanString(place.updatedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
+        line.text = DetailsActionPlanning.listenPlaceLabel(place, ago)
+        line.visibility = View.VISIBLE
+    }
+    return line
 }
 
 /** Queues every chapter that is not downloaded yet, read fresh so a sync in between is included. */

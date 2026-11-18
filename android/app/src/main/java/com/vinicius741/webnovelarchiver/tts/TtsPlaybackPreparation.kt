@@ -100,12 +100,24 @@ internal class TtsPlaybackPreparer(
         chapterId: String,
         requestedIndex: Int? = null,
     ): PreparedTtsPlayback? {
-        if (requestedIndex == null) {
-            resumeFromStoryPosition(storyId, chapterId)?.let { return it }
-        }
-        val input = load(storyId, chapterId) ?: return null
-        // A pinned start is the listener choosing that exact sentence, so no title comes first.
-        return builder.build(input, requestedIndex ?: 0, speakTitle = requestedIndex == null)
+        val position = withContext(ioDispatcher) { source.position(storyId) }
+        val resumed = if (requestedIndex == null) resumeFromStoryPosition(storyId, chapterId, position) else null
+        val prepared =
+            resumed?.playback
+                ?: load(storyId, chapterId)?.let {
+                    // A pinned start is the listener choosing that exact sentence, so no title comes first.
+                    builder.build(it, requestedIndex ?: 0, speakTitle = requestedIndex == null)
+                }
+                ?: return null
+        val start =
+            TtsHistoryEntry(
+                chapterId = prepared.chapter.id,
+                chunkIndex = prepared.startIndex,
+                anchorText = TtsPositionPlanning.anchorFor(prepared.chunks.getOrNull(prepared.startIndex)),
+                recordedAt = System.currentTimeMillis(),
+            )
+        val history = TtsPositionPlanning.historyForStart(prepared.story, position, start, resumed?.fromSavedPlace == true)
+        return prepared.copy(history = history)
     }
 
     /** A saved place: resolved against the current text, so renumbering cannot move it elsewhere. */
@@ -121,14 +133,12 @@ internal class TtsPlaybackPreparer(
     private suspend fun resumeFromStoryPosition(
         storyId: String,
         requestedChapterId: String,
-    ): PreparedTtsPlayback? {
-        var history = emptyList<TtsHistoryEntry>()
+        position: TtsStoryPosition?,
+    ): ResumedPlayback? {
         var saved: TtsSavedPoint? = null
         val start =
             withContext(ioDispatcher) {
                 val story = source.story(storyId) ?: return@withContext null
-                val position = source.position(storyId)
-                history = position?.history.orEmpty()
                 val resolved = TtsSessionPlanning.resolveStartPosition(story, requestedChapterId, position)
                 if (position != null && !position.caughtUp && resolved.chapterId == position.chapterId) {
                     saved =
@@ -143,9 +153,17 @@ internal class TtsPlaybackPreparer(
             } ?: return null
         // A stale position (chapter unreadable) returns null and the caller falls back to the requested chapter.
         val input = load(storyId, start.chapterId) ?: return null
-        val prepared = saved?.let { builder.buildAt(input, it) } ?: builder.build(input, start.chunkIndex, speakTitle = true)
-        return prepared?.copy(history = history)
+        val point = saved
+        val playback =
+            (if (point != null) builder.buildAt(input, point) else builder.build(input, start.chunkIndex, speakTitle = true)) ?: return null
+        return ResumedPlayback(playback, fromSavedPlace = point != null)
     }
+
+    /** [fromSavedPlace]: started at the story's saved sentence itself, wherever renumbering moved it. */
+    private class ResumedPlayback(
+        val playback: PreparedTtsPlayback,
+        val fromSavedPlace: Boolean,
+    )
 
     suspend fun resume(): PreparedTtsPlayback? {
         val persisted = withContext(ioDispatcher) { source.session() } ?: return null

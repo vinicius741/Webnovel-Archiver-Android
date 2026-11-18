@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.narration.NarrationJobState
 import com.vinicius741.webnovelarchiver.narration.NarrationOrigin
 import com.vinicius741.webnovelarchiver.narration.NarrationVoice
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
@@ -128,6 +129,36 @@ internal fun ScreenHost.playChapter(
             }
         }
     }
+}
+
+/**
+ * Continues the story's audio from its own listening place, the one the bookmark never moves.
+ * [fallbackChapterId] plays from its start only when the story has no place to continue from.
+ */
+internal fun ScreenHost.continueListening(
+    storyId: String,
+    fallbackChapterId: String,
+) {
+    // Cancelled on tap, as playIfGenerated's own wait is, so a newer listen request always wins.
+    pendingPlay?.cancel()
+    val live = ttsEngine.playbackState.value.snapshot
+    if (live?.storyId == storyId) {
+        // Already loaded: carry on from the exact live point instead of restarting its sentence.
+        if (live.isPlaying) toast("Already playing") else TtsForegroundService.command(app, TtsForegroundService.ACTION_RESUME_SESSION)
+        return
+    }
+    pendingPlay =
+        scope.launch {
+            val story = repository.story(storyId) ?: return@launch
+            val position = repository.getTtsStoryPosition(storyId)
+            when (val start = TtsContinueListening.listenStart(story, fallbackChapterId, position)) {
+                // playIfGenerated replaces this job as the pending play; it does not suspend before that.
+                is TtsContinueListening.ListenStart.Play ->
+                    playIfGenerated(storyId, start.chapterId) { TtsForegroundService.start(app, storyId, start.chapterId) }
+                TtsContinueListening.ListenStart.CaughtUp -> toast("You've listened to the end. Nothing new yet.")
+                is TtsContinueListening.ListenStart.NotDownloaded -> toast("Download Ch. ${start.number} to keep listening")
+            }
+        }
 }
 
 /** Queues chapters for generation, offering once to let generation run with the screen off. */

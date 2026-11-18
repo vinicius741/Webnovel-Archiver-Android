@@ -103,6 +103,16 @@ A saved place is a sentence number, an offset into it, and the sentence's openin
   from the right place. "Continue listening" hides it until then.
 - `history` keeps the last 10 places jumped away from (chapter skips, paragraph starts, jumps of a
   minute or more), shown under History in Now Playing.
+- The listening place is the story's own and is separate from the reading bookmark: neither moves the
+  other. The story page's Listen button continues from it (`continueListening`,
+  `TtsContinueListening.listenStart`); only a story never listened to starts at the chapter Continue
+  reading opens. It never falls back silently: a place in a chapter that is not downloaded asks for
+  the download, a caught-up story waits for its next chapter, and the story already loaded just
+  resumes. The Overview shows it under the actions
+  ("Listening at Ch. 142 · 2 days ago").
+- A start that does not continue from the saved place first puts that place in `history`
+  (`TtsPositionPlanning.historyForStart`, in `TtsPlaybackPreparer.prepare`), even when nothing is
+  playing, so a mistaken start is one tap to undo instead of overwriting the place.
 
 ## Pause rules
 

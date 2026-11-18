@@ -310,4 +310,41 @@ class TtsSessionPlanningTest {
         assertEquals(2, position?.chunkingVersion)
         assertEquals(history, position?.history)
     }
+
+    private fun listenStory(downloaded: Set<Int> = setOf(0, 1, 2)) =
+        Story(id = "s", chapters = MutableList(3) { Chapter(id = "c$it", downloaded = it in downloaded) })
+
+    @Test
+    fun listenContinuesFromTheListeningPlaceNotTheBookmark() {
+        val start = TtsContinueListening.listenStart(listenStory(), "c0", TtsStoryPosition(storyId = "s", chapterId = "c2"))
+
+        assertEquals(TtsContinueListening.ListenStart.Play("c2"), start)
+    }
+
+    @Test
+    fun listenWithoutAPlaceStartsAtTheFallbackChapter() {
+        assertEquals(TtsContinueListening.ListenStart.Play("c0"), TtsContinueListening.listenStart(listenStory(), "c0", null))
+        val gone = TtsStoryPosition(storyId = "s", chapterId = "removed")
+        assertEquals(TtsContinueListening.ListenStart.Play("c0"), TtsContinueListening.listenStart(listenStory(), "c0", gone))
+    }
+
+    @Test
+    fun listenNeverFallsBackFromAPlaceThatCannotPlay() {
+        val notDownloaded = TtsContinueListening.listenStart(listenStory(setOf(0)), "c0", TtsStoryPosition(storyId = "s", chapterId = "c2"))
+
+        assertEquals(TtsContinueListening.ListenStart.NotDownloaded(3), notDownloaded)
+    }
+
+    @Test
+    fun listenWhenCaughtUpWaitsForTheNextChapter() {
+        val atEnd = TtsStoryPosition(storyId = "s", chapterId = "c2", caughtUp = true)
+        assertEquals(TtsContinueListening.ListenStart.CaughtUp, TtsContinueListening.listenStart(listenStory(), "c0", atEnd))
+
+        val beforeNew = atEnd.copy(chapterId = "c1")
+        assertEquals(TtsContinueListening.ListenStart.Play("c2"), TtsContinueListening.listenStart(listenStory(), "c0", beforeNew))
+        assertEquals(
+            TtsContinueListening.ListenStart.NotDownloaded(3),
+            TtsContinueListening.listenStart(listenStory(setOf(0, 1)), "c0", beforeNew),
+        )
+    }
 }

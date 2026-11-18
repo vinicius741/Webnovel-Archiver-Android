@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.TtsHistoryEntry
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
@@ -344,6 +345,56 @@ class TtsPlaybackPreparerTest {
 
             assertEquals(null, forward)
             assertEquals(null, backward)
+        }
+
+    @Test
+    fun pinnedStartAwayFromTheSavedPlaceKeepsItInTheHistory() =
+        runTest {
+            val story =
+                Story(
+                    id = "story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one", title = "One", content = "<p>First. Second.</p>", downloaded = true),
+                            Chapter(id = "two", title = "Two", content = "<p>Far along. Further.</p>", downloaded = true),
+                        ),
+                )
+            val position = TtsStoryPosition(storyId = "story", chapterId = "two", chapterTitle = "Two", currentChunkIndex = 1)
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val prepared =
+                TtsPlaybackPreparer(FakeTtsPlaybackSource(story, null, position), dispatcher, dispatcher)
+                    .prepare("story", "one", requestedIndex = 0) ?: error("Expected playback")
+
+            assertEquals("one", prepared.chapter.id)
+            assertEquals(listOf("two" to 1), prepared.history.map { it.chapterId to it.chunkIndex })
+        }
+
+    @Test
+    fun resumingTheSavedPlaceKeepsTheHistoryAsItWas() =
+        runTest {
+            val story =
+                Story(
+                    id = "story",
+                    chapters = mutableListOf(Chapter(id = "one", title = "One", content = "<p>First. Second.</p>", downloaded = true)),
+                )
+            val earlier = TtsHistoryEntry(chapterId = "one", chunkIndex = 0, recordedAt = 1L)
+            val position =
+                TtsStoryPosition(
+                    storyId = "story",
+                    chapterId = "one",
+                    currentChunkIndex = 1,
+                    anchorText = "Second.",
+                    history = listOf(earlier),
+                )
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val prepared =
+                TtsPlaybackPreparer(FakeTtsPlaybackSource(story, null, position), dispatcher, dispatcher)
+                    .prepare("story", "one") ?: error("Expected playback")
+
+            assertEquals(1, prepared.startIndex)
+            assertEquals(listOf(earlier), prepared.history)
         }
 
     private class FakeTtsPlaybackSource(

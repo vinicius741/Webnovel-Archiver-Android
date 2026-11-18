@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -67,5 +68,26 @@ class DetailsActionPlanningTest {
         assertEquals(DetailsActionPlanning.ReadTarget("c", 3, resume = true), plan.read)
         assertEquals(0, plan.remaining)
         assertFalse(plan.downloadFirst)
+    }
+
+    @Test
+    fun `the listening place is its own chapter, apart from the bookmark`() {
+        val story = story(downloaded = 10, total = 10, bookmark = 2)
+        val place =
+            DetailsActionPlanning.listenPlace(story, TtsStoryPosition(storyId = "s", chapterId = "c7", updatedAt = 42L))
+                ?: error("Expected a place")
+
+        assertEquals(DetailsActionPlanning.ListenPlace(number = 8, finished = false, updatedAt = 42L), place)
+        assertEquals("Listening at Ch. 8 · 2 days ago", DetailsActionPlanning.listenPlaceLabel(place, "2 days ago"))
+        assertEquals("Finished Ch. 8 · today", DetailsActionPlanning.listenPlaceLabel(place.copy(finished = true), "today"))
+    }
+
+    @Test
+    fun `no listening place without a position in a chapter the story still has`() {
+        val story = story(downloaded = 3, total = 3)
+
+        assertNull(DetailsActionPlanning.listenPlace(story, null))
+        assertNull(DetailsActionPlanning.listenPlace(story, TtsStoryPosition(storyId = "s", chapterId = "gone")))
+        assertNull(DetailsActionPlanning.listenPlace(story, TtsStoryPosition(storyId = "other", chapterId = "c1")))
     }
 }

@@ -134,6 +134,37 @@ object TtsContinueListening {
 
     fun isPlayable(chapter: Chapter): Boolean = chapter.downloaded || !chapter.content.isNullOrBlank()
 
+    /** What the story page's Listen button does, given the story's listening place. */
+    sealed interface ListenStart {
+        data class Play(
+            val chapterId: String,
+        ) : ListenStart
+
+        /** Listened to the end and no chapter has come out since. */
+        data object CaughtUp : ListenStart
+
+        /** The place to continue from is in a chapter that is not downloaded; [number] is 1-based. */
+        data class NotDownloaded(
+            val number: Int,
+        ) : ListenStart
+    }
+
+    /**
+     * Continue from the listening place, never silently from somewhere else: [fallbackChapterId] (the
+     * bookmark's chapter) plays only when the story has no place, or its chapter is gone.
+     */
+    fun listenStart(
+        story: Story,
+        fallbackChapterId: String,
+        position: TtsStoryPosition?,
+    ): ListenStart {
+        val index = position?.takeIf { it.storyId == story.id }?.let { p -> story.chapters.indexOfFirst { it.id == p.chapterId } } ?: -1
+        if (position == null || index < 0) return ListenStart.Play(fallbackChapterId)
+        val target = if (position.caughtUp) index + 1 else index
+        val chapter = story.chapters.getOrNull(target) ?: return ListenStart.CaughtUp
+        return if (isPlayable(chapter)) ListenStart.Play(chapter.id) else ListenStart.NotDownloaded(target + 1)
+    }
+
     /** The chapter after a story's caught-up point, once one has appeared and can be played. */
     fun nextPlayableAfter(
         story: Story,
