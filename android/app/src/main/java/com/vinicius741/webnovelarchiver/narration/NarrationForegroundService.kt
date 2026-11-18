@@ -39,6 +39,7 @@ import timber.log.Timber
 class NarrationForegroundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var foregroundStarted = false
+    private var latestStartId = 0
     private var wakeLock: PowerManager.WakeLock? = null
     private val coordinator get() = appContainer.narration
 
@@ -63,6 +64,7 @@ class NarrationForegroundService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
+        latestStartId = startId
         // startForegroundService demands startForeground first, even when stopping right away.
         startInForeground(notification(coordinator.progress.value))
         when (intent?.action) {
@@ -113,7 +115,8 @@ class NarrationForegroundService : Service() {
         coordinator.setGenerationAllowed(false)
         releaseWakeLock()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        // Only the latest start: a newer queued startForegroundService must reach its startForeground.
+        stopSelf(latestStartId)
     }
 
     private fun post(notification: Notification) {

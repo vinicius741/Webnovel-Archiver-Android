@@ -30,6 +30,7 @@ import timber.log.Timber
  */
 class AiJobForegroundService : Service() {
     private var foregroundStarted = false
+    private var latestStartId = 0
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val coverCoordinator get() = appContainer.aiCoverJobCoordinator
 
@@ -60,6 +61,7 @@ class AiJobForegroundService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
+        latestStartId = startId
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> {
                 val cover =
@@ -110,7 +112,8 @@ class AiJobForegroundService : Service() {
     private fun stopAfterFinish() {
         foregroundStarted = false
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        // Only the latest start: a newer queued startForegroundService must reach its startForeground.
+        stopSelf(latestStartId)
     }
 
     private fun showCoverOutcomeNotification(event: AiCoverJobEvent) {

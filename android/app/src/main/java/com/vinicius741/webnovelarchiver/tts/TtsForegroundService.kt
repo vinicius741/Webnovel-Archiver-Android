@@ -41,6 +41,7 @@ class TtsForegroundService : Service() {
             refreshMediaStateFromEngine()
         }
     private var foregroundStarted = false
+    private var latestStartId = 0
     private var resumeAfterFocusGain = false
     private var lastErrorText: String? = null
     private val stateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -129,8 +130,7 @@ class TtsForegroundService : Service() {
                     val staleReplay = update === replayAtCreate
                     refreshMediaState(update.snapshot)
                     if (!staleReplay && TtsPlaybackState.serviceShouldStop(update)) {
-                        stopForegroundAndReset()
-                        stopSelf()
+                        leaveForegroundAndStop()
                     }
                 }
             }
@@ -153,6 +153,7 @@ class TtsForegroundService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
+        latestStartId = startId
         // Every start, not only a media button: with a restored session this service may be started
         // by any command, and the startForegroundService contract holds for all of them.
         startForegroundIfNeeded(buildNotification(lastSnapshot))
@@ -269,8 +270,7 @@ class TtsForegroundService : Service() {
         engine.stop(forgetPosition, fallbackStoryId)
         resumeAfterFocusGain = false
         audioFocus.abandon()
-        stopForegroundAndReset()
-        stopSelf()
+        leaveForegroundAndStop()
     }
 
     private fun skipNext() {
@@ -329,10 +329,16 @@ class TtsForegroundService : Service() {
         foregroundStarted = true
     }
 
-    /** Also resets [foregroundStarted] so a later start re-enters foreground after a stop. */
-    private fun stopForegroundAndReset() {
+    /**
+     * Leaves the foreground and stops, unless a newer command (sent through startForegroundService)
+     * is already queued: a bare stopSelf() would destroy the service before that command's required
+     * startForeground call, which Android punishes by killing the app. The queued command re-enters
+     * the foreground itself, since [foregroundStarted] is reset here.
+     */
+    private fun leaveForegroundAndStop() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         foregroundStarted = false
+        stopSelf(latestStartId)
     }
 
     private fun refreshMediaState(snapshot: TtsPlaybackSnapshot?) {
