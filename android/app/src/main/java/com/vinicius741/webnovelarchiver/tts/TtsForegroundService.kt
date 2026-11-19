@@ -155,8 +155,12 @@ class TtsForegroundService : Service() {
     ): Int {
         latestStartId = startId
         // Every start, not only a media button: with a restored session this service may be started
-        // by any command, and the startForegroundService contract holds for all of them.
-        startForegroundIfNeeded(buildNotification(lastSnapshot))
+        // by any command, and the startForegroundService contract holds for all of them. Always call
+        // it, never trusting [foregroundStarted]: Android can take a paused media service out of the
+        // foreground on its own, and a start it then sees unanswered kills the app
+        // (ForegroundServiceDidNotStartInTimeException). On a service still in the foreground the
+        // call only refreshes the notification.
+        enterForeground(buildNotification(lastSnapshot))
         if (Intent.ACTION_MEDIA_BUTTON == intent?.action) {
             mediaSessionManager.handleMediaButton(intent)
             return START_STICKY
@@ -320,7 +324,10 @@ class TtsForegroundService : Service() {
     }
 
     private fun startForegroundIfNeeded(notification: Notification) {
-        if (foregroundStarted) return
+        if (!foregroundStarted) enterForeground(notification)
+    }
+
+    private fun enterForeground(notification: Notification) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         } else {

@@ -322,8 +322,10 @@ class DownloadForegroundService : Service() {
     }
 }
 
-private const val SOURCE_BLOCKED_NOTIFICATION_ID = 1002
-private const val NOTICE_MARKER_MISSING_NOTIFICATION_ID = 1005
+// Unique across the app: 1002 and 1005 are the TTS player's and narration's foreground notifications,
+// and sharing an id let these alerts replace (or cancel) the player's notification.
+private const val SOURCE_BLOCKED_NOTIFICATION_ID = 1007
+private const val NOTICE_MARKER_MISSING_NOTIFICATION_ID = 1008
 
 private fun Context.cancelSourceBlockedNotification() {
     runCatching { NotificationManagerCompat.from(this).cancel(SOURCE_BLOCKED_NOTIFICATION_ID) }
