@@ -96,7 +96,7 @@ private fun ScreenHost.markAiResultsSeen(
     when (tab) {
         AiControlsTab.COVER -> if (storyId in repository.aiCoverUnseen.value) scope.launch { repository.markAiCoverResultSeen(storyId) }
         AiControlsTab.DESCRIPTION -> aiControlsScreenState.unseenDescriptions.remove(storyId)
-        AiControlsTab.CHARACTERS -> Unit
+        AiControlsTab.CHARACTERS -> aiControlsScreenState.unseenCharacters.remove(storyId)
     }
 }
 
@@ -114,7 +114,7 @@ private fun ScreenHost.addAiTabBar(
                     when (tab) {
                         AiControlsTab.COVER -> aiControlsScreenState.coverDrafts[storyId] != null
                         AiControlsTab.DESCRIPTION -> aiControlsScreenState.drafts[storyId] != null
-                        AiControlsTab.CHARACTERS -> false
+                        AiControlsTab.CHARACTERS -> storyId in aiControlsScreenState.unseenCharacters
                     }
             // Text only: three labels with icons do not fit beside the story pane.
             Segment(tab.label, dot = waiting)

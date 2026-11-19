@@ -161,7 +161,11 @@ private fun ScreenHost.offerAutomaticCoverChapters(story: Story) {
             OptionsDialogItem.Option("Use automatic chapters") {
                 scope.launch {
                     if (repository.setAiCoverContextChapters(story.id, null) != null) {
-                        toast("Automatic chapters on. Phases are found on the next cover.")
+                        val found =
+                            app.appContainer.chapterEvidence
+                                .phases(story.id)
+                                .size > 1
+                        toast(if (found) "Automatic chapters on" else "Automatic chapters on. Phases are found on the next cover.")
                         if (frameIsAiControls(story.id)) showAiControls(story.id)
                     }
                 }
@@ -287,8 +291,8 @@ private fun ScreenHost.showAiContextChapterDialog(
                             toast("Select at least one chapter, or use Reset to automatic selection")
                             return@makeButton
                         }
-                        // An explicit selection always bypasses the decision-model scan, even when it
-                        // matches the last automatic pick.
+                        // Saving the last automatic pick unchanged keeps automatic mode (see contextPickerConfig);
+                        // any other selection bypasses the decision-model scan.
                         applySelection(checked.sorted())
                     },
                 )

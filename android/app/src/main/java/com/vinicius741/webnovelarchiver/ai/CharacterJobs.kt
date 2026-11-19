@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.ai
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import timber.log.Timber
 
 enum class CharacterJobKind {
     FIND,
@@ -64,8 +65,10 @@ class CharacterJobCoordinator(
 
     fun startFind(storyId: String): Boolean =
         coordinator.submit(CharacterJobState(storyId, CharacterJobKind.FIND, null, "Reading chapters...")) { update ->
-            engine.findCharacters(storyId) { message -> update { it.copy(message = message) } }
-            CharacterJobEvent.Succeeded(storyId, CharacterJobKind.FIND, null, null)
+            discardIfDeleted {
+                engine.findCharacters(storyId) { message -> update { it.copy(message = message) } }
+                CharacterJobEvent.Succeeded(storyId, CharacterJobKind.FIND, null, null)
+            }
         }
 
     fun startPortrait(
@@ -73,7 +76,18 @@ class CharacterJobCoordinator(
         characterId: String,
     ): Boolean =
         coordinator.submit(CharacterJobState(storyId, CharacterJobKind.PORTRAIT, characterId, "Finding descriptions...")) { update ->
-            val character = engine.draftPortrait(storyId, characterId) { message -> update { it.copy(message = message) } }
-            CharacterJobEvent.Succeeded(storyId, CharacterJobKind.PORTRAIT, characterId, character.name)
+            discardIfDeleted {
+                val character = engine.draftPortrait(storyId, characterId) { message -> update { it.copy(message = message) } }
+                CharacterJobEvent.Succeeded(storyId, CharacterJobKind.PORTRAIT, characterId, character.name)
+            }
+        }
+
+    /** Null (a silent discard, per [AiJobCoordinator]) when the novel was deleted mid-run. */
+    private inline fun discardIfDeleted(block: () -> CharacterJobEvent): CharacterJobEvent? =
+        try {
+            block()
+        } catch (deleted: CharacterEngine.StoryDeletedException) {
+            Timber.i(deleted, "Character job finished for a deleted novel; discarding it")
+            null
         }
 }

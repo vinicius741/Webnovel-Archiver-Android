@@ -138,7 +138,15 @@ class AiJobForegroundService : Service() {
                     if (event.record is AiCoverDraftRecord.Image) "Tap to compare and choose it." else "Tap to review the prompt."
                 is AiCoverJobEvent.Failed -> event.message
             }
-        postOutcome(COVER_OUTCOME_NOTIFICATION_ID, title, storyTitle?.let { "$it — $body" } ?: body, AppRoute.AiControls(event.storyId))
+        postOutcome(
+            COVER_OUTCOME_NOTIFICATION_ID,
+            COVER_OUTCOME_REQUEST_CODE,
+            title,
+            storyTitle?.let {
+                "$it — $body"
+            } ?: body,
+            AppRoute.AiControls(event.storyId),
+        )
     }
 
     private fun showCharacterOutcomeNotification(event: CharacterJobEvent) {
@@ -154,12 +162,24 @@ class AiJobForegroundService : Service() {
                 is CharacterJobEvent.Succeeded -> "Tap to see it."
                 is CharacterJobEvent.Failed -> event.message
             }
-        postOutcome(CHARACTER_OUTCOME_NOTIFICATION_ID, title, storyTitle?.let { "$it — $body" } ?: body, AppRoute.AiControls(event.storyId))
+        postOutcome(
+            CHARACTER_OUTCOME_NOTIFICATION_ID,
+            CHARACTER_OUTCOME_REQUEST_CODE,
+            title,
+            storyTitle?.let {
+                "$it — $body"
+            } ?: body,
+            AppRoute.AiControls(event.storyId),
+        )
     }
 
     companion object {
         private const val ONGOING_NOTIFICATION_ID = 1003
         private const val CHARACTER_OUTCOME_NOTIFICATION_ID = 1006
+
+        // Each tappable notification needs its own PendingIntent request code (22 is the ongoing one).
+        private const val COVER_OUTCOME_REQUEST_CODE = 21
+        private const val CHARACTER_OUTCOME_REQUEST_CODE = 25
         private const val COVER_OUTCOME_NOTIFICATION_ID = 1004
         const val ACTION_START = "com.vinicius741.webnovelarchiver.ai.JOB_START"
         private const val EXTRA_INITIAL_MESSAGE = "initial_message"
@@ -191,6 +211,7 @@ class AiJobForegroundService : Service() {
 
 private fun Service.postOutcome(
     id: Int,
+    requestCode: Int,
     title: String,
     text: String,
     route: AppRoute,
@@ -202,7 +223,7 @@ private fun Service.postOutcome(
     ) {
         return
     }
-    val notification = aiJobNotification(title, text, requestCode = 21, ongoing = false, route = route)
+    val notification = aiJobNotification(title, text, requestCode = requestCode, ongoing = false, route = route)
     runCatching {
         NotificationManagerCompat.from(this).notify(id, notification)
     }.onFailure { Timber.w(it, "Could not post AI job outcome notification") }

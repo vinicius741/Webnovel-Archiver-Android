@@ -5,8 +5,8 @@ import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.characterRoster
 import com.vinicius741.webnovelarchiver.data.repository.listAiCoverVersions
 import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
-import com.vinicius741.webnovelarchiver.data.repository.saveCharacterPortrait
-import com.vinicius741.webnovelarchiver.data.repository.saveCharacterRoster
+import com.vinicius741.webnovelarchiver.data.repository.saveCharacterPortraitIfStoryExists
+import com.vinicius741.webnovelarchiver.data.repository.saveCharacterRosterIfStoryExists
 import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
@@ -42,24 +42,35 @@ class CharacterEngine internal constructor(
         onProgress: (String) -> Unit = {},
     ): List<StoryCharacter> {
         val context = context(storyId)
-        val chapters = readChapters(context.story, onProgress)
-        onProgress("Finding names...")
-        val candidates = withContext(Dispatchers.Default) { CharacterMining.candidates(chapters) }
-        if (candidates.isEmpty()) error("No character names were found in the downloaded chapters")
+        // Chapters are read one at a time, twice (names, then mentions), so a long novel is never held whole.
+        val tallies = CharacterMining.Tallies()
+        val read = forEachChapter(context.story, "Finding names", onProgress) { tallies.add(it) }
+        if (read == 0) error("Downloaded chapter files are missing; re-download the novel's chapters")
+        val bare = withContext(Dispatchers.Default) { tallies.candidates() }
+        if (bare.isEmpty()) error("No character names were found in the downloaded chapters")
+        val needed = bare.flatMap { candidate -> candidate.positions.map { it.chapter } }.toSet()
+        val snippetChapters = mutableListOf<CharacterMining.ChapterText>()
+        forEachChapter(context.story, null, onProgress, only = needed) { snippetChapters += it }
+        val candidates = CharacterMining.withSnippets(bare, snippetChapters)
+        snippetChapters.clear()
+        requireStory(storyId)
         onProgress("Building the character list with ${context.settings.descriptionModel}...")
-        val operationId = UUID.randomUUID().toString()
         val reply =
             complete(
                 context,
                 CharacterRosterPlanning.buildMessages(context.story, candidates),
                 CharacterRosterPlanning.MAX_OUTPUT_TOKENS,
                 FEATURE_CHARACTERS,
-                operationId,
+                UUID.randomUUID().toString(),
             )
+        val previous = repository.characterRoster(storyId).orEmpty()
+        val parsed = CharacterRosterPlanning.reconcile(CharacterRosterPlanning.parse(reply), previous)
+        val counter = CharacterMining.MentionCounter(parsed.associate { it.id to it.names })
+        forEachChapter(context.story, "Counting mentions", onProgress) { counter.add(it) }
         val roster =
-            withContext(Dispatchers.Default) {
-                CharacterRosterPlanning.parse(reply).map { character ->
-                    val mentions = CharacterMining.mentions(chapters, character.names)
+            parsed
+                .map { character ->
+                    val mentions = counter.result(character.id)
                     character.copy(
                         mentions = mentions.count,
                         firstChapter = mentions.first,
@@ -67,11 +78,10 @@ class CharacterEngine internal constructor(
                         keyChapters = CharacterMining.keyChapters(mentions, CharacterAppearanceRubric.MAX_SCANNED_CHAPTERS),
                     )
                 }
-            }
+                // A name the text never uses is one the model invented or re-spelled; the lead stays regardless.
+                .filter { it.mentions > 0 || it.role == CharacterRole.PROTAGONIST }
         val ordered = CharacterRosterPlanning.ordered(roster)
-        // A novel deleted mid-run keeps no files behind.
-        repository.story(storyId) ?: error("This novel is no longer in the library")
-        repository.saveCharacterRoster(storyId, ordered)
+        if (!repository.saveCharacterRosterIfStoryExists(storyId, ordered)) throw StoryDeletedException()
         Timber.i("Found %d characters for %s", ordered.size, storyId)
         return ordered
     }
@@ -83,6 +93,10 @@ class CharacterEngine internal constructor(
         onProgress: (String) -> Unit = {},
     ): StoryCharacter {
         val context = context(storyId)
+        // An image model the app cannot display fails before anything is billed.
+        imageModel(context.settings.imageModel)?.takeUnless(AiCoverPlanning::supportsRasterOutput)?.let {
+            error("${context.settings.imageModel} only produces SVG images, which the app cannot display. Pick a raster image model.")
+        }
         val character =
             repository.characterRoster(storyId)?.firstOrNull { it.id == characterId }
                 ?: error("This character is no longer in the list. Find characters again.")
@@ -94,10 +108,8 @@ class CharacterEngine internal constructor(
                     "was painted. Download more chapters where they appear and try again.",
             )
         }
+        requireStory(storyId)
         onProgress("Writing portrait prompt with ${context.settings.descriptionModel}...")
-        val style =
-            runCatching { repository.listAiCoverVersions(storyId).let { v -> v.firstOrNull { it.isCurrent } ?: v.firstOrNull() }?.prompt }
-                .getOrNull()
         val messages =
             CharacterPortraitPlanning.buildMessages(
                 context.story,
@@ -105,24 +117,25 @@ class CharacterEngine internal constructor(
                 evidence.passages,
                 evidence.earlierPassages,
                 evidence.phase,
-                styleReference = style,
+                styleReference = repository.currentCoverPrompt(context.story),
             )
         val prompt =
             AiCoverPlanning.cleanGeneratedPrompt(
                 complete(context, messages, CharacterPortraitPlanning.MAX_OUTPUT_TOKENS, FEATURE_PORTRAIT_PROMPT, operationId),
             ) ?: error("The model returned an empty portrait prompt. Try again or pick a different model.")
+        requireStory(storyId)
         onProgress("Painting ${character.name} with ${context.settings.imageModel}...")
         val image = paint(context, prompt, operationId)
-        repository.story(storyId) ?: error("This novel is no longer in the library")
-        repository.saveCharacterPortrait(storyId, characterId, prompt, image.bytes, image.mediaType)
+        repository.saveCharacterPortraitIfStoryExists(storyId, characterId, prompt, image.bytes, image.mediaType)
+            ?: throw StoryDeletedException()
         Timber.i("Portrait of %s painted for %s", characterId, storyId)
         return character
     }
 
     /**
-     * The lead uses the cover's automatic scan (cached after the first cover, and scoped to the cover's
-     * story phase); everyone else gets a scan of the chapters that name them. The lead falls back to
-     * that name scan when the cover scan flagged no appearance passage.
+     * The lead of a novel on automatic cover chapters uses the cover scan (free once a cover was made,
+     * and scoped to the cover's story phase); everyone else, and the lead when that finds nothing, gets
+     * a scan of the chapters that name them.
      */
     private suspend fun evidence(
         context: Context,
@@ -130,10 +143,11 @@ class CharacterEngine internal constructor(
         onProgress: (String) -> Unit,
     ): ChapterEvidencePlanning.Selection {
         val settings = context.settings
-        if (character.role == CharacterRole.PROTAGONIST) {
+        if (character.role == CharacterRole.PROTAGONIST && context.story.aiCoverContextChapterIndices.isNullOrEmpty()) {
             onProgress("Reading chapters...")
+            // Only "no cover evidence" falls back to the name scan; key, credit and network errors stop here.
             val cover =
-                runCatching {
+                try {
                     evidenceSelector.coverSelection(
                         context.story,
                         context.apiKey,
@@ -142,8 +156,10 @@ class CharacterEngine internal constructor(
                         evidenceStore,
                         onProgress,
                     )
-                }.onFailure { if (it is CancellationException) throw it }
-                    .getOrNull()
+                } catch (noEvidence: IllegalStateException) {
+                    if (noEvidence.message != CoverEvidencePlanning.noEvidenceMessage) throw noEvidence
+                    null
+                }
             if (cover != null && cover.passages.isNotEmpty()) return cover
         }
         val downloaded =
@@ -164,21 +180,35 @@ class CharacterEngine internal constructor(
         return ChapterEvidencePlanning.Selection(emptyList(), scan.passages)
     }
 
-    private suspend fun readChapters(
+    /**
+     * Reads downloaded chapters one at a time ([only] limits it to those chapter numbers) and hands
+     * each to [block]; returns how many were readable. [label] null keeps progress quiet.
+     */
+    private suspend fun forEachChapter(
         story: Story,
+        label: String?,
         onProgress: (String) -> Unit,
-    ): List<CharacterMining.ChapterText> =
+        only: Set<Int>? = null,
+        block: (CharacterMining.ChapterText) -> Unit,
+    ): Int =
         withContext(Dispatchers.IO) {
-            val downloaded = story.chapters.withIndex().filter { it.value.downloaded }
-            if (downloaded.isEmpty()) error("Download at least one chapter before finding characters")
-            downloaded
-                .mapIndexedNotNull { done, (index, chapter) ->
-                    coroutineContext.ensureActive()
-                    if (done % PROGRESS_EVERY == 0) onProgress("Reading chapters: $done/${downloaded.size}")
-                    val html = repository.readChapter(chapter) ?: chapter.content ?: return@mapIndexedNotNull null
-                    CharacterMining.ChapterText(index + 1, HtmlCleanup.htmlToFormattedText(html))
-                }.also { if (it.isEmpty()) error("Downloaded chapter files are missing; re-download the novel's chapters") }
+            val downloaded = story.chapters.withIndex().filter { it.value.downloaded && (only == null || it.index + 1 in only) }
+            if (downloaded.isEmpty() && only == null) error("Download at least one chapter before finding characters")
+            var read = 0
+            downloaded.forEachIndexed { done, (index, chapter) ->
+                coroutineContext.ensureActive()
+                if (label != null && done % PROGRESS_EVERY == 0) onProgress("$label: chapter $done of ${downloaded.size}")
+                val html = repository.readChapter(chapter) ?: chapter.content ?: return@forEachIndexed
+                block(CharacterMining.ChapterText(index + 1, HtmlCleanup.htmlToFormattedText(html)))
+                read++
+            }
+            read
         }
+
+    /** A novel deleted mid-run ends the job quietly, before anything else is billed or saved. */
+    private suspend fun requireStory(storyId: String) {
+        repository.story(storyId) ?: throw StoryDeletedException()
+    }
 
     /** One text-model call, retried once on an empty reply; a truncated reply fails. */
     @Suppress("ThrowsCount") // Each terminal outcome is recorded before its failure propagates.
@@ -277,6 +307,9 @@ class CharacterEngine internal constructor(
         return Context(settings, apiKey, story)
     }
 
+    /** The novel was deleted while its job ran; the coordinator discards the job silently. */
+    class StoryDeletedException : IllegalStateException("This novel is no longer in the library")
+
     private class Context(
         val settings: AiSettings,
         val apiKey: String,
@@ -329,3 +362,11 @@ class CharacterEngine internal constructor(
         const val OUTCOME_UNSUPPORTED = "unsupported_output"
     }
 }
+
+/** The prompt of the AI cover the novel shows now, if it shows one: the portrait borrows its art style. */
+private suspend fun AppRepository.currentCoverPrompt(story: Story): String? =
+    if (!AiCoverPlanning.isAiCoverActive(story)) {
+        null
+    } else {
+        runCatching { listAiCoverVersions(story.id).firstOrNull { it.isCurrent }?.prompt }.getOrNull()
+    }

@@ -17,6 +17,9 @@ internal object CharacterPortraitPlanning {
     const val MAX_OUTPUT_TOKENS = AiCoverPlanning.MAX_OUTPUT_TOKENS
     private const val MAX_STYLE_REFERENCE_CHARS = 3_000
 
+    /** The simulator recognizes the portrait-prompt call by this opening. */
+    internal const val SYSTEM_OPENING = "You write the image prompt for a character portrait"
+
     internal val FRAMINGS =
         listOf(
             "Head-and-shoulders portrait, eye-level, the face sharp and well lit.",
@@ -101,7 +104,7 @@ internal object CharacterPortraitPlanning {
 
     private val SYSTEM_PROMPT =
         """
-        You write the image prompt for a character portrait in a personal reading app. The owner archives web
+        $SYSTEM_OPENING in a personal reading app. The owner archives web
         novels and wants pictures of the characters they read about. Your reply is sent word for word to an
         image-generation model that knows nothing about the novel and will make up whatever you leave unstated.
 

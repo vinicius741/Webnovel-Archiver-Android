@@ -12,43 +12,58 @@ uses the same OpenRouter key, text model, decision model and image model as cove
 2. **The list.** The lead first, then **Main characters**, then **Supporting (N)**, collapsed.
    Each row shows the newest portrait (or initials), the role, the chapters the character
    appears in, how often they are named, and a one-line bio. **Find characters again** rebuilds
-   the list; portraits stay with characters whose name is unchanged (ids are name slugs).
+   the list; a character whose name or an alias matches one in the old list keeps its id, so its
+   portraits stay attached even when the model words the name differently.
 3. **A character's page.** Tapping a row opens the character inside the tab: portrait, role,
    chapters, aliases and bio, every portrait (tap for full size, with its prompt and **Delete**),
    and **Generate portrait**. System Back and **‹ All characters** return to the list.
 
 Jobs run on the application scope (`CharacterJobCoordinator`), so leaving the screen never
-cancels a billed call; `AiJobForegroundService` keeps the process alive and posts a
+cancels a billed call; one character job runs at a time across all novels (buttons say so when
+another novel's job runs), and a novel deleted mid-run ends its job silently before the next paid
+step. Progress ticks patch one line; only a job starting or ending re-renders the tab, which renders
+its last loaded view at once (keeping the scroll position) and re-renders only if the files changed. `AiJobForegroundService` keeps the process alive and posts a
 "Characters found" / "Portrait ready" notification. One character job runs at a time; cover
 jobs are independent.
 
 ## How the list is built
 
-- `CharacterMining.candidates` finds capitalized words and word pairs that appear mid-sentence,
-  are rarely written in lowercase ("Mana" vs "mana") and are not common capitalized words. Names
-  next to speech verbs rank higher. It keeps the top 50 with up to three short snippets each.
+- Chapters are read one at a time, never all at once. `CharacterMining.Tallies` finds capitalized
+  words and word pairs that appear mid-sentence ("Mr. Darcy" counts), are rarely written in
+  lowercase ("Mana" vs "mana"; for a pair, its first word: "Did Jason" is dropped) and are not
+  common capitalized words; possessive pairs ("Jake's Perception") are skipped and curly
+  apostrophes count as straight ones. Names next to speech verbs rank higher. It keeps the top
+  120: three snippets each for the top 40, one for the rest, read back from just those chapters.
 - `CharacterRosterPlanning` sends the title, tags, description and the candidates as
   `SOURCE_DATA` to the text model, which drops places, skills and titles, merges aliases, picks
-  exactly one protagonist, and writes a one-sentence bio. The reply is JSON; up to 24 characters.
-- The app then counts each character's names and aliases per chapter (`CharacterMining.mentions`)
+  exactly one protagonist (a second one is demoted), and writes a one-sentence bio. The reply is
+  JSON; up to 24 characters. `CharacterRosterPlanning.reconcile` drops aliases two characters share
+  and bare titles ("Captain", "Senior Brother"), and keeps old ids as described above. Ids are
+  ASCII slugs; a name with letters outside ASCII ("Renée", "林凡") gets a short hash of the name.
+- A second pass counts every character's names and aliases with one pattern for the whole list
+  (`CharacterMining.MentionCounter`; the longest name wins, so "Li Mei" never counts for a "Li")
   for the chapter span, the mention count, and `keyChapters` (the entrance, then the chapters that
-  name them most), which the portrait scan reads first.
+  name them most), which the portrait scan reads first. Characters the text never names are
+  dropped, except the lead.
 
 ## How a portrait is painted
 
-1. **Evidence.** For the lead, the cover's automatic scan (`coverSelection`) supplies the
-   appearance passages, scoped to the cover's story phase (Cover tab › Story phase), with earlier
-   passages for lasting traits. It is cached after the first cover. Everyone else, and the lead
-   when the cover scan found nothing, gets `CharacterAppearanceRubric`: up to 16 key chapters,
+1. **Evidence.** For the lead of a novel on automatic cover chapters, the cover's scan
+   (`coverSelection`) supplies the appearance passages, scoped to the cover's story phase (Cover
+   tab › Story phase), with earlier passages for lasting traits. It is cached after the first
+   cover; otherwise it scans about 60 chapters first (around 2 cents), and a lead portrait cannot
+   start while that novel's cover job runs. Everyone else, the lead of a novel with hand-picked cover
+   chapters, and a lead the cover scan found nothing for, gets `CharacterAppearanceRubric`: up to 16 key chapters,
    each sent from one passage before the character's first mention, with a per-passage Noul
    "does this describe how the character in `character` looks?". The name travels in the state,
-   never in a question. The scan stops after 5 chapters with a flagged passage.
+   never in a question, and the novel description gets only the bytes the rest of the request
+   leaves, so a request stays under 30 KB even with non-Latin text. The scan stops after 5 chapters with a flagged passage.
 2. **No evidence, no face.** If no passage describes the character, the run stops with a plain
    message before any text or image call.
 3. **Prompt.** `CharacterPortraitPlanning` gives the text model the character, the flagged
    passages (12k characters, strongest first), a random framing (head-and-shoulders, waist-up,
-   three-quarter or full figure), and the prompt of the cover in use as `cover_style_reference`,
-   so the portrait matches the cover's medium and palette. The portrait has no lettering.
+   three-quarter or full figure), and, when the novel shows an AI cover, that cover's prompt as
+   `cover_style_reference`, so the portrait matches its medium and palette. The portrait has no lettering.
 4. **Image.** The image model paints it at 2:3, like covers.
 
 ## Storage

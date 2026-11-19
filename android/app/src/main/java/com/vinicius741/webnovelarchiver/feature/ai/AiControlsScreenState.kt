@@ -32,6 +32,12 @@ class AiControlsScreenState {
     /** The character whose page the Characters tab shows, by story id; absent = the list. */
     internal val openCharacters: MutableMap<String, String> = linkedMapOf()
 
+    /** The last loaded Characters tab per story, rendered at once so a re-render keeps its scroll. */
+    internal val characterViews: MutableMap<String, CharactersView> = linkedMapOf()
+
+    /** Stories whose character job finished while their Characters tab was not on screen. */
+    internal val unseenCharacters: MutableSet<String> = linkedSetOf()
+
     /** Stories whose Supporting characters are expanded in the list. */
     internal val expandedSupporting: MutableSet<String> = linkedSetOf()
 
@@ -81,3 +87,11 @@ class AiControlsScreenState {
         dismissedChips.remove(AiJobChipPlanning.readyKey(storyId, tab))
     }
 }
+
+/** What the Characters tab shows: the list, thumbnails, and the open character's portraits. */
+internal data class CharactersView(
+    val openId: String?,
+    val roster: List<com.vinicius741.webnovelarchiver.domain.model.StoryCharacter>?,
+    val thumbs: Map<String, java.io.File>,
+    val portraits: List<com.vinicius741.webnovelarchiver.domain.model.CharacterPortrait>,
+)

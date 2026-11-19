@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.simulation
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.vinicius741.webnovelarchiver.ai.CharacterPortraitPlanning
 import com.vinicius741.webnovelarchiver.ai.CharacterRosterPlanning
 import com.vinicius741.webnovelarchiver.app.AppTime
 import com.vinicius741.webnovelarchiver.source.network.CloudflarePageRenderer
@@ -80,7 +81,10 @@ internal class SimulationResponder(
                             message.asJsonObject
                                 .get("content")
                                 ?.asString
-                                ?.startsWith("Write one image-generation prompt") == true
+                                ?.let {
+                                    it.startsWith("Write one image-generation prompt") ||
+                                        it.startsWith(CharacterPortraitPlanning.SYSTEM_OPENING)
+                                } == true
                         }
                     ) {
                         "prompt"

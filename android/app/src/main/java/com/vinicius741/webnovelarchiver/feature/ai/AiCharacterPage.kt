@@ -4,6 +4,7 @@ import android.view.ViewGroup
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.ai.CharacterJobKind
 import com.vinicius741.webnovelarchiver.ai.CharacterJobState
@@ -165,19 +166,29 @@ private fun ScreenHost.addNewPortraitCard(
     container.addView(
         container.card {
             val settings = repository.aiSettings.get()
+            val usesCoverScan = character.role == CharacterRole.PROTAGONIST && story.aiCoverContextChapterIndices.isNullOrEmpty()
             val how =
-                if (character.role == CharacterRole.PROTAGONIST) {
-                    "Uses the passages the cover scan found about the lead, at the age set in Story phase on the Cover tab. "
+                if (usesCoverScan) {
+                    "Uses the passages the cover scan found about the lead, at the age set in Story phase on the Cover tab. " +
+                        "That scan is free once a cover was made; otherwise it checks about 60 chapters first (around 2 cents). "
                 } else {
-                    "The decision model reads the chapters that name ${character.name} and keeps the passages that describe them. "
+                    "The decision model reads up to 16 chapters that name ${character.name} and keeps the passages that describe them. "
                 }
+            val style = if (AiCoverPlanning.isAiCoverActive(story)) ", matching your current cover's art style," else ""
             text(
-                how + "${settings.descriptionModel} writes the prompt, matching your current cover's art style, and " +
-                    "${settings.imageModel} paints it. Usually under 10 cents.",
+                how + "${settings.descriptionModel} writes the prompt$style and ${settings.imageModel} paints it " +
+                    "(about 8 cents with Sonnet and Grok Imagine; mostly the image).",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setLineSpacing(dp(Space.XS).toFloat(), 1f) }
-            if (!canRunCharacters(story)) return@card
+            if (!canRunCharacters(story)) {
+                text(
+                    if (story.isArchived == true) "Archived snapshots are read-only." else "Download chapters before painting a portrait.",
+                    Type.BODY_SMALL,
+                    colors.onSurfaceVariant,
+                ).apply { setPadding(0, dp(Space.SM), 0, 0) }
+                return@card
+            }
             val mine = job?.kind == CharacterJobKind.PORTRAIT && job.characterId == character.id
             fullButton(
                 when {
@@ -187,7 +198,7 @@ private fun ScreenHost.addNewPortraitCard(
                 },
                 Btn.FILLED,
                 R.drawable.wna_auto_awesome,
-                enabled = job == null,
+                enabled = !characterJobsBusy(),
                 topMarginDp = Space.MD,
                 bottomMarginDp = 0,
             ) { startPortrait(story, character, firstRun = portraits.isEmpty()) }
@@ -196,6 +207,7 @@ private fun ScreenHost.addNewPortraitCard(
                     setPadding(0, dp(Space.SM), 0, 0)
                 }
             }
+            addOtherNovelBusyNote(this, job)
             if (mine) job?.let { addCharacterProgress(this, story.id, it) }
         },
     )

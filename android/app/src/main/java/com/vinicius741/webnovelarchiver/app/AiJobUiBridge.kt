@@ -50,13 +50,16 @@ private fun MainActivity.attachCharacterJobBridge() {
         var running: Map<String, Pair<CharacterJobKind, String?>> = emptyMap()
         coordinator.jobs.collect { jobs ->
             val now = jobs.mapValues { it.value.kind to it.value.characterId }
+            // A start or finish changes buttons and results: re-render. A message only patches its line.
             (running.keys + now.keys).forEach { storyId ->
-                val job = jobs[storyId]
                 val showing = frameIsAiControls(storyId) && aiControlsTab(storyId) == AiControlsTab.CHARACTERS
-                when {
-                    !showing -> Unit
-                    running[storyId] != now[storyId] -> showAiControls(storyId)
-                    job != null && !patchCharacterProgress(job) -> showAiControls(storyId)
+                if (showing && running[storyId] != now[storyId]) showAiControls(storyId)
+            }
+            jobs.values.forEach { patchCharacterProgress(it) }
+            // Another novel's job ending re-enables this novel's buttons.
+            if (running.isNotEmpty() && now.isEmpty()) {
+                (navigator.current as? com.vinicius741.webnovelarchiver.navigation.AppRoute.AiControls)?.storyId?.let { storyId ->
+                    if (storyId !in running && aiControlsTab(storyId) == AiControlsTab.CHARACTERS) showAiControls(storyId)
                 }
             }
             running = now
@@ -64,13 +67,15 @@ private fun MainActivity.attachCharacterJobBridge() {
     }
     scope.launch {
         coordinator.events.collect { event ->
+            // The jobs collector has re-rendered by now; results were saved before the event.
             val showing = frameIsAiControls(event.storyId) && aiControlsTab(event.storyId) == AiControlsTab.CHARACTERS
             when (event) {
-                is CharacterJobEvent.Succeeded ->
+                is CharacterJobEvent.Succeeded -> {
+                    if (!showing) aiControlsScreenState.unseenCharacters += event.storyId
                     toast(if (event.kind == CharacterJobKind.FIND) "Characters found" else "Portrait of ${event.characterName} ready")
+                }
                 is CharacterJobEvent.Failed -> toast(event.message)
             }
-            if (showing) showAiControls(event.storyId)
         }
     }
 }

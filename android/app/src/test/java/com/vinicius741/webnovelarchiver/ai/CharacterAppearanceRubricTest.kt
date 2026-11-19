@@ -69,4 +69,14 @@ class CharacterAppearanceRubricTest {
         assertEquals(listOf(3, 0, 4), CharacterAppearanceRubric.order(downloaded, listOf(8, 2, 4, 13, 8)))
         assertEquals(listOf(1), CharacterAppearanceRubric(ivo, listOf(1, 9)).scanOrder(5))
     }
+
+    @Test fun `multibyte metadata never pushes a request past the limit`() {
+        val text = (0 until 60).joinToString("\n") { if (it == 0) "Ivo " + "雪".repeat(1_400) else "雪".repeat(1_400) }
+        val wide = StoryCharacter("ivo", "Ivo" + "龍".repeat(77), List(7) { "龍".repeat(80) }, CharacterRole.MAJOR, "", 0, null, null)
+        val rubric = CharacterAppearanceRubric(wide, listOf(0))
+        val sample = rubric.sample(1, "章".repeat(300), text)!!
+        val story = Story(title = "書".repeat(600), description = "描".repeat(5_000))
+        val body = rubric.request(story, sample, "typesafe/jev-1.14")
+        assertTrue(body.toString().toByteArray().size <= CoverEvidencePlanning.MAX_REQUEST_BYTES)
+    }
 }

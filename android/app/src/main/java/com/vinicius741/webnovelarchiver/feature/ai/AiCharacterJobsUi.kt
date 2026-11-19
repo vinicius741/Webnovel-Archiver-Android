@@ -4,6 +4,7 @@ import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.ai.CharacterJobState
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.domain.model.CharacterRole
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryCharacter
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -55,6 +56,11 @@ internal fun ScreenHost.startPortrait(
     firstRun: Boolean,
 ) {
     fun start() {
+        // The lead's evidence is the cover scan: running both at once would judge (and bill) chapters twice.
+        if (character.role == CharacterRole.PROTAGONIST && aiCoverOperationFor(story.id) != null) {
+            toast("Wait for the cover to finish, then paint the lead")
+            return
+        }
         if (!app.appContainer.characterJobCoordinator.startPortrait(story.id, character.id)) {
             toast("Please wait for the current character job to finish")
             return
@@ -70,4 +76,23 @@ internal fun ScreenHost.startPortrait(
         "Paint another portrait of ${character.name}? This calls OpenRouter and uses your API credits. Earlier portraits are kept.",
         confirmLabel = "Generate",
     ) { start() }
+}
+
+/** True while any novel's character job runs: one runs at a time. */
+internal fun ScreenHost.characterJobsBusy(): Boolean = app.appContainer.characterJobCoordinator.isBusy()
+
+/** Explains a disabled button when the running character job belongs to another novel. */
+internal fun ScreenHost.addOtherNovelBusyNote(
+    container: LinearLayout,
+    job: CharacterJobState?,
+) {
+    if (job != null || !characterJobsBusy()) return
+    container.addView(
+        makeText(
+            app,
+            "Another novel's character job is running. This one can start when it finishes.",
+            Type.BODY_SMALL,
+            ThemeManager.colors.onSurfaceVariant,
+        ).apply { setPadding(0, dp(Space.SM), 0, 0) },
+    )
 }

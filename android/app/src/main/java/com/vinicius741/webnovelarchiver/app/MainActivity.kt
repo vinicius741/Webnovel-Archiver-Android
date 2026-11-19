@@ -386,6 +386,7 @@ class MainActivity :
     override fun onDestroy() {
         finishPerfSession()
         aiControlsScreenState.binding = null
+        aiControlsScreenState.characterProgress = null
         screenObserver?.cancel()
         // Destroy lingering reader WebViews so they can't leak the activity reference.
         com.vinicius741.webnovelarchiver.platform.WebViewSafety

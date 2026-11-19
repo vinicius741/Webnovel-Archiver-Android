@@ -31,6 +31,7 @@ import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.dropUnusedBaselineAlignment
 import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.loadImage
 import com.vinicius741.webnovelarchiver.ui.makeBadge
@@ -65,27 +66,47 @@ internal fun ScreenHost.addAiCharactersTab(
 ) {
     val slot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     container.addView(slot)
-    val job = app.appContainer.characterJobCoordinator.jobFor(story.id)
+    // A render replaces the progress line; the old one belongs to a detached tree.
+    aiControlsScreenState.characterProgress = null
     val openId = aiControlsScreenState.openCharacters[story.id]
+    // The last loaded view renders at once, so a re-render keeps its scroll position; the files are
+    // then re-read and the tab re-renders only if they changed.
+    val cached = aiControlsScreenState.characterViews[story.id]?.takeIf { it.openId == openId }
+    cached?.let { renderCharactersTab(slot, story, it) }
     scope.launch {
         val roster = repository.characterRoster(story.id)
-        val thumbs = runCatching { repository.latestCharacterPortraits(story.id) }.getOrDefault(emptyMap())
-        if (!frameIsAiControls(story.id) || aiControlsTab(story.id) != AiControlsTab.CHARACTERS) return@launch
         val open = roster?.firstOrNull { it.id == openId }
-        if (open != null) {
-            val portraits = runCatching { repository.characterPortraits(story.id, open.id) }.getOrDefault(emptyList())
-            addCharacterPage(slot, story, open, portraits, job)
-        } else {
-            if (openId != null) aiControlsScreenState.openCharacters.remove(story.id)
-            if (roster.isNullOrEmpty()) addFindCharactersCard(slot, story, job) else addCharacterList(slot, story, roster, thumbs, job)
-        }
-        val settings = repository.aiSettings.get()
-        addAiModelFooter(
-            slot,
-            "Text" to settings.descriptionModel,
-            "Image" to settings.imageModel,
-        )
+        val fresh =
+            CharactersView(
+                openId = openId,
+                roster = roster,
+                thumbs = runCatching { repository.latestCharacterPortraits(story.id) }.getOrDefault(emptyMap()),
+                portraits = open?.let { runCatching { repository.characterPortraits(story.id, it.id) }.getOrNull() }.orEmpty(),
+            )
+        if (!frameIsAiControls(story.id) || aiControlsTab(story.id) != AiControlsTab.CHARACTERS || !slot.isAttachedToWindow) return@launch
+        if (fresh == cached) return@launch
+        aiControlsScreenState.characterViews[story.id] = fresh
+        if (cached == null) renderCharactersTab(slot, story, fresh) else showAiControls(story.id)
     }
+}
+
+private fun ScreenHost.renderCharactersTab(
+    slot: LinearLayout,
+    story: Story,
+    view: CharactersView,
+) {
+    val job = app.appContainer.characterJobCoordinator.jobFor(story.id)
+    val open = view.roster?.firstOrNull { it.id == view.openId }
+    when {
+        open != null -> addCharacterPage(slot, story, open, view.portraits, job)
+        view.roster.isNullOrEmpty() -> addFindCharactersCard(slot, story, job)
+        else -> addCharacterList(slot, story, view.roster, view.thumbs, job)
+    }
+    if (open == null && view.openId != null) aiControlsScreenState.openCharacters.remove(story.id)
+    val settings = repository.aiSettings.get()
+    addAiModelFooter(slot, "Text" to settings.descriptionModel, "Image" to settings.imageModel)
+    // Built after screen() ran its own pass, so this rebuild needs it too (android/AGENTS.md).
+    slot.dropUnusedBaselineAlignment()
 }
 
 /** True while the tab shows one character's page; system Back then returns to the list. */
@@ -111,7 +132,8 @@ private fun ScreenHost.addFindCharactersCard(
             spacer(Space.XS)
             text(
                 "Find the novel's characters, then paint a portrait of anyone you like. Names are counted on your phone " +
-                    "for free; one AI call groups them into a list with roles and short bios, usually a few cents.",
+                    "for free; one call to ${repository.aiSettings.get().descriptionModel} groups them into a list with roles " +
+                    "and short bios (a few cents with a mid-priced model).",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setLineSpacing(dp(Space.XS).toFloat(), 1f) }
@@ -124,11 +146,12 @@ private fun ScreenHost.addFindCharactersCard(
                 if (job?.kind == CharacterJobKind.FIND) "Finding characters..." else "Find characters",
                 Btn.FILLED,
                 R.drawable.wna_group,
-                enabled = job == null,
+                enabled = !characterJobsBusy(),
                 topMarginDp = Space.MD,
                 bottomMarginDp = 0,
             ) { startFindCharacters(story) }
             job?.let { addCharacterProgress(this, story.id, it) }
+            addOtherNovelBusyNote(this, job)
         },
     )
 }
@@ -201,7 +224,7 @@ private fun ScreenHost.addCharacterList(
                     if (job?.kind == CharacterJobKind.FIND) "Finding characters..." else "Find characters again",
                     Btn.OUTLINED,
                     R.drawable.wna_group,
-                    enabled = job == null,
+                    enabled = !characterJobsBusy(),
                     topMarginDp = Space.MD,
                     bottomMarginDp = 0,
                 ) {
@@ -213,6 +236,7 @@ private fun ScreenHost.addCharacterList(
                 }
             }
             job?.takeIf { it.kind == CharacterJobKind.FIND }?.let { addCharacterProgress(this, story.id, it) }
+            addOtherNovelBusyNote(this, job)
         },
     )
 }
@@ -251,16 +275,7 @@ private fun ScreenHost.characterRow(
                             },
                         )
                     }
-                    if (job?.kind == CharacterJobKind.PORTRAIT && job.characterId == character.id) {
-                        addView(
-                            makeText(
-                                context,
-                                "Painting a portrait...",
-                                Type.LABEL_MEDIUM,
-                                colors.tertiary,
-                            ).apply { setPadding(0, dp(Space.XS), 0, 0) },
-                        )
-                    }
+                    if (job?.kind == CharacterJobKind.PORTRAIT && job.characterId == character.id) addCharacterProgress(this, story.id, job)
                 },
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
             )

@@ -36,7 +36,7 @@ class CharacterMiningTest {
         assertTrue(mara.speech >= 1)
         assertTrue(mara.snippets.isNotEmpty())
         assertTrue(mara.snippets.all { it.text.contains("Mara") && it.text.length <= CharacterMining.SNIPPET_CHARS })
-        assertEquals("Mara", candidates.first().name)
+        assertEquals(setOf("Mara", "Ivo"), candidates.take(2).map { it.name }.toSet())
     }
 
     @Test fun `mentions count every name and alias as whole words per chapter`() {
@@ -60,5 +60,43 @@ class CharacterMiningTest {
     @Test fun `first mention finds the earliest of any name`() {
         assertEquals(4, CharacterMining.firstMention("The Ivo and Mara", listOf("Mara", "Ivo")))
         assertNull(CharacterMining.firstMention("Nobody here", listOf("Mara")))
+    }
+
+    @Test fun `curly apostrophes, honorifics and possessive pairs are handled like plain text`() {
+        val chapters =
+            (1..4).map {
+                chapter(
+                    it,
+                    "I’m tired. I’ll go. Then Mr. Darcy bowed and Mr. Darcy left while Jake’s Perception rose. " +
+                        "Jake’s Perception grew. Jake’s Perception peaked. Unlike Darcy, unlike Jake.",
+                )
+            }
+        val names = CharacterMining.candidates(chapters).map { it.name }
+        assertFalse(names.any { it.startsWith("I'") })
+        assertTrue("Darcy" in names)
+        assertFalse(names.any { it.startsWith("Jake's") })
+        assertFalse("Unlike Darcy" in names)
+    }
+
+    @Test fun `one roster-wide count gives each mention to the longest matching name`() {
+        val counter = CharacterMining.MentionCounter(mapOf("li-mei" to listOf("Li Mei"), "li-qing" to listOf("Li Qing", "Li")))
+        listOf(chapter(1, "Li Mei met Li Qing. Li’s sword flashed."), chapter(2, "Li Mei slept.")).forEach(counter::add)
+        assertEquals(mapOf(1 to 1, 2 to 1), counter.result("li-mei").perChapter)
+        assertEquals(mapOf(1 to 2), counter.result("li-qing").perChapter)
+    }
+
+    @Test fun `dialogue tags count as mid-sentence and a talking name that is also a word survives`() {
+        val chapters =
+            (1..3).map {
+                chapter(
+                    it,
+                    "\"Hold on,\" Will said. \"Wait,\" Will said. \"Now,\" Will said. I will go and you will stay and we will see. " +
+                        "Lord Vane bowed. Lord Vane left. \"No,\" Lin Feng said.",
+                )
+            }
+        val names = CharacterMining.candidates(chapters).map { it.name }
+        assertTrue("Will" in names)
+        assertTrue("Lord Vane" in names)
+        assertTrue(CharacterMining.candidates(chapters).first { it.name == "Lin Feng" }.speech >= 3)
     }
 }
