@@ -57,7 +57,27 @@ internal class ChapterEvidenceSelector(
         targetChapters: Int,
         rubric: EvidenceRubric,
         progress: (String) -> Unit,
-    ): ChapterEvidencePlanning.Selection =
+    ): ChapterEvidencePlanning.Selection {
+        val scan = scan(story, apiKey, model, targetChapters, rubric, progress)
+        val useful = scan.scored.filter { it.assessment.useful }
+        check(useful.isNotEmpty()) { rubric.noEvidenceMessage }
+        val chosen = ChapterEvidencePlanning.choose(useful, targetChapters.coerceIn(1, maxOf(1, story.chapters.count { it.downloaded })))
+        return ChapterEvidencePlanning.Selection(read(story, chosen), scan.passages)
+    }
+
+    /**
+     * Judges chapters in the rubric's scan order until [targetChapters] useful ones are found and
+     * the rubric's minimum scan is covered. Returns every judged chapter, useful or not, with every
+     * flagged passage in reading order; the caller chooses which chapters to read.
+     */
+    suspend fun scan(
+        story: Story,
+        apiKey: String,
+        model: String,
+        targetChapters: Int,
+        rubric: EvidenceRubric,
+        progress: (String) -> Unit,
+    ): ChapterEvidencePlanning.Scan =
         withContext(Dispatchers.IO) {
             val operationId = UUID.randomUUID().toString()
             val downloaded =
@@ -65,8 +85,7 @@ internal class ChapterEvidenceSelector(
                     rubric.scanOrder(chapters.size).map(chapters::get)
                 }
             val target = targetChapters.coerceIn(1, maxOf(1, downloaded.size))
-            val useful = mutableListOf<ChapterEvidencePlanning.ScoredChapter>()
-            val passages = mutableListOf<ChapterEvidencePlanning.EvidencePassage>()
+            val scored = mutableListOf<ChapterEvidencePlanning.ScoredChapter>()
             var scanned = 0
             var reused = 0
             var readable = false
@@ -81,38 +100,39 @@ internal class ChapterEvidenceSelector(
                 scanned += batch.size
                 reused += outcomes.count { it.cached }
                 readable = readable || outcomes.any { it.readable }
-                useful += outcomes.mapNotNull { it.scored }.filter { it.assessment.useful }
-                passages +=
-                    outcomes.flatMap {
-                        it.scored
-                            ?.assessment
-                            ?.passages
-                            .orEmpty()
-                    }
+                scored += outcomes.mapNotNull { it.scored }
+                val useful = scored.count { it.assessment.useful }
                 progress(
-                    "Selecting ${rubric.progressSubject}: ${minOf(useful.size, target)}/$target chapters found " +
+                    "Selecting ${rubric.progressSubject}: ${minOf(useful, target)}/$target chapters found " +
                         "($scanned scanned${if (reused > 0) ", $reused cached" else ""})",
                 )
-                if (useful.size >= target && scanned >= rubric.minScannedChapters) break
+                if (useful >= target && scanned >= rubric.minScannedChapters) break
             }
             check(readable) {
                 "Downloaded chapter files are missing; re-download the novel's chapters"
             }
-            check(useful.isNotEmpty()) { rubric.noEvidenceMessage }
             cache.trim()
-            val chapters =
-                ChapterEvidencePlanning
-                    .choose(useful, target)
-                    .mapNotNull { scored ->
-                        val chapter = story.chapters[scored.sample.chapter - 1]
-                        val html = readChapter(chapter) ?: chapter.content ?: return@mapNotNull null
-                        AiDescriptionPlanning.ChapterText(
-                            number = scored.sample.chapter,
-                            title = scored.sample.title,
-                            text = AiDescriptionPlanning.capChapterText(HtmlCleanup.htmlToFormattedText(html)),
-                        )
-                    }
-            ChapterEvidencePlanning.Selection(chapters, passages.sortedWith(compareBy({ it.chapter }, { it.index })))
+            ChapterEvidencePlanning.Scan(
+                scored.sortedBy { it.sample.chapter },
+                scored.flatMap { it.assessment.passages }.sortedWith(compareBy({ it.chapter }, { it.index })),
+            )
+        }
+
+    /** Full capped text of [chosen], in the given order; chapters whose files vanished are skipped. */
+    suspend fun read(
+        story: Story,
+        chosen: List<ChapterEvidencePlanning.ScoredChapter>,
+    ): List<AiDescriptionPlanning.ChapterText> =
+        withContext(Dispatchers.IO) {
+            chosen.mapNotNull { scored ->
+                val chapter = story.chapters[scored.sample.chapter - 1]
+                val html = readChapter(chapter) ?: chapter.content ?: return@mapNotNull null
+                AiDescriptionPlanning.ChapterText(
+                    number = scored.sample.chapter,
+                    title = scored.sample.title,
+                    text = AiDescriptionPlanning.capChapterText(HtmlCleanup.htmlToFormattedText(html)),
+                )
+            }
         }
 
     private suspend fun judge(

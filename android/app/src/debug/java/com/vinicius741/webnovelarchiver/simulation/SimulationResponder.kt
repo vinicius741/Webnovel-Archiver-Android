@@ -3,6 +3,8 @@ package com.vinicius741.webnovelarchiver.simulation
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.vinicius741.webnovelarchiver.ai.CharacterPortraitPlanning
+import com.vinicius741.webnovelarchiver.ai.CharacterRosterPlanning
 import com.vinicius741.webnovelarchiver.app.AppTime
 import com.vinicius741.webnovelarchiver.source.network.CloudflarePageRenderer
 import com.vinicius741.webnovelarchiver.source.network.CloudflareRenderFailure
@@ -79,10 +81,21 @@ internal class SimulationResponder(
                             message.asJsonObject
                                 .get("content")
                                 ?.asString
-                                ?.startsWith("Write one image-generation prompt") == true
+                                ?.let {
+                                    it.startsWith("Write one image-generation prompt") ||
+                                        it.startsWith(CharacterPortraitPlanning.SYSTEM_OPENING)
+                                } == true
                         }
                     ) {
                         "prompt"
+                    } else if (body.getAsJsonArray("messages").any { message ->
+                            message.asJsonObject
+                                .get("content")
+                                ?.asString
+                                ?.startsWith(CharacterRosterPlanning.SYSTEM_OPENING) == true
+                        }
+                    ) {
+                        "characters"
                     } else {
                         "description"
                     }
@@ -207,7 +220,10 @@ internal class SimulationResponder(
                                     addProperty("type", type)
                                     addProperty(
                                         type,
-                                        if (type == "score") {
+                                        if (name == "life_stage") {
+                                            // Childhood opening, adult story: chapters 1-3 child, the rest adult.
+                                            if (body.getAsJsonObject("state").get("chapter_position").asInt <= 3) 0.0 else 2.0
+                                        } else if (type == "score") {
                                             3.0
                                         } else if (name in setOf("spoiler", "temporary")) {
                                             0.0
@@ -248,6 +264,8 @@ internal class SimulationResponder(
                                             "prompt"
                                         ) {
                                             SimulationFixtures.PROMPT
+                                        } else if (stage == "characters") {
+                                            SimulationFixtures.CHARACTERS
                                         } else {
                                             SimulationFixtures.DESCRIPTION
                                         },

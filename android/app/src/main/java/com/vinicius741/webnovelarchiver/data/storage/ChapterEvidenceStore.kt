@@ -3,6 +3,8 @@ package com.vinicius741.webnovelarchiver.data.storage
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.vinicius741.webnovelarchiver.domain.model.LifeStage
+import com.vinicius741.webnovelarchiver.domain.model.StoryPhase
 import java.io.File
 
 /** Which generator an automatic chapter selection was made for; each keeps its own last selection. */
@@ -17,7 +19,7 @@ enum class EvidenceSelectionKind(
  * Disposable, device-local chapter-evidence state: content-addressed decision-model score responses
  * (cover and description requests hash differently, so they share one directory) plus the last
  * automatic chapter selection per story and [EvidenceSelectionKind] (a display hint for the context
- * picker, not a manual override). Contains no API keys or chapter text; excluded from backups. Loss
+ * picker, not a manual override) and the story phases the last cover scan found (for the Story phase row). Contains no API keys or chapter text; excluded from backups. Loss
  * just means the picker shows the pre-scan state until the next generation.
  */
 class ChapterEvidenceStore(
@@ -33,6 +35,11 @@ class ChapterEvidenceStore(
     @Volatile
     private var selections: Map<EvidenceSelectionKind, Map<String, List<Int>>> =
         EvidenceSelectionKind.entries.associateWith { loadSelections(selectionsFile(it)) }
+
+    private val phasesFile = File(cacheRoot, "cover_phases.json")
+
+    @Volatile
+    private var coverPhases: Map<String, List<StoryPhase>> = loadPhases(phasesFile)
 
     @Synchronized
     fun read(key: String): JsonObject? =
@@ -76,6 +83,37 @@ class ChapterEvidenceStore(
         }
     }
 
+    /** Story phases the last automatic cover scan found; empty before the first scan or when it found none. */
+    fun phases(storyId: String): List<StoryPhase> = coverPhases[storyId].orEmpty()
+
+    fun recordPhases(
+        storyId: String,
+        phases: List<StoryPhase>,
+    ) {
+        synchronized(selectionLock) {
+            coverPhases = coverPhases + (storyId to phases.toList())
+            val root = JsonObject()
+            coverPhases.forEach { (id, list) ->
+                root.add(
+                    id,
+                    JsonArray().apply {
+                        list.forEach { phase ->
+                            add(
+                                JsonObject().apply {
+                                    addProperty("stage", phase.stage.key)
+                                    addProperty("first", phase.firstChapter)
+                                    addProperty("last", phase.lastChapter)
+                                    addProperty("downloaded", phase.downloadedChapters)
+                                },
+                            )
+                        }
+                    },
+                )
+            }
+            runCatching { AtomicFileWrites.writeText(phasesFile, root.toString()) }
+        }
+    }
+
     private fun selectionsFile(kind: EvidenceSelectionKind) = File(cacheRoot, kind.fileName)
 
     private fun serialize(selections: Map<String, List<Int>>): String {
@@ -106,3 +144,24 @@ class ChapterEvidenceStore(
             result
         }.getOrDefault(mutableMapOf())
 }
+
+private fun loadPhases(phasesFile: File): Map<String, List<StoryPhase>> =
+    runCatching {
+        if (!phasesFile.exists()) return emptyMap()
+        val root = JsonParser.parseString(phasesFile.readText()).asJsonObject
+        root.entrySet().associate { (storyId, value) ->
+            // One malformed story entry loses only its own phases.
+            storyId to
+                value.takeIf { it.isJsonArray }?.asJsonArray?.toList().orEmpty().mapNotNull { element ->
+                    runCatching {
+                        val json = element.asJsonObject
+                        StoryPhase(
+                            stage = LifeStage.fromKey(json.get("stage").asString) ?: return@mapNotNull null,
+                            firstChapter = json.get("first").asInt,
+                            lastChapter = json.get("last").asInt,
+                            downloadedChapters = json.get("downloaded").asInt,
+                        )
+                    }.getOrNull()
+                }
+        }
+    }.getOrDefault(emptyMap())

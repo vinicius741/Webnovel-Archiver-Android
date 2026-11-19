@@ -7,6 +7,8 @@ import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
 import com.vinicius741.webnovelarchiver.ai.ChapterEvidenceSelector
+import com.vinicius741.webnovelarchiver.ai.CharacterEngine
+import com.vinicius741.webnovelarchiver.ai.CharacterJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.DecisionClient
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
 import com.vinicius741.webnovelarchiver.appupdate.AppUpdateCoordinator
@@ -152,6 +154,10 @@ class AppContainer internal constructor(
 
     /** Process scope so jobs survive navigation/exit; drafts persist before listeners are notified. */
     val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)
+
+    /** Characters tab: character list and portraits, on the same process scope as cover jobs. */
+    val characterJobCoordinator: CharacterJobCoordinator =
+        CharacterJobCoordinator(applicationScope, CharacterEngine(repository, openRouter, chapterEvidenceSelector, chapterEvidence))
     private val repositoryStartup =
         RepositoryStartup {
             // One storage monitor guards the whole load/recovery/hydration transaction; concurrent file APIs wait on it.

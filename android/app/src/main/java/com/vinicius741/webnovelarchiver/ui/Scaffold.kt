@@ -57,6 +57,7 @@ internal fun ScreenHost.screen(
 ) {
     val perfBuildStartedNanos = if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) System.nanoTime() else 0L
     aiControlsScreenState.binding = null
+    aiControlsScreenState.characterProgress = null
     screenObserver?.cancel()
     screenObserver = null
     navigator.navigate(route)

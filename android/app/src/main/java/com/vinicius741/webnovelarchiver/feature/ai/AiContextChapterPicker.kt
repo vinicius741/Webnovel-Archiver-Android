@@ -15,13 +15,18 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.ai.AiCoverContextPlanning
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
+import com.vinicius741.webnovelarchiver.ai.CoverPhasePlanning
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.setAiCoverContextChapters
+import com.vinicius741.webnovelarchiver.data.repository.setAiCoverPhase
 import com.vinicius741.webnovelarchiver.data.storage.EvidenceSelectionKind
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.LifeStage
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.StoryPhase
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -33,6 +38,7 @@ import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundCorners
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.row
+import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
@@ -74,6 +80,98 @@ internal fun ScreenHost.addAiContextChaptersRow(
     selectorView.layoutParams =
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     container.addView(selectorView)
+}
+
+/**
+ * "Story phase" row under the cover context chapters: which life stage of the main character the
+ * automatic cover paints. Always shown, so the feature never hides: with hand-picked chapters it
+ * says phases are off and offers automatic selection (old app versions saved scan picks as manual
+ * ones); before a scan, or when the scan found no age change, it says so; with two or more phases
+ * it opens the picker. A saved stage stays visible even when the cached phases are gone.
+ */
+internal fun ScreenHost.addAiCoverPhaseRow(
+    container: LinearLayout,
+    story: Story,
+) {
+    val manual = !story.aiCoverContextChapterIndices.isNullOrEmpty()
+    val phases = app.appContainer.chapterEvidence.phases(story.id)
+    val savedStage = LifeStage.fromKey(story.aiCoverPhase)
+    val main = CoverPhasePlanning.mainPhase(phases).takeIf { phases.size > 1 }
+    val saved = savedStage?.let { stage -> CoverPhasePlanning.resolve(phases, stage.key).takeIf { it?.stage == stage } }
+    val value =
+        when {
+            manual -> "Off: chapters picked by hand"
+            saved != null -> saved.label
+            savedStage != null -> savedStage.label
+            main != null -> "Auto: ${main.label}"
+            phases.size == 1 -> "Auto: no age change found"
+            else -> "Auto: found when you make a cover"
+        }
+    val (selectorView, _) =
+        container.context.makeSelectorField(
+            iconRes = com.vinicius741.webnovelarchiver.R.drawable.wna_history,
+            label = "Story phase",
+            value = value,
+        ) {
+            when {
+                manual -> offerAutomaticCoverChapters(story)
+                main == null && savedStage == null ->
+                    toast(
+                        if (phases.size == 1) {
+                            "The scan found no change in the main character's age, so covers use the whole book."
+                        } else {
+                            "Phases are found the next time a cover is made with automatic chapters."
+                        },
+                    )
+                else -> showCoverPhasePicker(story, phases, main, savedStage)
+            }
+        }
+    selectorView.layoutParams =
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = container.context.dp(Space.SM)
+        }
+    container.addView(selectorView)
+}
+
+private fun ScreenHost.showCoverPhasePicker(
+    story: Story,
+    phases: List<StoryPhase>,
+    main: StoryPhase?,
+    savedStage: LifeStage?,
+) {
+    fun choose(stageKey: String?) {
+        scope.launch {
+            if (repository.setAiCoverPhase(story.id, stageKey) != null && frameIsAiControls(story.id)) showAiControls(story.id)
+        }
+    }
+    val auto = "Auto (main phase)" + (main?.let { ": ${it.label}" } ?: "") + if (savedStage == null) " ✓" else ""
+    val stages =
+        CoverPhasePlanning.choices(phases).map { phase ->
+            OptionsDialogItem.Option(phase.label + if (phase.stage == savedStage) " ✓" else "") { choose(phase.stage.key) }
+        }
+    showStyledOptionsDialog("Story phase", listOf(OptionsDialogItem.Option(auto) { choose(null) }) + stages)
+}
+
+/** Manual cover chapters bypass the scan that finds phases; one tap returns to automatic selection. */
+private fun ScreenHost.offerAutomaticCoverChapters(story: Story) {
+    showStyledOptionsDialog(
+        "Story phase",
+        listOf(
+            OptionsDialogItem.Section("Phases need automatic chapter selection"),
+            OptionsDialogItem.Option("Use automatic chapters") {
+                scope.launch {
+                    if (repository.setAiCoverContextChapters(story.id, null) != null) {
+                        val found =
+                            app.appContainer.chapterEvidence
+                                .phases(story.id)
+                                .size > 1
+                        toast(if (found) "Automatic chapters on" else "Automatic chapters on. Phases are found on the next cover.")
+                        if (frameIsAiControls(story.id)) showAiControls(story.id)
+                    }
+                }
+            },
+        ),
+    )
 }
 
 /** Chapters the decision model kept on the story's last automatic scan for this generator, if any. */
@@ -193,8 +291,8 @@ private fun ScreenHost.showAiContextChapterDialog(
                             toast("Select at least one chapter, or use Reset to automatic selection")
                             return@makeButton
                         }
-                        // An explicit selection always bypasses the decision-model scan, even when it
-                        // matches the last automatic pick.
+                        // Saving the last automatic pick unchanged keeps automatic mode (see contextPickerConfig);
+                        // any other selection bypasses the decision-model scan.
                         applySelection(checked.sorted())
                     },
                 )
@@ -312,7 +410,11 @@ private fun ScreenHost.contextPickerConfig(
                         "establish the premise without spoilers. Check chapters to send a manual selection instead."
             },
         resetLabel = "Reset to automatic selection",
-        save = { indices ->
+        save = { picked ->
+            // Saving the last scan's picks unchanged keeps automatic mode: the picker opens with them
+            // checked, and turning them into a fixed selection would silently switch off later scans
+            // (and with them, cover story phases).
+            val indices = picked?.takeUnless { saved == null && it.toSet() == automatic.toSet() }
             if (forCover) repository.setAiCoverContextChapters(story.id, indices) else repository.setAiContextChapters(story.id, indices)
         },
     )

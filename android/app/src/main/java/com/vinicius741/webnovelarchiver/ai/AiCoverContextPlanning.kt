@@ -13,6 +13,12 @@ object AiCoverContextPlanning {
     /** Verbatim appearance passages sent beside the chapters, strongest first until this is spent. */
     internal const val MAX_APPEARANCE_EVIDENCE_CHARS = 12_000
 
+    /**
+     * Share of [MAX_APPEARANCE_EVIDENCE_CHARS] kept for passages from before the depicted phase when the
+     * cover is scoped to one: enough for lasting traits such as eye color, never enough to outweigh it.
+     */
+    internal const val MAX_EARLIER_APPEARANCE_CHARS = 4_000
+
     fun selectContextChapters(story: Story): List<Int> = story.chapters.indices.filter { story.chapters[it].downloaded }
 
     fun resolveContextChapters(story: Story): List<Int> {
@@ -54,8 +60,9 @@ object AiCoverContextPlanning {
      */
     internal fun appearanceEvidence(
         passages: List<ChapterEvidencePlanning.EvidencePassage>,
+        budget: Int = MAX_APPEARANCE_EVIDENCE_CHARS,
     ): List<ChapterEvidencePlanning.EvidencePassage> {
-        var remaining = MAX_APPEARANCE_EVIDENCE_CHARS
+        var remaining = budget
         return passages
             .distinctBy { it.text }
             .sortedWith(

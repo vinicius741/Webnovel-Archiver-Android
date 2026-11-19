@@ -128,6 +128,7 @@ object StorySyncMergePlanning {
             showAiCover = onDisk.showAiCover,
             aiContextChapterIndices = onDisk.aiContextChapterIndices,
             aiCoverContextChapterIndices = onDisk.aiCoverContextChapterIndices,
+            aiCoverPhase = onDisk.aiCoverPhase,
             manualPatreonUrl = onDisk.manualPatreonUrl,
             patreonStats = if (patreonLinkKept) synced.patreonStats else onDisk.patreonStats,
             // The link is user-owned; the sync only refreshes the check status of the same collection.

@@ -1,7 +1,9 @@
 package com.vinicius741.webnovelarchiver.ai
 
 import com.google.gson.JsonObject
+import com.vinicius741.webnovelarchiver.domain.model.LifeStage
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.StoryPhase
 import com.vinicius741.webnovelarchiver.domain.sha256Hex
 
 /**
@@ -75,11 +77,33 @@ internal object ChapterEvidencePlanning {
         val useful: Boolean,
         val utility: Double,
         val passages: List<EvidencePassage> = emptyList(),
+        val stage: StageReading? = null,
     )
 
-    /** Chosen chapter texts plus every flagged passage from all judged chapters, chosen or not. */
+    /**
+     * The main character's apparent life stage in one chapter: [shown] is the probability that the
+     * chapter indicates it at all, [temporary] that the chapter's look is a dream, flashback or disguise.
+     */
+    data class StageReading(
+        val shown: Double,
+        val stage: LifeStage,
+        val temporary: Double,
+    )
+
+    /**
+     * Chosen chapter texts plus flagged passages. When the cover is scoped to a [phase], [passages]
+     * come from inside it and [earlierPassages] from before it (for lasting traits such as eye color).
+     */
     data class Selection(
         val chapters: List<AiDescriptionPlanning.ChapterText>,
+        val passages: List<EvidencePassage>,
+        val earlierPassages: List<EvidencePassage> = emptyList(),
+        val phase: StoryPhase? = null,
+    )
+
+    /** Every chapter a scan judged, in reading order, and every passage the rubric flagged in them. */
+    data class Scan(
+        val scored: List<ScoredChapter>,
         val passages: List<EvidencePassage>,
     )
 

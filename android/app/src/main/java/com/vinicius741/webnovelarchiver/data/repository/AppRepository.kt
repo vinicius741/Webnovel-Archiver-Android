@@ -823,6 +823,12 @@ internal suspend fun AppRepository.setAiCoverContextChapters(
         latest?.copy(aiCoverContextChapterIndices = indices?.distinct()?.sorted()?.toMutableList())
     }
 
+/** Stores the life stage automatic covers depict (a `LifeStage.key`); null returns to Auto (the main phase). */
+internal suspend fun AppRepository.setAiCoverPhase(
+    storyId: String,
+    stageKey: String?,
+): Story? = updateStory(storyId) { latest -> latest?.copy(aiCoverPhase = stageKey) }
+
 /** The persisted active playback session, or null when playback fully stopped. */
 fun AppRepository.getTtsSession(): TtsSession? = ttsSession?.copy()
 

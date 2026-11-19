@@ -2,9 +2,13 @@ package com.vinicius741.webnovelarchiver.app
 
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobEvent
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobKind
+import com.vinicius741.webnovelarchiver.ai.CharacterJobEvent
+import com.vinicius741.webnovelarchiver.ai.CharacterJobKind
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
+import com.vinicius741.webnovelarchiver.feature.ai.aiControlsTab
 import com.vinicius741.webnovelarchiver.feature.ai.frameIsAiControls
+import com.vinicius741.webnovelarchiver.feature.ai.patchCharacterProgress
 import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
@@ -33,6 +37,47 @@ import kotlinx.coroutines.launch
  */
 internal fun MainActivity.attachAiJobBridges() {
     attachCoverJobBridge()
+    attachCharacterJobBridge()
+}
+
+/**
+ * Characters-tab jobs: a job starting or ending re-renders the tab when it is on screen; message
+ * ticks only patch its progress line. Results are already saved when the event arrives.
+ */
+private fun MainActivity.attachCharacterJobBridge() {
+    val coordinator = appContainer.characterJobCoordinator
+    scope.launch {
+        var running: Map<String, Pair<CharacterJobKind, String?>> = emptyMap()
+        coordinator.jobs.collect { jobs ->
+            val now = jobs.mapValues { it.value.kind to it.value.characterId }
+            // A start or finish changes buttons and results: re-render. A message only patches its line.
+            (running.keys + now.keys).forEach { storyId ->
+                val showing = frameIsAiControls(storyId) && aiControlsTab(storyId) == AiControlsTab.CHARACTERS
+                if (showing && running[storyId] != now[storyId]) showAiControls(storyId)
+            }
+            jobs.values.forEach { patchCharacterProgress(it) }
+            // Another novel's job ending re-enables this novel's buttons.
+            if (running.isNotEmpty() && now.isEmpty()) {
+                (navigator.current as? com.vinicius741.webnovelarchiver.navigation.AppRoute.AiControls)?.storyId?.let { storyId ->
+                    if (storyId !in running && aiControlsTab(storyId) == AiControlsTab.CHARACTERS) showAiControls(storyId)
+                }
+            }
+            running = now
+        }
+    }
+    scope.launch {
+        coordinator.events.collect { event ->
+            // The jobs collector has re-rendered by now; results were saved before the event.
+            val showing = frameIsAiControls(event.storyId) && aiControlsTab(event.storyId) == AiControlsTab.CHARACTERS
+            when (event) {
+                is CharacterJobEvent.Succeeded -> {
+                    if (!showing) aiControlsScreenState.unseenCharacters += event.storyId
+                    toast(if (event.kind == CharacterJobKind.FIND) "Characters found" else "Portrait of ${event.characterName} ready")
+                }
+                is CharacterJobEvent.Failed -> toast(event.message)
+            }
+        }
+    }
 }
 
 private fun MainActivity.attachCoverJobBridge() {

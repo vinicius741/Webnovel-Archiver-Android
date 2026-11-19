@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.ai
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.StoryPhase
 
 /** Builds a clearly delimited JSON payload so novel text is data, never part of the instructions. */
 internal object AiPromptSourceData {
@@ -34,6 +35,8 @@ internal object AiPromptSourceData {
         chapters: List<AiDescriptionPlanning.ChapterText>,
         description: String? = null,
         appearancePassages: List<ChapterEvidencePlanning.EvidencePassage> = emptyList(),
+        earlierAppearancePassages: List<ChapterEvidencePlanning.EvidencePassage> = emptyList(),
+        phase: StoryPhase? = null,
     ): String {
         val source =
             JsonObject().apply {
@@ -62,23 +65,40 @@ internal object AiPromptSourceData {
                         }
                     },
                 )
-                if (appearancePassages.isNotEmpty()) {
+                phase?.let {
                     add(
-                        "appearance_passages",
-                        JsonArray().apply {
-                            appearancePassages.forEach { passage ->
-                                add(
-                                    JsonObject().apply {
-                                        addProperty("downloaded_position", passage.chapter)
-                                        addProperty("text", passage.text.safeSourceValue())
-                                    },
-                                )
-                            }
+                        "story_phase",
+                        JsonObject().apply {
+                            addProperty("life_stage", it.stage.key)
+                            addProperty("first_downloaded_position", it.firstChapter)
+                            addProperty("last_downloaded_position", it.lastChapter)
                         },
                     )
                 }
+                addPassages("appearance_passages", appearancePassages)
+                addPassages("earlier_appearance_passages", earlierAppearancePassages)
             }
         return "SOURCE_DATA_START\n$source\nSOURCE_DATA_END"
+    }
+
+    private fun JsonObject.addPassages(
+        name: String,
+        passages: List<ChapterEvidencePlanning.EvidencePassage>,
+    ) {
+        if (passages.isEmpty()) return
+        add(
+            name,
+            JsonArray().apply {
+                passages.forEach { passage ->
+                    add(
+                        JsonObject().apply {
+                            addProperty("downloaded_position", passage.chapter)
+                            addProperty("text", passage.text.safeSourceValue())
+                        },
+                    )
+                }
+            },
+        )
     }
 
     private fun String.safeSourceValue(): String =

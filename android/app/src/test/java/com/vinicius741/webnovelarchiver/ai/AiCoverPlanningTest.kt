@@ -112,6 +112,36 @@ class AiCoverPlanningTest {
     }
 
     @Test
+    fun `a phase scoped prompt names the phase and keeps earlier passages apart and smaller`() {
+        val phase =
+            com.vinicius741.webnovelarchiver.domain.model.StoryPhase(
+                com.vinicius741.webnovelarchiver.domain.model.LifeStage.ADULT,
+                24,
+                300,
+                277,
+            )
+        val inPhase = ChapterEvidencePlanning.EvidencePassage(80, 0, "A tall woman now, copper hair cropped short.", 0.9)
+        val earlier = (1..4).map { ChapterEvidencePlanning.EvidencePassage(it, 0, "Child $it ".padEnd(1_500, 'x'), 0.9) }
+        val messages =
+            AiCoverPlanning.buildPromptMessages(
+                storyWithChapters(1),
+                emptyList(),
+                listOf(inPhase),
+                earlierPassages = earlier,
+                phase = phase,
+            )
+        val user = messages[1].content
+        assertTrue(
+            user.contains("\"story_phase\":{\"life_stage\":\"adult\",\"first_downloaded_position\":24,\"last_downloaded_position\":300}"),
+        )
+        assertTrue(user.contains("\"appearance_passages\":[{\"downloaded_position\":80,"))
+        // 4k of the 12k budget is kept for earlier passages: two 1.5k passages fit, a third would not.
+        assertEquals(2, Regex("Child \\d").findAll(user).count())
+        assertTrue(messages[0].content.contains("earlier_appearance_passages for lasting traits only"))
+        assertFalse(AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList())[1].content.contains("story_phase"))
+    }
+
+    @Test
     fun `buildPromptMessages sends appearance passages verbatim only when present`() {
         val passage = ChapterEvidencePlanning.EvidencePassage(4, 2, "Her copper hair fell past a scarred jaw.", 0.91)
         val withEvidence = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList(), listOf(passage))[1].content

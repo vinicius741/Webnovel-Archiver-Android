@@ -242,6 +242,7 @@ private fun ScreenHost.addAiCoverMakerCard(
     val cardView =
         container.card {
             addAiContextChaptersRow(this, story, forCover = true)
+            addAiCoverPhaseRow(this, story)
             spacer(Space.MD)
             val field =
                 EditText(context).apply {
