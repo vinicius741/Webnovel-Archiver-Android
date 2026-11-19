@@ -69,8 +69,15 @@ internal class ReaderReadAlong(
         )
     }
 
-    /** The pill: return to the spoken sentence. */
-    fun follow() = apply(ReadAlongPlanning.afterFollow(state))
+    /**
+     * The pill: return to the spoken sentence. The pill is usually tapped right after the page was
+     * flung away, and a fling still running keeps moving the page after the scroll back lands (the
+     * page's scroll does not stop it), so it is stopped first, the way a finger on the page would.
+     */
+    fun follow() {
+        page.stopFling()
+        apply(ReadAlongPlanning.afterFollow(state))
+    }
 
     private fun startListening() {
         listener?.cancel()
@@ -248,5 +255,15 @@ internal class ReaderReadAlong(
     private companion object {
         const val HEAL_DELAY_MS = 500L
         const val FINGER_STALE_MS = 10_000L
+    }
+}
+
+/** A touch that lands and is cancelled: the page stops a running fling without seeing a tap or a drag. */
+private fun WebView.stopFling() {
+    val now = SystemClock.uptimeMillis()
+    for (action in intArrayOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_CANCEL)) {
+        val event = MotionEvent.obtain(now, now, action, width / 2f, height / 2f, 0)
+        dispatchTouchEvent(event)
+        event.recycle()
     }
 }
