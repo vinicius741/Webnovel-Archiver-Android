@@ -112,6 +112,7 @@ internal fun appBarActionButton(
         context.iconButton(action.icon, action.label, action.tint ?: ThemeManager.colors.onSurface) { action.onClick() }.apply {
             layoutParams = FrameLayout.LayoutParams(size, size)
             setPadding(context.dp(Spacing.MD), context.dp(Spacing.MD), context.dp(Spacing.MD), context.dp(Spacing.MD))
+            action.tag?.let { tag = it }
         }
     val dot =
         View(context).apply {

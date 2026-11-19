@@ -5,6 +5,7 @@ import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.BuildConfig
@@ -42,6 +43,7 @@ import com.vinicius741.webnovelarchiver.ui.makeSheetRow
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.showBottomSheet
 import com.vinicius741.webnovelarchiver.ui.showReaderSettingsPanel
+import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
@@ -253,22 +255,40 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
 private fun ScreenHost.currentReaderPage(): WebView? = frame.findViewWithTag(READER_PAGE_TAG)
 
 private const val READER_PAGE_TAG = "reader_page"
+private const val READER_BOOKMARK_TAG = "reader_bookmark"
+
+/** The bookmark button's look: filled ivory when this chapter holds the bookmark. */
+private class BookmarkLook(
+    active: Boolean,
+) {
+    val icon = if (active) R.drawable.wna_bookmark else R.drawable.wna_bookmark_outline
+    val label = if (active) "Clear bookmark" else "Bookmark"
+    val tint: Int? = ThemeManager.colors.bookmark.takeIf { active }
+}
 
 /** App-bar actions: bookmark (ivory when this chapter holds it), read aloud, reader settings. */
 private fun ScreenHost.readerActions(document: ReaderDocument): List<AppBarAction> {
     val story = document.story
     val chapter = document.chapter
-    val bookmarkActive = story.lastReadChapterId == chapter.id
+    val bookmark = BookmarkLook(story.lastReadChapterId == chapter.id)
     return listOf(
         AppBarAction(
-            icon = if (bookmarkActive) R.drawable.wna_bookmark else R.drawable.wna_bookmark_outline,
-            label = if (bookmarkActive) "Clear bookmark" else "Bookmark",
-            tint = ThemeManager.colors.bookmark.takeIf { bookmarkActive },
+            icon = bookmark.icon,
+            label = bookmark.label,
+            tint = bookmark.tint,
+            tag = READER_BOOKMARK_TAG,
         ) {
             scope.launch {
                 val updated = repository.toggleBookmark(story.id, chapter.id) ?: return@launch
-                toast(if (updated.lastReadChapterId == chapter.id) "Bookmarked" else "Bookmark cleared")
-                showReader(story.id, chapter.id)
+                val active = updated.lastReadChapterId == chapter.id
+                toast(if (active) "Bookmarked" else "Bookmark cleared")
+                // Restyle the button in place: re-rendering the whole reader rebuilt the WebView
+                // and froze the screen for a moment.
+                val look = BookmarkLook(active)
+                frame.findViewWithTag<ImageView>(READER_BOOKMARK_TAG)?.apply {
+                    setImageDrawable(context.tintedIcon(look.icon, look.tint ?: ThemeManager.colors.onSurface))
+                    contentDescription = look.label
+                }
             }
         },
         AppBarAction(R.drawable.wna_headphones, "Listen") { startReadAloud(story, chapter) },

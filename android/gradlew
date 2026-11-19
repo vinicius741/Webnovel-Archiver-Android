@@ -88,6 +88,23 @@ APP_BASE_NAME=${0##*/}
 # Discard cd standard output in case $CDPATH is set (https://github.com/gradle/gradle/issues/25036)
 APP_HOME=$( cd -P "${APP_HOME:-./}" > /dev/null && printf '%s\n' "$PWD" ) || exit
 
+# Project addition (keep when regenerating the wrapper): several agent threads share this checkout,
+# and two builds compiling into the same app/build at once corrupt Kotlin's incremental outputs
+# ("Back-end (JVM) Internal error: Couldn't transform method node"). Serialize builds per checkout
+# with flock. The fd is inherited by the java client (exec below), so the lock lasts the whole build;
+# Java does not pass it on to a spawned daemon. --stop/--status skip it; WNA_GRADLE_NO_LOCK=1 opts out.
+case " $* " in
+  *" --stop "*|*" --status "*) WNA_GRADLE_NO_LOCK=1 ;;
+esac
+if [ -z "${WNA_GRADLE_NO_LOCK:-}" ] && command -v flock > /dev/null 2>&1; then
+    mkdir -p "$APP_HOME/.gradle"
+    exec 9> "$APP_HOME/.gradle/gradlew.lock"
+    if ! flock -n 9; then
+        echo "gradlew: another build is running in this checkout; waiting for it to finish..." >&2
+        flock 9
+    fi
+fi
+
 # Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD=maximum
 

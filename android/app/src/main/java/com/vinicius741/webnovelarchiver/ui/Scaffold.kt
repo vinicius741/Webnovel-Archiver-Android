@@ -30,6 +30,8 @@ internal data class AppBarAction(
      *  [onClick] so existing `AppBarAction(icon, label) { … }` call sites keep their trailing
      *  lambda binding to [onClick]. */
     val tint: Int? = null,
+    /** Optional view tag on the icon, so a screen can restyle the button in place without a re-render. */
+    val tag: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -253,6 +255,7 @@ private fun ScreenHost.appBar(
             addView(
                 app.iconButton(a.icon, a.label, a.tint ?: ThemeManager.colors.onSurface) { a.onClick() }.apply {
                     (layoutParams as LinearLayout.LayoutParams).marginStart = dp(Spacing.XS)
+                    a.tag?.let { tag = it }
                 },
             )
         }

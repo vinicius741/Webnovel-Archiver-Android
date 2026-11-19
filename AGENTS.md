@@ -53,6 +53,7 @@ The native app ships as distinct application IDs — each is a separate app with
 ## Build and Validation
 
 - The Gradle wrapper lives under `android/` (no root wrapper). Run builds from the repo root as `android/gradlew -p android :app:...`.
+- `android/gradlew` serializes builds per checkout with `flock` (a project edit in the wrapper script; keep it when regenerating the wrapper). Threads share this checkout, and two concurrent compiles into `android/app/build` corrupt Kotlin's outputs (`Back-end (JVM) Internal error: Couldn't transform method node` on an untouched file). If it prints that it is waiting, let it wait. Do not delete `android/app/build` while another build may be running; to recover from that error, rerun once and only then `--stop` and rebuild with `--rerun-tasks`.
 - Install APKs from the raw Gradle outputs under `android/app/build/outputs/apk/`, not the repo-root `apk-output/` mirrors (convenience copies from post-build tasks, potentially stale).
 - `.github/workflows/android-release.yml` is a manually triggered release workflow for `main`. It runs the quality gate, signs using Actions secrets, and publishes the APK to GitHub Releases. See `README.md` for signing setup. Local validation remains required; see `android/AGENTS.md` for per-change command selection, the per-change gate (`:app:lintKotlin :app:ci`), and the release gate (`:app:lintKotlin :app:releaseCheck`).
 
