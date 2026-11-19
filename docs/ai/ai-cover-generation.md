@@ -72,9 +72,14 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
   shares its long prefix with the previous call. Each prompt-writing call also receives a `DESIGN_DIRECTION` drawn at random
   in code (`AiCoverPlanning.randomDesign`): one of six title layouts (top third, lower third over
   the scene, centered in negative space, stacked on one side, built into the scene, split top/bottom)
-  and one of six compositions (close portrait, wide establishing, low angle, back view, mid-action,
-  symbolic still life). The writer follows the composition only when the evidence supports it, so
-  regenerating explores different layouts instead of converging on a title strip under the art.
+  and one of five compositions (close portrait, three-quarter or full figure in the foreground, low
+  angle, over-the-shoulder turning to the viewer, mid-action). The writer follows the composition only
+  when the evidence supports it, so regenerating explores different layouts instead of converging on
+  a title strip under the art. Every composition keeps the protagonist large and in the foreground:
+  the owner wants the main character on every cover, so the former "symbolic still life" composition
+  was removed (November 2026) and the prompt no longer allows a setting- or object-led cover, a
+  distant figure or a turned-away back view. When the text says little about the character's looks,
+  unknown details stay in shadow or motion instead of the character leaving the frame.
 - **Background generation**: cover jobs do not belong to the screen that started them. They run on
   the process-wide application scope (`AiCoverJobCoordinator`) and keep running while the user
   navigates between screens, minimizes, or leaves the app; `AiJobForegroundService` (the shared
@@ -224,11 +229,15 @@ with them grown up. Earlier scans read the opening chapters most closely and the
   color. The system prompt separates lasting traits (eye color, natural hair color, skin tone,
   birthmarks, species) from phase traits (age, height, build, face shape, hair style, scars,
   clothing, gear) and uses earlier passages for lasting traits only.
-- **UI:** in automatic mode, once a scan has found more than one phase, the New cover card shows a
-  `Story phase` row ("Auto: Adult · Ch 24–300"); tapping it lists Auto and one choice per life stage.
-  The row also stays while a saved stage exists but no phases are cached (Android cleared the cache,
-  or a backup restored on another device), so a saved choice never steers a cover unseen. A manual
-  chapter selection hides the row. The phases shown are the last scan's, stored beside the last
+- **UI:** the New cover card always shows a `Story phase` row under the context chapters. With two or
+  more phases it reads "Auto: Adult · Ch 24–300" and opens a sheet with Auto and one choice per life
+  stage. Before the first automatic scan it reads "Auto: found when you make a cover", and after a
+  scan that found one phase "Auto: no age change found". With hand-picked cover chapters it reads
+  "Off: cover chapters picked by hand" and offers **Use automatic chapters**, because manual chapters
+  skip the scan that finds phases. Older app versions let the last scan's picks be saved as a manual
+  selection, which silently turned phases off (found in an end-to-end test on a restored library).
+  A saved stage stays visible while no phases are cached (Android cleared the cache, or a backup
+  restored on another device), so a saved choice never steers a cover unseen. The phases shown are the last scan's, stored beside the last
   automatic selection in `ChapterEvidenceStore` (`cover_phases.json`, cache, not backed up); the
   choice itself is `Story.aiCoverPhase`, carried through syncs like the context selection.
 - Cost: the scan floor rose from 30 to 60 chapters (about $0.0003 each with Jev, so about $0.02 per
@@ -248,6 +257,6 @@ The first scan bills the OpenRouter account for the chapters it evaluates: ten s
 
 Decision-model receipts appear as `Automatic cover selection` in the local usage ledger, with the generation ID, served model snapshot, input/output token counts, and exact decimal `usage.cost` reported by OpenRouter. Missing or invalid costs remain unknown. OpenRouter current-key counters include these calls. Historical direct TypeSafe receipts retain their original model and unknown costs. Existing settings preserve the OpenRouter key, chosen models and chapter target; the retired `typeSafeApiKey` field is ignored when read and omitted on the next settings save.
 
-Saving an explicit chapter selection bypasses the scan, including when all downloaded chapters are selected. Reset to automatic selection restores automatic mode. The chapters the scan kept are recorded on-device after each scan and appear checked next time the picker opens (the row label shows "Automatic: N chapters"); that display is the last scan's result, not a manual selection — adjusting and saving converts it into one. Missing credentials or provider failures stop automatic generation with a corrective message; they do not silently change its evidence strategy. Image-only generation from an existing prompt does not call the decision model.
+Saving an explicit chapter selection bypasses the scan, including when all downloaded chapters are selected. Reset to automatic selection restores automatic mode. The chapters the scan kept are recorded on-device after each scan and appear checked next time the picker opens (the row label shows "Automatic: N chapters"); that display is the last scan's result, not a manual selection — adjusting and saving converts it into one, while saving it unchanged keeps automatic mode (so later scans, and story phases, keep running). Missing credentials or provider failures stop automatic generation with a corrective message; they do not silently change its evidence strategy. Image-only generation from an existing prompt does not call the decision model.
 
 Implementation: the cover rubric `CoverEvidencePlanning.kt` (questions and usefulness) on the shared `ChapterEvidencePlanning.kt` (sampling, scan orders, choice), `ChapterEvidenceSelector.kt` (batched scan, cache, receipts), `DecisionClient.kt` (Decisions API transport and question/answer helpers), and `data/storage/ChapterEvidenceStore.kt`. The October 30, 2026 passage revision changed the cover request shape (whole-chapter passages, per-passage questions), so earlier cached cover scores are rescored once; description scores are unaffected. Mock-server and pure planning tests cover batched scanning with early stop, input invalidation, usefulness rules, interruption/restart, response validation, authentication, rate-limit retry and cancellation. Selection thresholds remain heuristics; evaluate cover faithfulness on known novels before claiming quality improvements.

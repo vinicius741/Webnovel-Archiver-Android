@@ -49,11 +49,10 @@ object AiCoverPlanning {
     internal val COMPOSITIONS =
         listOf(
             "Close-up or bust portrait with direct, eye-level presence.",
-            "Wide establishing view: the subject small against a vast, characterful setting.",
-            "Low-angle shot looking up at the subject, sky or ceiling behind.",
-            "Back or over-the-shoulder view, the subject facing into the scene.",
+            "Three-quarter or full-figure view: the protagonist large in the foreground, a characterful setting rising behind them.",
+            "Low-angle shot looking up at the protagonist, sky or ceiling behind.",
+            "Over-the-shoulder three-quarter view: the protagonist turning toward the viewer, the scene opening up behind them.",
             "Dynamic mid-action moment on a strong diagonal.",
-            "Symbolic still life centered on a signature object, emblem or setting detail.",
         )
 
     fun randomDesign(random: Random = Random.Default): CoverDesign = CoverDesign(TITLE_LAYOUTS.random(random), COMPOSITIONS.random(random))
@@ -244,9 +243,10 @@ object AiCoverPlanning {
             excerpts before settling on the most vivid single image, and name the life stage and the
             setting outright in your prompt.
 
-            If you cannot tell who the central character is, or the excerpts do not support a
-            representative scene for them, build the cover around a setting or signature object the text
-            does establish instead of inventing a protagonist.
+            The protagonist is always the focal subject of the cover, large and in the foreground: the
+            owner wants to see the main character on every cover. If you cannot tell who that is, use the
+            character the title, description and excerpts center on most. Never replace them with a
+            landscape, an object, an emblem or a crowd.
             """,
             AiPromptSourceData.METADATA_GUIDANCE,
             """
@@ -302,14 +302,16 @@ object AiCoverPlanning {
             Put every lasting trait and every phase trait you found into the prompt, concretely and in
             the text's own words for color and texture; a trait you omit is one the image model will
             replace with its own guess. Do not add traits the text does not give. When little is known about how the
-            character looks, choose a framing where that matters less, such as distance, silhouette or
-            an object-led composition, rather than filling in a face.
+            character looks, still show them large and in the foreground: let lighting, angle, a hood or
+            motion keep an unknown detail such as hair color in partial shadow rather than inventing it,
+            but never shrink them into the distance, turn them fully away or replace them with an object.
 
             Art direction
 
             Ask for one flat 2:3 portrait illustration whose artwork fills the canvas to every edge. It
             is the cover image itself, not a picture of a physical book, a page, a framed print or a 3D
-            mockup. Show exactly one focal subject in one coherent scene. When the story has multiple
+            mockup. Show exactly one focal subject, the protagonist, prominent in the foreground of one coherent
+            scene. When the story has multiple
             protagonists, choose the single most prominent one in the supplied text; a cover that tries
             to show everyone turns into a lineup, collage, diptych or triptych and reads as nothing at
             thumbnail size.
@@ -335,8 +337,7 @@ object AiCoverPlanning {
             around the whole reply. Write about 350 to 700 words, at most 7,500 characters, as a few
             plain paragraphs of description. Start with the exact title lettering, its placement and its
             lettering style. Then describe the focal character with their life stage and every lasting
-            and phase trait, followed by clothing, pose and expression; for a setting or object cover, describe that subject in the
-            same detail. Finish with the setting, composition, medium, palette and lighting. Describe
+            and phase trait, followed by clothing, pose and expression. Finish with the setting, composition, medium, palette and lighting. Describe
             the picture only: the image model needs no mention of chapters, metadata, tags or these
             instructions.
 
