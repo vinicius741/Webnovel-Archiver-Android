@@ -61,7 +61,11 @@ internal fun ScreenHost.chapterAudioLabels(story: Story): Map<String, String> {
                 }
             labels.putIfAbsent(job.chapterId, label)
         }
-    runCatching { narration.store.packsFor(story.id) }.getOrDefault(emptyList()).forEach { labels.putIfAbsent(it.chapterId, AUDIO) }
+    runCatching {
+        narration.store.packsFor(
+            story.id,
+        )
+    }.getOrDefault(emptyList()).forEach { labels.putIfAbsent(it.chapterId, AUDIO_READY_LABEL) }
     return labels
 }
 
@@ -202,4 +206,5 @@ private data class ChapterEstimate(
     }
 }
 
-private const val AUDIO = "Audio"
+/** The label [chapterAudioLabels] gives a chapter whose audio is generated. */
+internal const val AUDIO_READY_LABEL = "Audio"

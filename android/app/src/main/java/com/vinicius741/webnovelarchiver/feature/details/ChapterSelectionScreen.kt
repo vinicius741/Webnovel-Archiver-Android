@@ -2,11 +2,10 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.Gravity
 import android.view.ViewGroup
-import android.widget.Button
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
@@ -25,19 +24,16 @@ import com.vinicius741.webnovelarchiver.ui.CardListDecoration
 import com.vinicius741.webnovelarchiver.ui.SegmentedSelector
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
-import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeCountedChip
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
-import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.size
-import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /** Which chapters Select lists, so a long novel shows only the ones an action can apply to. */
@@ -60,6 +56,40 @@ private enum class SelectionScope(
 /** The scope Select last showed, per story, for this run of the app. */
 private val selectionScopes = HashMap<String, SelectionScope>()
 
+/** Filters that narrow the listed chapters within a scope; the audio pair excludes each other. */
+private enum class SelectionFilter(
+    val label: String,
+) {
+    FROM_BOOKMARK("From bookmark"),
+    HAS_AUDIO("Has audio"),
+    NO_AUDIO("No audio"),
+    ;
+
+    fun matches(
+        index: Int,
+        chapter: Chapter,
+        bookmarkIndex: Int,
+        audio: Map<String, String>,
+    ): Boolean =
+        when (this) {
+            FROM_BOOKMARK -> bookmarkIndex < 0 || index >= bookmarkIndex
+            HAS_AUDIO -> audio[chapter.id] == AUDIO_READY_LABEL
+            NO_AUDIO -> chapter.id !in audio
+        }
+
+    /** The other filter this one turns off when chosen. */
+    val excludes: SelectionFilter?
+        get() =
+            when (this) {
+                HAS_AUDIO -> NO_AUDIO
+                NO_AUDIO -> HAS_AUDIO
+                FROM_BOOKMARK -> null
+            }
+}
+
+/** The filters Select last used, per story, for this run of the app. */
+private val selectionFilters = HashMap<String, Set<SelectionFilter>>()
+
 /**
  * Select chapters: one selection for every chapter action. Tap or long-press-and-drag chapters, then
  * Download them, Generate their audio, or Delete their audio; each action counts only the selected
@@ -69,7 +99,6 @@ private val selectionScopes = HashMap<String, SelectionScope>()
 internal fun ScreenHost.showChapterSelection(
     storyId: String,
     initialSelectedIds: Set<String> = emptySet(),
-    jumpToBookmark: Boolean = false,
 ) {
     val story = repository.story(storyId) ?: return showLibrary()
     val canDownload = StoryActionGuards.canQueueDownloads(story)
@@ -78,13 +107,20 @@ internal fun ScreenHost.showChapterSelection(
     val scope =
         selectionScopes[storyId]
             ?: if (hasUndownloaded && canDownload) SelectionScope.NOT_DOWNLOADED else SelectionScope.DOWNLOADED
+    val bookmarkIndex = story.chapters.indexOfFirst { it.id == story.lastReadChapterId }
+    val offeredFilters = SelectionFilter.entries.filter { it != SelectionFilter.FROM_BOOKMARK || bookmarkIndex >= 0 }
+    val filters = selectionFilters[storyId].orEmpty().filterTo(mutableSetOf()) { it in offeredFilters }
+    val scoped = story.chapters.withIndex().filter { scope.matches(it.value) }
     val items =
-        story.chapters.mapIndexedNotNull { index, chapter ->
-            if (scope.matches(chapter)) SelectableChapter(index, chapter, audio[chapter.id]) else null
+        scoped.mapNotNull { (index, chapter) ->
+            if (filters.all { it.matches(index, chapter, bookmarkIndex, audio) }) {
+                SelectableChapter(index, chapter, audio[chapter.id])
+            } else {
+                null
+            }
         }
     val orderedIds = items.map { it.chapter.id }
     val selectedIds = initialSelectedIds.filterTo(mutableSetOf()) { it in orderedIds }
-    val bookmarkIndex = story.chapters.indexOfFirst { it.id == story.lastReadChapterId }
     val bookmarkPosition = items.indexOfFirst { it.originalIndex == bookmarkIndex }
     val chapterLayout = LinearLayoutManager(app)
 
@@ -105,23 +141,24 @@ internal fun ScreenHost.showChapterSelection(
                 bottomMargin = dp(Space.SM)
             },
         )
-        if (bookmarkIndex >= 0) {
-            val bookmarkButton =
-                makeSelectionBookmark(bookmarkIndex + 1) {
-                    if (bookmarkPosition >= 0) {
-                        chapterLayout.scrollToPositionWithOffset(bookmarkPosition, 0)
-                    } else {
-                        selectionScopes[storyId] = SelectionScope.ALL
-                        showChapterSelection(storyId, selectedIds.toSet(), jumpToBookmark = true)
-                    }
-                }
-            addView(bookmarkButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
+        val filterCounts =
+            offeredFilters.associateWith { filter ->
+                scoped.count { (index, chapter) -> filter.matches(index, chapter, bookmarkIndex, audio) }
+            }
+        addView(
+            selectionFilterRow(filterCounts, filters) { next ->
+                selectionFilters[storyId] = next
+                showChapterSelection(storyId, selectedIds.toSet())
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(Space.XS)
+            },
+        )
         if (items.isEmpty()) {
             addView(
                 makeEmptyState(
                     context,
-                    message = "No chapters here. Pick another group above.",
+                    message = if (filters.isEmpty()) "No chapters here. Pick another group above." else "No chapters match these filters.",
                     title = "Nothing to select",
                     iconRes = R.drawable.wna_check,
                 ),
@@ -135,7 +172,6 @@ internal fun ScreenHost.showChapterSelection(
         lateinit var adapter: ChapterSelectionAdapter
         lateinit var rangeButton: android.widget.Button
         lateinit var actions: SelectionActions
-        lateinit var hint: TextView
 
         fun updateSelection(nextSelection: Set<String>) {
             val previous = selectedIds.toSet()
@@ -145,13 +181,12 @@ internal fun ScreenHost.showChapterSelection(
             actions.update(selectedIds)
         }
 
-        fun finishRangeMode(message: String? = null) {
+        fun finishRangeMode() {
             val oldAnchor = rangeAnchor
             rangeMode = false
             rangeAnchor = null
             rangeButton.text = "Select range"
             adapter.setRangeAnchor(null, oldAnchor)
-            hint.text = message ?: DEFAULT_SELECTION_HINT
         }
 
         fun handleTap(position: Int) {
@@ -169,7 +204,6 @@ internal fun ScreenHost.showChapterSelection(
             if (anchor == null) {
                 rangeAnchor = position
                 adapter.setRangeAnchor(position, null)
-                hint.text = "Chapter ${items[position].originalIndex + 1} is the start. Tap the last chapter."
             } else {
                 updateSelection(
                     ChapterSelectionPlanning.applyRange(
@@ -180,14 +214,9 @@ internal fun ScreenHost.showChapterSelection(
                         selecting = true,
                     ),
                 )
-                val first = minOf(items[anchor].originalIndex, items[position].originalIndex) + 1
-                val last = maxOf(items[anchor].originalIndex, items[position].originalIndex) + 1
-                finishRangeMode("Selected chapters $first–$last. Long-press and drag to adjust more.")
+                finishRangeMode()
             }
         }
-
-        hint = makeText(context, DEFAULT_SELECTION_HINT, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
-        addView(selectionHintCard(hint))
 
         flow(spacing = Space.SM) {
             rangeButton =
@@ -198,15 +227,14 @@ internal fun ScreenHost.showChapterSelection(
                         rangeMode = true
                         rangeAnchor = null
                         rangeButton.text = "Cancel range"
-                        hint.text = "Tap the first chapter in your range."
                     }
                 }
             button("All", Btn.OUTLINED, R.drawable.wna_check) {
-                finishRangeMode("All shown chapters selected.")
+                finishRangeMode()
                 updateSelection(orderedIds.toSet())
             }
             button("Clear", Btn.OUTLINED, R.drawable.wna_close) {
-                finishRangeMode("Selection cleared.")
+                finishRangeMode()
                 updateSelection(emptySet())
             }
         }
@@ -226,10 +254,7 @@ internal fun ScreenHost.showChapterSelection(
                 list = list,
                 currentSelection = { selectedIds.toSet() },
                 isSelected = { position -> orderedIds[position] in selectedIds },
-                onDragStarted = {
-                    if (rangeMode) finishRangeMode()
-                    hint.text = if (it) "Drag to select chapters." else "Drag to clear selected chapters."
-                },
+                onDragStarted = { if (rangeMode) finishRangeMode() },
                 onRangeChanged = { baseSelection, start, end, selecting ->
                     updateSelection(
                         ChapterSelectionPlanning.applyRange(
@@ -241,26 +266,39 @@ internal fun ScreenHost.showChapterSelection(
                         ),
                     )
                 },
-                onDragFinished = { hint.text = DEFAULT_SELECTION_HINT },
+                onDragFinished = {},
             ),
         )
         addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        if (jumpToBookmark && bookmarkPosition >= 0) chapterLayout.scrollToPositionWithOffset(bookmarkPosition, 0)
         actions = SelectionActions(this@showChapterSelection, this, story, items, audio, canDownload)
         actions.update(selectedIds)
     }
 }
 
-private fun ScreenHost.makeSelectionBookmark(
-    chapterNumber: Int,
-    onJump: () -> Unit,
-): Button =
-    makeButton(app, "Bookmark · Ch. $chapterNumber", Btn.TEXT, R.drawable.wna_bookmark, onJump).apply {
-        val color = ThemeManager.colors.bookmark
-        setTextColor(color)
-        setCompoundDrawablesRelativeWithIntrinsicBounds(app.tintedIcon(R.drawable.wna_bookmark, color), null, null, null)
-        contentDescription = "Jump to your bookmark, chapter $chapterNumber"
+/** One chip per offered filter with its count; a tap hands back the filters to show next. */
+private fun ScreenHost.selectionFilterRow(
+    counts: Map<SelectionFilter, Int>,
+    active: Set<SelectionFilter>,
+    onChange: (Set<SelectionFilter>) -> Unit,
+): HorizontalScrollView {
+    val row = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
+    counts.entries.forEachIndexed { position, (filter, count) ->
+        val chip =
+            makeCountedChip(app, filter.label, count, filter in active) {
+                onChange(if (filter in active) active - filter else active - setOfNotNull(filter.excludes) + filter)
+            }
+        row.addView(
+            chip,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                if (position > 0) marginStart = dp(Space.SM)
+            },
+        )
     }
+    return HorizontalScrollView(app).apply {
+        isHorizontalScrollBarEnabled = false
+        addView(row)
+    }
+}
 
 /** Download / Generate audio / Delete audio for the selection, each counting the chapters it applies to. */
 private class SelectionActions(
@@ -356,27 +394,4 @@ private class SelectionActions(
     }
 }
 
-/** The hint in a quiet card, as the prototype shows it above the actions. */
-private fun ScreenHost.selectionHintCard(hint: TextView): LinearLayout {
-    val colors = ThemeManager.colors
-    val radius = dp(14).toFloat()
-    return LinearLayout(app).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = android.view.Gravity.CENTER_VERTICAL
-        setPadding(dp(Space.MD), dp(Space.MD), dp(Space.MD), dp(Space.MD))
-        background = strokeBg(colors.elevation1, radius, colors.line, dp(1))
-        addView(
-            android.widget.ImageView(app).apply { setImageDrawable(app.tintedIcon(R.drawable.wna_checklist, colors.primary)) },
-            LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(Space.SM + 2) },
-        )
-        addView(hint, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        layoutParams =
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(Space.XS)
-            }
-    }
-}
-
-private const val DEFAULT_SELECTION_HINT =
-    "Tap chapters, or long-press one and drag to select or clear a range. Then download them or make their audio."
 private const val ROUND_ACTION_DP = 52
