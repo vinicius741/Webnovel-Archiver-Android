@@ -127,6 +127,24 @@ class DownloadQueueSectionPlanningTest {
     }
 
     @Test
+    fun downloadNowHandsBackAChapterWaitingOnPacing() {
+        val jobs =
+            listOf(
+                job("a", 0, "rr", "downloading"),
+                job("a", 1, "rr", "pending"),
+                job("c", 0, "other", "downloading"),
+                job("b", 0, "rr", "pending"),
+            )
+
+        val moved = DownloadQueueOrderPlanning.moveStoryToFront(jobs, "b", handBackJobIds = setOf("a_0"))
+
+        assertEquals(listOf("b_0", "a_0", "a_1", "c_0"), moved.map { it.id })
+        assertEquals(listOf("pending", "pending", "pending", "downloading"), moved.map { it.status })
+        // The published snapshot is never mutated in place.
+        assertEquals("downloading", jobs.first().status)
+    }
+
+    @Test
     fun resumeAfterVerificationRequeuesBlockedFailuresWithoutSpendingRetries() {
         val jobs =
             listOf(

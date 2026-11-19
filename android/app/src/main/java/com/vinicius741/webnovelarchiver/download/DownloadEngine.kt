@@ -172,7 +172,21 @@ class DownloadEngine(
     suspend fun reorderStories(orderedStoryIds: List<String>) =
         mutateQueue { DownloadQueueOrderPlanning.reorderStories(it, orderedStoryIds) }
 
-    suspend fun downloadStoryNext(storyId: String) = mutateQueueAndStart { DownloadQueueOrderPlanning.moveStoryToFront(it, storyId) }
+    suspend fun downloadStoryNext(storyId: String) {
+        // A same-site chapter of another novel still waiting out its pacing delay is handed back,
+        // so this novel replaces it now; its worker notices within a second and exits.
+        val providerName =
+            repository
+                .queue()
+                .firstOrNull { it.storyId == storyId }
+                ?.let { job -> SourceRegistry.getProvider(job.sourceId, job.chapter.url) }
+                ?.let { provider -> SourceRegistry.getById(provider.id)?.name ?: provider.id }
+        val handBack =
+            downloadPacer.snapshots.value.values
+                .filter { it.providerName == providerName && it.storyId != storyId }
+                .mapTo(HashSet()) { it.jobId }
+        mutateQueueAndStart { DownloadQueueOrderPlanning.moveStoryToFront(it, storyId, handBack) }
+    }
 
     suspend fun moveStoryToEnd(storyId: String) = mutateQueue { DownloadQueueOrderPlanning.moveStoryToEnd(it, storyId) }
 

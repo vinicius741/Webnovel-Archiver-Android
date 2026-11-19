@@ -23,14 +23,25 @@ object DownloadQueueOrderPlanning {
         }
     }
 
-    /** "Download now": the novel's chapters become the first pending work for its site, so it takes over once the chapter being fetched finishes. */
+    /**
+     * "Download now": the novel's chapters become the first pending work for its site. Another
+     * novel's chapter in [handBackJobIds] (claimed but still waiting out the pacing delay) goes
+     * back to pending, so the moved novel takes over now instead of after that wait; a chapter
+     * already being fetched is left to finish.
+     */
     fun moveStoryToFront(
         jobs: List<DownloadJob>,
         storyId: String,
+        handBackJobIds: Set<String> = emptySet(),
     ): List<DownloadJob> {
         val blocks = storyBlocks(jobs)
         val moved = blocks[storyId] ?: return jobs
-        return moved + blocks.filterKeys { it != storyId }.values.flatten()
+        val reordered = moved + blocks.filterKeys { it != storyId }.values.flatten()
+        if (handBackJobIds.isEmpty()) return reordered
+        return reordered.map { original ->
+            if (original.storyId == storyId || original.id !in handBackJobIds) return@map original
+            original.copy(chapter = original.chapter.copy()).also(DownloadJobTransitions::recoverInterrupted)
+        }
     }
 
     fun moveStoryToEnd(
