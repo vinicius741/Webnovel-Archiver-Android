@@ -176,6 +176,6 @@ private fun ScreenHost.showAiImageModelDialog(
 private fun ScreenHost.showImageManualModelDialog(
     currentModel: String,
     onPicked: (String) -> Unit,
-) = prompt("Image model id (e.g. x-ai/grok-imagine-image-2.0)", currentModel) { value ->
+) = prompt("Image model id (e.g. meta/muse-image)", currentModel) { value ->
     value.trim().takeIf { it.isNotBlank() }?.let(onPicked)
 }

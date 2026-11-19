@@ -9,8 +9,9 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
 - **Settings → AI Settings → Models**: beside the description model, a **Cover image model** row picks the
   image generator. Its picker rides the dedicated image-model catalog (`GET /api/v1/images/models`,
   public, no pricing) — same searchable dialog shape as the text-model picker, minus price labels
-  and the Free filter, with a pinned manual-id row. Defaults to `x-ai/grok-imagine-image-2.0`
-  (from ~$0.04/image; supports 2:3 portrait).
+  and the Free filter, with a pinned manual-id row. Defaults to `meta/muse-image`
+  (its catalog entry lists no optional parameters, so the request sends only model and prompt and
+  the prompt itself asks for a 2:3 portrait).
 - **Details → More options → AI Controls → Cover tab** (redesigned 2026-10-31; the Description
   tab sits beside it and the screen remembers the last tab per novel). Top to bottom:
   1. **New cover ready** — only while a generated cover waits for a decision: the cover in use

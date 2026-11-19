@@ -172,12 +172,13 @@ private fun ScreenHost.addNewPortraitCard(
                     "Uses the passages the cover scan found about the lead, at the age set in Story phase on the Cover tab. " +
                         "That scan is free once a cover was made; otherwise it checks about 60 chapters first (around 2 cents). "
                 } else {
-                    "The decision model reads up to 16 chapters that name ${character.name} and keeps the passages that describe them. "
+                    "Your phone finds the chapters that describe ${character.name}, then the decision model checks up to 16 of " +
+                        "them for passages about their looks. "
                 }
             val style = if (AiCoverPlanning.isAiCoverActive(story)) ", matching your current cover's art style," else ""
             text(
                 how + "${settings.descriptionModel} writes the prompt$style and ${settings.imageModel} paints it " +
-                    "(about 8 cents with Sonnet and Grok Imagine; mostly the image).",
+                    "(the image is most of the cost).",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setLineSpacing(dp(Space.XS).toFloat(), 1f) }

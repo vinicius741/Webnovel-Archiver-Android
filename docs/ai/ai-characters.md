@@ -48,23 +48,33 @@ jobs are independent.
 
 ## How a portrait is painted
 
-1. **Evidence.** For the lead of a novel on automatic cover chapters, the cover's scan
+1. **Where they are described (free).** `CharacterAppearanceScout` reads every downloaded chapter on
+   the device and scores each mention of the character by the appearance words around it (hair,
+   blonde, tall, freckles, wore...). The chapters with the best-described mention come first, then
+   the chapters that name the character most, up to 16. A character who enters late or is described
+   once is still found: the sister in the test novel enters around chapter 80 and is described only
+   at chapter 149 ("golden blonde strands and bright blue orbs"), which ranking by mentions missed.
+2. **Evidence.** For the lead of a novel on automatic cover chapters, the cover's scan
    (`coverSelection`) supplies the appearance passages, scoped to the cover's story phase (Cover
    tab › Story phase), with earlier passages for lasting traits. It is cached after the first
    cover; otherwise it scans about 60 chapters first (around 2 cents), and a lead portrait cannot
    start while that novel's cover job runs. Everyone else, the lead of a novel with hand-picked cover
-   chapters, and a lead the cover scan found nothing for, gets `CharacterAppearanceRubric`: up to 16 key chapters,
-   each sent from one passage before the character's first mention, with a per-passage Noul
-   "does this describe how the character in `character` looks?". The name travels in the state,
+   chapters, and a lead the cover scan found nothing for, gets `CharacterAppearanceRubric`: every chapter the scout chose (no early stop), each sent from
+   one passage before its best-described mention, with a per-passage Noul "does this say how the
+   character in `character` looks?". Details that belong to someone else in the passage do not
+   count; a comparison ("a shade farther from gold than her own") does. The name travels in the state,
    never in a question, and the novel description gets only the bytes the rest of the request
    leaves, so a request stays under 30 KB even with non-Latin text. The scan stops after 5 chapters with a flagged passage.
-2. **No evidence, no face.** If no passage describes the character, the run stops with a plain
+3. **No evidence, no face.** If no passage describes the character, the run stops with a plain
    message before any text or image call.
-3. **Prompt.** `CharacterPortraitPlanning` gives the text model the character, the flagged
+4. **Prompt.** `CharacterPortraitPlanning` gives the text model the character, the flagged
    passages (12k characters, strongest first), a random framing (head-and-shoulders, waist-up,
-   three-quarter or full figure), and, when the novel shows an AI cover, that cover's prompt as
-   `cover_style_reference`, so the portrait matches its medium and palette. The portrait has no lettering.
-4. **Image.** The image model paints it at 2:3, like covers.
+   three-quarter or full figure), and, when the novel shows an AI cover, the art direction of that
+   cover's prompt as `cover_style_reference` (`styleOnly` keeps only sentences that name no person,
+   physical trait or lettering: the cover usually shows the lead, and passing the whole prompt once
+   gave a blonde sister the lead's black hair). The writer takes a trait only when a passage
+   attributes it to this character. The portrait has no lettering.
+5. **Image.** The image model paints it at 2:3, like covers.
 
 ## Storage
 
@@ -80,9 +90,10 @@ Measured on a 277-chapter novel with Claude Sonnet 5.5 as the text model:
 | Action | Cost |
 |---|---|
 | Find characters (one text call, ~9k tokens in) | about $0.03 |
-| Portrait passage scan (16 Jev requests) | about $0.003 |
+| Portrait passage scan (up to 16 Jev requests) | about $0.005 |
 | Portrait prompt | about $0.02 |
-| Portrait image (Grok Imagine) | $0.06 |
+| Portrait image, Meta Muse Image (the default) | $0.01 |
+| Portrait image, Grok Imagine | $0.06 |
 
 Usage features in the ledger: `characters`, `portrait_selection`, `portrait_prompt`,
 `portrait_image`.

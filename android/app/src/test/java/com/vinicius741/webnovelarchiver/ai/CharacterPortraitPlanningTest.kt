@@ -26,7 +26,7 @@ class CharacterPortraitPlanningTest {
                 sethira,
                 passages,
                 phase = StoryPhase(LifeStage.ADULT, 175, 277, 103),
-                styleReference = "Dark oil painting",
+                styleReference = "Rendered as a dark oil painting with heavy chiaroscuro.",
                 framing = CharacterPortraitPlanning.FRAMINGS.first(),
             )
         assertEquals(2, messages.size)
@@ -36,7 +36,7 @@ class CharacterPortraitPlanningTest {
         val data = source(user)
         assertEquals("Sethira", data.getAsJsonObject("character").get("name").asString)
         assertEquals("adult", data.getAsJsonObject("story_phase").get("life_stage").asString)
-        assertEquals("Dark oil painting", data.get("cover_style_reference").asString)
+        assertEquals("Rendered as a dark oil painting with heavy chiaroscuro.", data.get("cover_style_reference").asString)
         assertEquals(
             95,
             data
@@ -53,5 +53,16 @@ class CharacterPortraitPlanningTest {
         assertNull(data.get("story_phase"))
         assertNull(data.get("cover_style_reference"))
         assertFalse(data.has("earlier_appearance_passages"))
+    }
+
+    @Test fun `a cover prompt lends only its art direction, never the lead's looks or the title`() {
+        val cover =
+            "The title \"The Lich King\" is lettered in engraved serif at the top. A pale girl with jet black hair and " +
+                "green eyes stands in a ruined chapel. She wears a dark gown. Rendered as a painterly dark fantasy " +
+                "illustration with heavy chiaroscuro. The palette is deep teal, bone white and sickly green light."
+        val style = CharacterPortraitPlanning.styleOnly(cover)!!
+        assertTrue(style.contains("chiaroscuro") && style.contains("deep teal"))
+        assertFalse(style.contains("black hair") || style.contains("green eyes") || style.contains("Lich King") || style.contains("gown"))
+        assertNull(CharacterPortraitPlanning.styleOnly("She has black hair."))
     }
 }

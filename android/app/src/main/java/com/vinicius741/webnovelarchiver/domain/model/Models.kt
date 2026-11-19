@@ -401,7 +401,7 @@ data class AiSettings(
         const val DEFAULT_DESCRIPTION_MODEL = "deepseek/deepseek-v4.1-flash-1017"
 
         /** Default image generator for AI covers. */
-        const val DEFAULT_IMAGE_MODEL = "x-ai/grok-imagine-image-2.0"
+        const val DEFAULT_IMAGE_MODEL = "meta/muse-image"
 
         /** Versioned TypeSafe Jev snapshot; a pinned id keeps cached chapter scores valid. */
         const val DEFAULT_DECISION_MODEL = "typesafe/jev-1.14"

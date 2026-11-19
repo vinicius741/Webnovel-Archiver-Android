@@ -220,7 +220,7 @@ internal object CharacterMining {
                 .flatMap { (owner, names) -> names.map { normalize(it.trim()) to owner } }
                 .filter { it.first.length >= 2 }
                 .toMap()
-        private val pattern = pattern(owners.keys.toList())
+        private val pattern = namePattern(owners.keys.toList())
         private val counts = mutableMapOf<String, MutableMap<Int, Int>>()
 
         fun add(chapter: ChapterText) {
@@ -265,12 +265,13 @@ internal object CharacterMining {
     fun firstMention(
         text: String,
         names: List<String>,
-    ): Int? = pattern(names)?.find(text)?.range?.first
+    ): Int? = namePattern(names)?.find(text)?.range?.first
 
     /** Curly and straight apostrophes are the same letter in a name. */
     private fun normalize(word: String): String = stripPossessive(word.replace('’', '\''))
 
-    private fun pattern(names: List<String>): Regex? {
+    /** Whole-word pattern for any of [names], longest first, curly and straight apostrophes alike. */
+    fun namePattern(names: List<String>): Regex? {
         val alternatives =
             names
                 .map { normalize(it.trim()) }

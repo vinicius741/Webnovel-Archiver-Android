@@ -162,19 +162,24 @@ class CharacterEngine internal constructor(
                 }
             if (cover != null && cover.passages.isNotEmpty()) return cover
         }
+        // Free first: find the chapters that describe this character, wherever they enter the story.
+        val scout = CharacterAppearanceScout(character.names)
+        forEachChapter(context.story, "Finding where ${character.name} is described", onProgress) { scout.add(it) }
+        val spots = scout.best(CharacterAppearanceRubric.MAX_SCANNED_CHAPTERS)
         val downloaded =
             context.story.chapters.indices
                 .filter { context.story.chapters[it].downloaded }
                 .map { it + 1 }
-        val order = CharacterAppearanceRubric.order(downloaded, character.keyChapters)
+        val order = CharacterAppearanceRubric.order(downloaded, spots.map { it.chapter })
         if (order.isEmpty()) return ChapterEvidencePlanning.Selection(emptyList(), emptyList())
+        // Every chosen chapter is judged (about $0.005 for 16): a late, one-off description must not be cut by an early stop.
         val scan =
             evidenceSelector.scan(
                 context.story,
                 context.apiKey,
                 settings.decisionModel,
-                CharacterAppearanceRubric.TARGET_CHAPTERS,
-                CharacterAppearanceRubric(character, order),
+                order.size,
+                CharacterAppearanceRubric(character, order, spots.associate { it.chapter to it.anchor }),
                 onProgress,
             )
         return ChapterEvidencePlanning.Selection(emptyList(), scan.passages)
