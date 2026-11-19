@@ -41,7 +41,7 @@ internal class ReaderDockActions(
 
 /**
  * The player the Reader docks in place of its chapter navigation while this chapter is read aloud
- * (v3): a progress line on top, a gold play/pause, "Sentence N of M" and the time left (opens Now
+ * (v3): a progress line on top, a gold play/pause, "91% · 3 min left" (opens Now
  * Playing), back 15 seconds, the speed chip, expand and close. Patched in place by [applySnapshot].
  */
 internal class ReaderPlayerDock(
@@ -52,7 +52,6 @@ internal class ReaderPlayerDock(
     private val line = PlayerProgressLine(context)
     private val play: ImageView
     private val title: TextView
-    private val subtitle: TextView
     private val rate: TextView
 
     val view: FrameLayout =
@@ -85,11 +84,6 @@ internal class ReaderPlayerDock(
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
             }
-        subtitle =
-            makeText(context, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-            }
         val texts =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -101,7 +95,6 @@ internal class ReaderPlayerDock(
                 contentDescription = "Open player"
                 setOnClickListener { actions.openPlayer() }
                 addView(title)
-                addView(subtitle)
             }
         row.addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
         row.addView(context.iconButton(R.drawable.wna_replay, "Back 15 seconds", colors.onSurfaceVariant, onClick = actions.back15))
@@ -132,16 +125,12 @@ internal class ReaderPlayerDock(
         val paused = snapshot.isPaused
         play.setImageDrawable(view.context.tintedIcon(if (paused) R.drawable.wna_play else R.drawable.wna_pause, colors.onPrimary))
         play.contentDescription = if (paused) "Play" else "Pause"
-        title.text =
-            if (snapshot.totalChunks > 0) {
-                "Sentence ${(snapshot.chunkIndex + 1).coerceAtMost(snapshot.totalChunks)} of ${snapshot.totalChunks}"
-            } else {
-                snapshot.title
-            }
-        subtitle.text = playbackTimeLeft(snapshot) ?: if (paused) "Paused" else "Loading…"
+        val fraction = playbackFraction(snapshot)
+        val percent = "${(fraction * PERCENT).toInt().coerceIn(0, PERCENT)}%"
+        title.text = listOf(percent, playbackTimeLeft(snapshot) ?: if (paused) "Paused" else "Loading…").joinToString(" · ")
         rate.text = rateLabel(snapshot.rate)
         rate.contentDescription = "Speed ${rateLabel(snapshot.rate)}. Tap to change"
-        line.fraction = playbackFraction(snapshot)
+        line.fraction = fraction
     }
 
     private companion object {
@@ -151,6 +140,7 @@ internal class ReaderPlayerDock(
         const val PLAY_RADIUS_DP = 16
         const val RATE_HEIGHT_DP = 30
         const val LINE_DP = 3
+        const val PERCENT = 100
         const val DOCK_SURFACE = 0xFF2C261B.toInt()
         const val BORDER_ALPHA_MASK = 0x33FFFFFF
     }
