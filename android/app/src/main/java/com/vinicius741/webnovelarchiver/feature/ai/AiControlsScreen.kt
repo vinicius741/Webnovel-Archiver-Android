@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.feature.details.storyScreen
 import com.vinicius741.webnovelarchiver.feature.details.storyTabShowing
 import com.vinicius741.webnovelarchiver.feature.settings.showAiSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
+import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
@@ -46,7 +47,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
- * The per-novel AI screen, split into a Cover tab and a Description tab. Global model choices
+ * The per-novel AI screen, split into Cover, Characters and Description tabs. Global model choices
  * live in AI Settings; each tab only names the model it uses and links there. [tab] switches the
  * remembered tab (job chip and notifications open the tab their result belongs to).
  */
@@ -62,12 +63,18 @@ internal fun ScreenHost.showAiControls(
     val generatingCover = aiCoverOperationFor(story.id)
     hydrateAiCoverDraftFromStorage(story.id)
     markAiResultsSeen(story.id, shownTab)
-    storyScreen(route = AppRoute.AiControls(story.id), story = story, scrollable = true) {
+    storyScreen(
+        route = AppRoute.AiControls(story.id),
+        story = story,
+        scrollable = true,
+        backIntercept = BackIntercept(isActive = { characterPageOpen(story.id) }, clear = { closeCharacterPage(story.id) }),
+    ) {
         val binding = AiControlsBinding(story.id, this, aiOperation?.takeIf { it.storyId == story.id }?.kind)
         aiControlsScreenState.binding = binding
         addAiTabBar(this, story.id, shownTab)
         when (shownTab) {
             AiControlsTab.COVER -> addAiCoverTab(this, story, generatingCover)
+            AiControlsTab.CHARACTERS -> addAiCharactersTab(this, story)
             AiControlsTab.DESCRIPTION -> {
                 addAiDescriptionCard(this, story, generating)
                 aiControlsScreenState.drafts[story.id]?.let { draft -> addAiDraftPreviewCard(this, story, draft) }
@@ -89,10 +96,11 @@ private fun ScreenHost.markAiResultsSeen(
     when (tab) {
         AiControlsTab.COVER -> if (storyId in repository.aiCoverUnseen.value) scope.launch { repository.markAiCoverResultSeen(storyId) }
         AiControlsTab.DESCRIPTION -> aiControlsScreenState.unseenDescriptions.remove(storyId)
+        AiControlsTab.CHARACTERS -> Unit
     }
 }
 
-/** Cover | Description, with a dot on the one whose finished result is still waiting. */
+/** Cover | Characters | Description, with a dot on the one whose finished result is still waiting. */
 private fun ScreenHost.addAiTabBar(
     container: LinearLayout,
     storyId: String,
@@ -106,8 +114,10 @@ private fun ScreenHost.addAiTabBar(
                     when (tab) {
                         AiControlsTab.COVER -> aiControlsScreenState.coverDrafts[storyId] != null
                         AiControlsTab.DESCRIPTION -> aiControlsScreenState.drafts[storyId] != null
+                        AiControlsTab.CHARACTERS -> false
                     }
-            Segment(tab.label, if (tab == AiControlsTab.COVER) R.drawable.wna_image else R.drawable.wna_notes, dot = waiting)
+            // Text only: three labels with icons do not fit beside the story pane.
+            Segment(tab.label, dot = waiting)
         }
     container.addView(
         makeSegmentedControl(app, segments, tabs.indexOf(selected)) { index -> showAiControls(storyId, tabs[index]) },

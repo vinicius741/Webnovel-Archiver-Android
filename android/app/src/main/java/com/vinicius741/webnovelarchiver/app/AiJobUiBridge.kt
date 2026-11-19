@@ -2,9 +2,13 @@ package com.vinicius741.webnovelarchiver.app
 
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobEvent
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobKind
+import com.vinicius741.webnovelarchiver.ai.CharacterJobEvent
+import com.vinicius741.webnovelarchiver.ai.CharacterJobKind
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
+import com.vinicius741.webnovelarchiver.feature.ai.aiControlsTab
 import com.vinicius741.webnovelarchiver.feature.ai.frameIsAiControls
+import com.vinicius741.webnovelarchiver.feature.ai.patchCharacterProgress
 import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
@@ -33,6 +37,42 @@ import kotlinx.coroutines.launch
  */
 internal fun MainActivity.attachAiJobBridges() {
     attachCoverJobBridge()
+    attachCharacterJobBridge()
+}
+
+/**
+ * Characters-tab jobs: a job starting or ending re-renders the tab when it is on screen; message
+ * ticks only patch its progress line. Results are already saved when the event arrives.
+ */
+private fun MainActivity.attachCharacterJobBridge() {
+    val coordinator = appContainer.characterJobCoordinator
+    scope.launch {
+        var running: Map<String, Pair<CharacterJobKind, String?>> = emptyMap()
+        coordinator.jobs.collect { jobs ->
+            val now = jobs.mapValues { it.value.kind to it.value.characterId }
+            (running.keys + now.keys).forEach { storyId ->
+                val job = jobs[storyId]
+                val showing = frameIsAiControls(storyId) && aiControlsTab(storyId) == AiControlsTab.CHARACTERS
+                when {
+                    !showing -> Unit
+                    running[storyId] != now[storyId] -> showAiControls(storyId)
+                    job != null && !patchCharacterProgress(job) -> showAiControls(storyId)
+                }
+            }
+            running = now
+        }
+    }
+    scope.launch {
+        coordinator.events.collect { event ->
+            val showing = frameIsAiControls(event.storyId) && aiControlsTab(event.storyId) == AiControlsTab.CHARACTERS
+            when (event) {
+                is CharacterJobEvent.Succeeded ->
+                    toast(if (event.kind == CharacterJobKind.FIND) "Characters found" else "Portrait of ${event.characterName} ready")
+                is CharacterJobEvent.Failed -> toast(event.message)
+            }
+            if (showing) showAiControls(event.storyId)
+        }
+    }
 }
 
 private fun MainActivity.attachCoverJobBridge() {

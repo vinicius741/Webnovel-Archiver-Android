@@ -15,7 +15,7 @@ Supports **Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFicti
 - EPUB export, text cleanup, and full library backup and restore.
 - One shareable diagnostics export (the last hour of syncs, downloads, library changes and errors, plus source access) for troubleshooting, also saved to Downloads/Webnovel Archiver; the phone keeps 7 days.
 - Patreon early-access chapters available through your own account.
-- Optional AI cover art and synopses using your own OpenRouter API key, with cost tracking.
+- Optional AI cover art, synopses, a character list and character portraits using your own OpenRouter API key, with cost tracking.
 
 ## Install
 

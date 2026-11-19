@@ -17,6 +17,11 @@ internal object SimulationFixtures {
         "Paint a portrait book cover titled The Clockwork Library. Mara wears a blue coat and carries a brass clock. " +
             "A moonlit harbor surrounds a library beneath the docks. Use copper, blue and warm lamplight."
 
+    const val CHARACTERS =
+        "{\"characters\":[" +
+            "{\"name\":\"Mara\",\"aliases\":[],\"role\":\"protagonist\",\"bio\":\"A harbor clockmaker tracing hours the tide erased.\"}," +
+            "{\"name\":\"Ivo\",\"aliases\":[],\"role\":\"major\",\"bio\":\"Mara's apprentice, who keeps the brass map safe.\"}]}"
+
     fun stories(count: Int): List<Story> =
         listOf(
             story(STORY_ID, STORY_URL, "The Clockwork Library", count),

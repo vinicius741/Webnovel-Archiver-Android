@@ -124,6 +124,10 @@ private fun recentRequestRow(
             "description_selection" -> "Automatic description selection"
             "cover_prompt" -> "Cover prompt"
             "cover_image" -> "Cover image"
+            "characters" -> "Character list"
+            "portrait_selection" -> "Portrait passage search"
+            "portrait_prompt" -> "Portrait prompt"
+            "portrait_image" -> "Portrait image"
             else -> record.feature.takeIf(String::isNotBlank) ?: "AI request"
         }
     val model = record.model.takeIf(String::isNotBlank) ?: "Model unavailable"

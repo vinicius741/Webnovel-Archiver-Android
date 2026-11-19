@@ -65,7 +65,7 @@
   <string name="ai_channel_desc">AI cover generation progress and results</string>
   <string name="narration_channel_name">Generating audio</string>
   <string name="narration_channel_desc">Progress while chapter audio is generated in the background</string>
-  <string name="ai_cover_notif_active">Generating AI cover</string>
+  <string name="ai_cover_notif_active">Working on AI images</string>
 
   <!-- Centralized user-facing error messages (Maintainability M6). -->
   <string name="error_no_file_selected">No file selected</string>

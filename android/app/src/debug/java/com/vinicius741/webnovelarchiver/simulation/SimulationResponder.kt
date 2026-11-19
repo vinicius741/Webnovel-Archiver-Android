@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.simulation
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.vinicius741.webnovelarchiver.ai.CharacterRosterPlanning
 import com.vinicius741.webnovelarchiver.app.AppTime
 import com.vinicius741.webnovelarchiver.source.network.CloudflarePageRenderer
 import com.vinicius741.webnovelarchiver.source.network.CloudflareRenderFailure
@@ -83,6 +84,14 @@ internal class SimulationResponder(
                         }
                     ) {
                         "prompt"
+                    } else if (body.getAsJsonArray("messages").any { message ->
+                            message.asJsonObject
+                                .get("content")
+                                ?.asString
+                                ?.startsWith(CharacterRosterPlanning.SYSTEM_OPENING) == true
+                        }
+                    ) {
+                        "characters"
                     } else {
                         "description"
                     }
@@ -251,6 +260,8 @@ internal class SimulationResponder(
                                             "prompt"
                                         ) {
                                             SimulationFixtures.PROMPT
+                                        } else if (stage == "characters") {
+                                            SimulationFixtures.CHARACTERS
                                         } else {
                                             SimulationFixtures.DESCRIPTION
                                         },

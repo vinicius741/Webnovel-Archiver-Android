@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -33,21 +34,30 @@ class AiJobForegroundService : Service() {
     private var latestStartId = 0
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val coverCoordinator get() = appContainer.aiCoverJobCoordinator
+    private val characterCoordinator get() = appContainer.characterJobCoordinator
+
+    /** The running cover job, else the running Characters-tab job. */
+    private fun activeJob(): AiJobModel? =
+        coverCoordinator.jobs.value.values
+            .firstOrNull() ?: characterCoordinator.jobs.value.values
+            .firstOrNull()
 
     override fun onCreate() {
         super.onCreate()
         AppNotificationChannels.ensureCreated(this)
         serviceScope.launch {
-            coverCoordinator.jobs.collect { coverJobs ->
-                val cover = coverJobs.entries.firstOrNull()
+            combine(coverCoordinator.jobs, characterCoordinator.jobs) { _, _ -> activeJob() }.collect { active ->
                 when {
-                    cover != null -> updateOngoingNotification(cover.value.message, cover.key)
+                    active != null -> updateOngoingNotification(active.message, active.storyId)
                     foregroundStarted -> stopAfterFinish()
                 }
             }
         }
         serviceScope.launch {
             coverCoordinator.events.collect { event -> showCoverOutcomeNotification(event) }
+        }
+        serviceScope.launch {
+            characterCoordinator.events.collect { event -> showCharacterOutcomeNotification(event) }
         }
     }
 
@@ -64,14 +74,12 @@ class AiJobForegroundService : Service() {
         latestStartId = startId
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> {
-                val cover =
-                    coverCoordinator.jobs.value.entries
-                        .firstOrNull()
-                val message = cover?.value?.message ?: intent?.getStringExtra(EXTRA_INITIAL_MESSAGE) ?: "Working on AI task..."
+                val active = activeJob()
+                val message = active?.message ?: intent?.getStringExtra(EXTRA_INITIAL_MESSAGE) ?: "Working on AI task..."
                 // startForegroundService demands startForeground even on an immediate stop.
-                startForeground(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(message, cover?.key))
+                startForeground(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(message, active?.storyId))
                 foregroundStarted = true
-                if (cover == null) stopAfterFinish()
+                if (active == null) stopAfterFinish()
             }
         }
         return START_NOT_STICKY
@@ -133,8 +141,25 @@ class AiJobForegroundService : Service() {
         postOutcome(COVER_OUTCOME_NOTIFICATION_ID, title, storyTitle?.let { "$it — $body" } ?: body, AppRoute.AiControls(event.storyId))
     }
 
+    private fun showCharacterOutcomeNotification(event: CharacterJobEvent) {
+        val storyTitle = runCatching { appContainer.repository.story(event.storyId)?.title }.getOrNull()
+        val title =
+            when (event) {
+                is CharacterJobEvent.Succeeded ->
+                    if (event.kind == CharacterJobKind.FIND) "Characters found" else "Portrait of ${event.characterName} ready"
+                is CharacterJobEvent.Failed -> if (event.kind == CharacterJobKind.FIND) "Finding characters failed" else "Portrait failed"
+            }
+        val body =
+            when (event) {
+                is CharacterJobEvent.Succeeded -> "Tap to see it."
+                is CharacterJobEvent.Failed -> event.message
+            }
+        postOutcome(CHARACTER_OUTCOME_NOTIFICATION_ID, title, storyTitle?.let { "$it — $body" } ?: body, AppRoute.AiControls(event.storyId))
+    }
+
     companion object {
         private const val ONGOING_NOTIFICATION_ID = 1003
+        private const val CHARACTER_OUTCOME_NOTIFICATION_ID = 1006
         private const val COVER_OUTCOME_NOTIFICATION_ID = 1004
         const val ACTION_START = "com.vinicius741.webnovelarchiver.ai.JOB_START"
         private const val EXTRA_INITIAL_MESSAGE = "initial_message"

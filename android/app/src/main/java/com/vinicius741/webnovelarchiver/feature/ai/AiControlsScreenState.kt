@@ -7,6 +7,7 @@ internal enum class AiControlsTab(
     val label: String,
 ) {
     COVER("Cover"),
+    CHARACTERS("Characters"),
     DESCRIPTION("Description"),
 }
 
@@ -27,6 +28,15 @@ class AiControlsScreenState {
     val coverDrafts: MutableMap<String, AiCoverDraft> = linkedMapOf()
     val coverPrompts: MutableMap<String, String> = linkedMapOf()
     internal val tabs: MutableMap<String, AiControlsTab> = linkedMapOf()
+
+    /** The character whose page the Characters tab shows, by story id; absent = the list. */
+    internal val openCharacters: MutableMap<String, String> = linkedMapOf()
+
+    /** Stories whose Supporting characters are expanded in the list. */
+    internal val expandedSupporting: MutableSet<String> = linkedSetOf()
+
+    /** The running character job's progress line on screen, patched in place by the job bridge. */
+    internal var characterProgress: android.widget.TextView? = null
 
     /** Description drafts finished while their tab was not on screen. */
     internal val unseenDescriptions: MutableSet<String> = linkedSetOf()
