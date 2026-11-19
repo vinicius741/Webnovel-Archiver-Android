@@ -33,6 +33,7 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
+import com.vinicius741.webnovelarchiver.domain.sha256Hex
 import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning
 import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
 import com.vinicius741.webnovelarchiver.sync.storyChapterKey
@@ -872,6 +873,22 @@ internal fun AppRepository.preserveAppliedCover(story: Story): String? =
                 else -> "image/png"
             }
         storage.covers.versions.save(story.id, AiCoverDraft("", file.readBytes(), mediaType))
+    }
+
+/** Deletes one saved AI cover version; the cover in use is never deleted. */
+internal suspend fun AppRepository.deleteAiCoverVersion(
+    storyId: String,
+    versionId: String,
+): Boolean =
+    storageTransaction {
+        val story = story(storyId)
+        val current =
+            story
+                ?.takeIf(AiCoverPlanning::isAiCoverActive)
+                ?.let { coverFile(it) }
+                ?.takeIf { it.isFile }
+                ?.let { sha256Hex(it) }
+        if (current == versionId) false else storage.covers.versions.delete(storyId, versionId)
     }
 
 internal suspend fun AppRepository.listAiCoverVersions(storyId: String) =

@@ -10,6 +10,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
+import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverVersion
 import com.vinicius741.webnovelarchiver.data.repository.listAiCoverVersions
 import com.vinicius741.webnovelarchiver.data.repository.saveAiCoverPromptDraft
 import com.vinicius741.webnovelarchiver.data.repository.setAiCover
@@ -26,6 +27,7 @@ import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.activeCoverSource
+import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.loadImage
@@ -340,8 +342,41 @@ private fun ScreenHost.showCoverChoiceDetails(
             reuseCoverPrompt(story, version.prompt)
         }
     }
+    // Rarely needed, so it lives only here: drop a bad generation from history. Never the cover in use
+    // or an unapplied preview (closing the preview would save it back).
+    if (version != null && !choice.inUse && !choice.isNew && editable) {
+        content
+            .fullButton("Delete this cover", Btn.TEXT) {
+                confirm("Delete ${choice.label}? Its image and prompt are removed from this device.", "Delete") {
+                    dialog.dismiss()
+                    deleteCoverVersion(story, version)
+                }
+            }.apply {
+                setTextColor(colors.error)
+                app.tintedIcon(R.drawable.wna_delete, colors.error)?.let {
+                    setCompoundDrawablesRelativeWithIntrinsicBounds(it, null, null, null)
+                    compoundDrawablePadding = dp(6)
+                }
+            }
+    }
     content.fullButton("Close", Btn.TEXT) { dialog.dismiss() }
     dialog.show()
+}
+
+private fun ScreenHost.deleteCoverVersion(
+    story: Story,
+    version: AiCoverVersion,
+) {
+    scope.launch {
+        coverUiAttempt {
+            if (repository.deleteAiCoverVersion(story.id, version.id)) {
+                toast("Cover deleted")
+            } else {
+                toast("This cover can't be deleted")
+            }
+            if (frameIsAiControls(story.id)) showAiControls(story.id)
+        }
+    }
 }
 
 /** Reusing a prompt is free: it only fills the box. Generate from prompt starts the billable call. */

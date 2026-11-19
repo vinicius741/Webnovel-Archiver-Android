@@ -34,6 +34,22 @@ class AiCoverVersionStoreTest {
     }
 
     @Test
+    fun deletingOneVersionRemovesItsImageAndKeepsTheRest() {
+        val keep = store.versions.save("story", AiCoverDraft("keep", byteArrayOf(1), "image/png"))
+        val bad = store.versions.save("story", AiCoverDraft("bad", byteArrayOf(2), "image/png"))
+        val badImage =
+            store.versions
+                .list("story")
+                .single { it.id == bad }
+                .image
+        assertTrue(store.versions.delete("story", bad))
+        assertEquals(listOf(keep), store.versions.list("story").map { it.id })
+        assertTrue(!badImage.exists())
+        assertTrue(!store.versions.delete("story", bad))
+        assertTrue(!store.versions.delete("story", "../story"))
+    }
+
+    @Test
     fun preservingAppliedBytesDoesNotEraseKnownPromptOrDuplicateImage() {
         store.saveImage("story", AiCoverDraft("original prompt", byteArrayOf(1), "image/png"))
         store.versions.save("story", AiCoverDraft("", byteArrayOf(1), "image/png"))

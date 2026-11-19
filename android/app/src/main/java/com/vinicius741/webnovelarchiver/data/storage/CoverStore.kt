@@ -306,6 +306,24 @@ internal class AiCoverVersionStore(
                 }.getOrNull()
             }.sortedWith(compareByDescending<AiCoverVersion> { it.createdAt }.thenBy { it.id })
 
+    /** Removes one saved version (metadata first, then its image); false when it was not in history. */
+    @Synchronized
+    fun delete(
+        storyId: String,
+        id: String,
+    ): Boolean {
+        if (id != File(id).name || id.contains("..")) return false
+        val meta = File(directory(storyId), "$id.json").takeIf { it.isFile } ?: return false
+        val image =
+            runCatching { gson.fromJson(meta.readText(), AiCoverDraftMeta::class.java)?.imageFile }
+                .getOrNull()
+                ?.takeIf { it == File(it).name && !it.contains("..") }
+                ?.let { File(meta.parentFile, it) }
+        if (!meta.delete()) return false
+        image?.delete()
+        return true
+    }
+
     @Synchronized
     fun deleteAll(storyId: String) {
         directory(storyId).deleteRecursively()
