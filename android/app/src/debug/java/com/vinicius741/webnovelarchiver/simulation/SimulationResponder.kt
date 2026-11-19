@@ -207,7 +207,10 @@ internal class SimulationResponder(
                                     addProperty("type", type)
                                     addProperty(
                                         type,
-                                        if (type == "score") {
+                                        if (name == "life_stage") {
+                                            // Childhood opening, adult story: chapters 1-3 child, the rest adult.
+                                            if (body.getAsJsonObject("state").get("chapter_position").asInt <= 3) 0.0 else 2.0
+                                        } else if (type == "score") {
                                             3.0
                                         } else if (name in setOf("spoiler", "temporary")) {
                                             0.0

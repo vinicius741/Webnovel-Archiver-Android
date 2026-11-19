@@ -44,7 +44,10 @@ class DecisionClientTest {
                 assertEquals("liquid/d1", body.get("model").asString)
                 val questions = body.getAsJsonObject("questions")
                 assertEquals(4, questions.getAsJsonObject("appearance").getAsJsonArray("criteria").size())
-                assertEquals(setOf("appearance", "premise", "imagery", "temporary"), body.getAsJsonObject("questions").keySet())
+                assertEquals(
+                    setOf("appearance", "premise", "imagery", "temporary", "age_shown", "life_stage"),
+                    body.getAsJsonObject("questions").keySet(),
+                )
                 assertEquals(1.0, answer.appearance, 0.0)
                 assertEquals(0.5, answer.premise, 0.0)
                 assertEquals(0.1, answer.temporary, 0.0)

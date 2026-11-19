@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.ai
 
+import com.vinicius741.webnovelarchiver.domain.model.LifeStage
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -53,7 +54,10 @@ class CoverEvidencePlanningTest {
         val text = (1..400).joinToString("\n") { "“Quoted” line $it with ünïcödé \\ and \"escapes\" ".repeat(12) }
         val sample = CoverEvidencePlanning.sample(12, "T".repeat(500), text)!!
         val body = CoverEvidencePlanning.request(story, sample, MODEL)
-        assertTrue(body.toString().toByteArray().size <= CoverEvidencePlanning.MAX_REQUEST_BYTES)
+        assertTrue(
+            "size ${body.toString().toByteArray().size}",
+            body.toString().toByteArray().size <= CoverEvidencePlanning.MAX_REQUEST_BYTES,
+        )
         assertEquals(sample.passages.size, body.getAsJsonObject("questions").keySet().count { it.startsWith("appearance_p") })
     }
 
@@ -80,6 +84,49 @@ class CoverEvidencePlanningTest {
                 .parseString(answers.replace("\"appearance_p2\"", "\"other\""))
                 .asJsonObject
         assertTrue(runCatching { CoverEvidencePlanning.assess(sample, missing) }.exceptionOrNull() is java.io.IOException)
+    }
+
+    @Test fun `assessment reads the main character's life stage and tolerates its absence`() {
+        val sample = ChapterEvidencePlanning.ChapterSample(7, "Seven", "", "", listOf("He was twenty now."))
+        val base =
+            """{"answers":{
+              "appearance":{"type":"score","score":3},"premise":{"type":"score","score":1},
+              "imagery":{"type":"score","score":2},"temporary":{"type":"noul","noul":0.1},
+              "appearance_p0":{"type":"noul","noul":0.9}"""
+
+        fun assess(extra: String) =
+            CoverEvidencePlanning.assess(
+                sample,
+                com.google.gson.JsonParser
+                    .parseString("$base$extra}}")
+                    .asJsonObject,
+            )
+        val adult = assess(""","age_shown":{"type":"noul","noul":0.8},"life_stage":{"type":"score","score":1.9}""").stage
+        assertEquals(ChapterEvidencePlanning.StageReading(0.8, LifeStage.ADULT, 0.1), adult)
+        val child = assess(""","age_shown":{"type":"noul","noul":0.7},"life_stage":{"type":"score","score":0.2}""").stage
+        assertEquals(LifeStage.CHILD, child?.stage)
+        // A model torn between child and adult averages to "teen"; the likeliest level wins instead.
+        val torn =
+            assess(
+                ""","age_shown":{"type":"noul","noul":0.9}""" +
+                    ""","life_stage":{"type":"score","score":1.05,"probabilities":{"0":0.45,"1":0.05,"2":0.5,"3":0}}""",
+            ).stage
+        assertEquals(LifeStage.ADULT, torn?.stage)
+        // Cached responses from before the age questions, or a refusal, still assess; they only lack a reading.
+        val old = assess("")
+        assertTrue(old.useful)
+        assertNull(old.stage)
+        assertNull(assess(""","age_shown":{"type":"refusal"},"life_stage":{"type":"score","score":2}""").stage)
+    }
+
+    @Test fun `cover requests ask for the main character's age and life stage`() {
+        val sample = ChapterEvidencePlanning.ChapterSample(1, "One", "", "", listOf("Text."))
+        val questions = CoverEvidencePlanning.request(Story(title = "T"), sample, MODEL).getAsJsonObject("questions")
+        assertEquals("noul", questions.getAsJsonObject("age_shown").get("type").asString)
+        val stage = questions.getAsJsonObject("life_stage")
+        assertEquals("score", stage.get("type").asString)
+        assertEquals(LifeStage.entries.size, stage.getAsJsonArray("criteria").size())
+        assertTrue(questions.getAsJsonObject("temporary").toString().contains("growing up"))
     }
 
     @Test fun `sampling takes the opening and a mid chapter window and skips blank text`() {

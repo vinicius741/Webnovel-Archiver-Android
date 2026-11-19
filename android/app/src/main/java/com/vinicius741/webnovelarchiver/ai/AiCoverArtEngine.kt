@@ -9,7 +9,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import java.util.UUID
-import kotlin.math.roundToInt
 
 /** Generated but unapplied; the caller applies it via [AppRepository.setAiCover]. [prompt] is kept for the UI. */
 data class AiCoverDraft(
@@ -73,26 +72,14 @@ class AiCoverArtEngine internal constructor(
         onProgress("Reading chapters...")
         val selection =
             if (context.story.aiCoverContextChapterIndices.isNullOrEmpty()) {
-                val selected =
-                    evidenceSelector.selectWithPassages(
-                        context.story,
-                        context.apiKey,
-                        context.settings.decisionModel,
-                        context.settings.coverEvidenceChapters,
-                        CoverEvidencePlanning,
-                        onProgress,
-                    )
-
-                // Display hint for the picker; losing it never fails a finished cover run.
-                runCatching { evidenceStore.record(context.story.id, selected.chapters.map { it.number - 1 }) }
-                    .onFailure { Timber.w(it, "Could not persist automatic chapter selection") }
-                Timber.d(
-                    "Cover evidence for %s: chapters %s; appearance passages %s",
-                    context.story.id,
-                    selected.chapters.map { it.number },
-                    selected.passages.map { "${it.chapter}.${it.index}@${(it.probability * 100).roundToInt()}%" },
+                evidenceSelector.coverSelection(
+                    context.story,
+                    context.apiKey,
+                    context.settings.decisionModel,
+                    context.settings.coverEvidenceChapters,
+                    evidenceStore,
+                    onProgress,
                 )
-                selected
             } else {
                 ChapterEvidencePlanning.Selection(AiContextChapters.read(repository, context.story, contextIndices), emptyList())
             }
@@ -216,7 +203,14 @@ class AiCoverArtEngine internal constructor(
         val apiKey = context.apiKey
         val model = context.settings.descriptionModel
         val storyId = context.story.id
-        val messages = AiCoverPlanning.buildPromptMessages(context.story, selection.chapters, selection.passages)
+        val messages =
+            AiCoverPlanning.buildPromptMessages(
+                context.story,
+                selection.chapters,
+                selection.passages,
+                earlierPassages = selection.earlierPassages,
+                phase = selection.phase,
+            )
         val reasoningEffort = client.reasoningEffortFor(context.settings, model)
         return try {
             trackedPromptCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS, storyId, operationId, reasoningEffort)

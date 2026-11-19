@@ -66,6 +66,10 @@ session cannot be silently overwritten. `--seed` is recorded in the report and f
 receipt identities. Request matching and per-request cursors determine response order;
 the seed does not make concurrent Android thread scheduling deterministic.
 
+Scripted Decisions answers score every chapter as fully useful; `life_stage` answers child for
+chapters 1–3 and adult afterwards, so cover scenarios produce two story phases (the AI Controls
+`Story phase` row appears after a cover run).
+
 The synthetic library has stable story IDs `rr_990001`, `rr_990002`, and `ffn_990003`.
 The primary story's six chapter files are present in AI/manual-screen scenarios.
 Download scenarios start with undownloaded chapters. `sources-all` starts empty and

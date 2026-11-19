@@ -277,6 +277,8 @@ class StorySyncMergePlanningTest {
         val folded = StorySyncMergePlanning.foldConcurrentChanges(stale, current, RoyalRoadProvider)
         assertEquals(listOf(2, 4), folded.aiCoverContextChapterIndices)
         assertEquals(listOf(0), folded.aiContextChapterIndices)
+        val phased = StorySyncMergePlanning.foldConcurrentChanges(stale, current.copy(aiCoverPhase = "adult"), RoyalRoadProvider)
+        assertEquals("adult", phased.aiCoverPhase)
         val reset =
             StorySyncMergePlanning.foldConcurrentChanges(
                 stale,

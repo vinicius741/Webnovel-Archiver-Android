@@ -163,6 +163,7 @@ class StorySyncEngine(
                 // dropped at read time by AiDescriptionPlanning.resolveContextChapters.
                 aiContextChapterIndices = existing?.aiContextChapterIndices,
                 aiCoverContextChapterIndices = existing?.aiCoverContextChapterIndices,
+                aiCoverPhase = existing?.aiCoverPhase,
                 sourceUrl = metadata.canonicalUrl ?: normalizedUrl,
                 sourceId = provider.id,
                 status =

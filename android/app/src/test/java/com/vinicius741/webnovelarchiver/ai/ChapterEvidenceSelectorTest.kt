@@ -131,10 +131,46 @@ class ChapterEvidenceSelectorTest {
             MockWebServer().use { server ->
                 server.dispatcher = chapterDispatcher { MockResponse().setBody(response) }
                 val selector = selector(server, temporary.newFolder())
-                val selected = selector.select(story(40), "test", MODEL, 10, CoverEvidencePlanning) {}
+                val selected = selector.select(story(80), "test", MODEL, 10, CoverEvidencePlanning) {}
                 // Equal scores keep scan order, so the ten opening chapters win; the spread still runs to the minimum.
                 assertEquals((1..10).toList(), selected.map { it.number })
                 assertEquals(CoverEvidencePlanning.MIN_SCANNED_CHAPTERS, server.requestCount)
+            }
+        }
+
+    @Test fun `cover selection depicts the main phase, keeps earlier passages apart and remembers the phases`() =
+        runBlocking {
+            MockWebServer().use { server ->
+                // Chapters 1-4 show a child, 5-12 an adult.
+                server.dispatcher =
+                    chapterDispatcher { chapter ->
+                        val stage = if (chapter <= 4) 0 else 2
+                        MockResponse().setBody(
+                            response.replace(
+                                "\"appearance_p0\"",
+                                "\"age_shown\":{\"type\":\"noul\",\"noul\":0.9},\"life_stage\":{\"type\":\"score\",\"score\":$stage},\"appearance_p0\"",
+                            ),
+                        )
+                    }
+                val folder = temporary.newFolder()
+                val store = ChapterEvidenceStore(folder)
+                val selector = selector(server, folder)
+                val auto = selector.coverSelection(story(12), "test", MODEL, 3, store) {}
+                assertEquals(com.vinicius741.webnovelarchiver.domain.model.LifeStage.ADULT, auto.phase?.stage)
+                assertEquals(5..12, auto.phase?.chapters)
+                assertTrue(auto.chapters.all { it.number in 5..12 } && auto.chapters.size == 3)
+                assertEquals((5..12).toList(), auto.passages.map { it.chapter })
+                assertEquals((1..4).toList(), auto.earlierPassages.map { it.chapter })
+                assertEquals(listOf("Child · Ch 1–4", "Adult · Ch 5–12"), store.phases("s").map { it.label })
+                assertEquals(listOf("Child · Ch 1–4", "Adult · Ch 5–12"), ChapterEvidenceStore(folder).phases("s").map { it.label })
+                val requests = server.requestCount
+
+                val child = selector.coverSelection(story(12).copy(aiCoverPhase = "child"), "test", MODEL, 3, store) {}
+                assertEquals(1..4, child.phase?.chapters)
+                assertTrue(child.chapters.all { it.number in 1..4 })
+                assertTrue(child.earlierPassages.isEmpty())
+                // Every chapter was judged and cached by the first run, so choosing a phase bills nothing.
+                assertEquals(requests, server.requestCount)
             }
         }
 

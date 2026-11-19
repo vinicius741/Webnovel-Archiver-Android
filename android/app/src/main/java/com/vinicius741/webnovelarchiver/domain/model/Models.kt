@@ -204,6 +204,12 @@ data class Story(
     var aiContextChapterIndices: MutableList<Int>? = null,
     /** Cover-only chapter selection. Null selects evidence across all downloaded chapters, regardless of reading progress. */
     var aiCoverContextChapterIndices: MutableList<Int>? = null,
+    /**
+     * Life stage the automatic cover depicts, as a [LifeStage.key] (e.g. "adult"); the cover uses
+     * the largest phase of that stage. Null = Auto, the novel's main phase. A stage the latest scan
+     * no longer finds also falls back to Auto.
+     */
+    var aiCoverPhase: String? = null,
 ) {
     /** The creator's Patreon link to act on: the user's own when set, else the source page's. */
     val effectivePatreonUrl: String?

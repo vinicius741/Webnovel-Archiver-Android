@@ -15,13 +15,17 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.ai.AiCoverContextPlanning
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
+import com.vinicius741.webnovelarchiver.ai.CoverPhasePlanning
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.setAiCoverContextChapters
+import com.vinicius741.webnovelarchiver.data.repository.setAiCoverPhase
 import com.vinicius741.webnovelarchiver.data.storage.EvidenceSelectionKind
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.LifeStage
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -33,6 +37,7 @@ import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundCorners
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.row
+import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
@@ -73,6 +78,52 @@ internal fun ScreenHost.addAiContextChaptersRow(
     valueView = textVal
     selectorView.layoutParams =
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    container.addView(selectorView)
+}
+
+/**
+ * "Story phase" row under the cover context chapters: which life stage of the main character the
+ * automatic cover paints. Shown only in automatic mode once a scan has split the book into more than
+ * one phase; a manual chapter selection already decides what the cover shows.
+ */
+internal fun ScreenHost.addAiCoverPhaseRow(
+    container: LinearLayout,
+    story: Story,
+) {
+    if (!story.aiCoverContextChapterIndices.isNullOrEmpty()) return
+    val phases = app.appContainer.chapterEvidence.phases(story.id)
+    val savedStage = LifeStage.fromKey(story.aiCoverPhase)
+    // A saved stage keeps the row even before the next scan (cache cleared, restored backup), so it never steers unseen.
+    if (phases.size < 2 && savedStage == null) return
+    val main = CoverPhasePlanning.mainPhase(phases).takeIf { phases.size > 1 }
+    val saved = savedStage?.let { stage -> CoverPhasePlanning.resolve(phases, stage.key).takeIf { it?.stage == stage } }
+    val (selectorView, _) =
+        container.context.makeSelectorField(
+            iconRes = com.vinicius741.webnovelarchiver.R.drawable.wna_history,
+            label = "Story phase",
+            value =
+                when {
+                    saved != null -> saved.label
+                    savedStage != null -> savedStage.label
+                    else -> "Auto: ${main?.label}"
+                },
+        ) {
+            fun choose(stageKey: String?) {
+                scope.launch {
+                    if (repository.setAiCoverPhase(story.id, stageKey) != null && frameIsAiControls(story.id)) showAiControls(story.id)
+                }
+            }
+            val auto = "Auto (main phase)" + (main?.let { ": ${it.label}" } ?: "") + if (savedStage == null) " ✓" else ""
+            val stages =
+                CoverPhasePlanning.choices(phases).map { phase ->
+                    OptionsDialogItem.Option(phase.label + if (phase.stage == savedStage) " ✓" else "") { choose(phase.stage.key) }
+                }
+            showStyledOptionsDialog("Story phase", listOf(OptionsDialogItem.Option(auto) { choose(null) }) + stages)
+        }
+    selectorView.layoutParams =
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = container.context.dp(Space.SM)
+        }
     container.addView(selectorView)
 }
 

@@ -119,5 +119,34 @@ internal class DecisionClient(
             json: JsonObject,
             name: String,
         ): Double = answer(json, name, "noul", 1.0)
+
+        /**
+         * The most likely level (0..[SCORE_MAX]) of a score answer, for a score used as a category:
+         * the expected score of a model torn between two far-apart levels lands on the level between
+         * them, which is neither. Falls back to the rounded score when no probabilities came back.
+         */
+        fun likeliestLevel(
+            json: JsonObject,
+            name: String,
+        ): Int {
+            val score = score(json, name)
+            val probabilities =
+                json
+                    .getAsJsonObject("answers")
+                    ?.getAsJsonObject(name)
+                    ?.get("probabilities")
+                    ?.takeIf { it.isJsonObject }
+                    ?.asJsonObject
+            val likeliest =
+                probabilities
+                    ?.entrySet()
+                    ?.mapNotNull { (level, probability) ->
+                        val index = level.toIntOrNull()?.takeIf { it in 0..SCORE_MAX.toInt() }
+                        val value = runCatching { probability.asDouble }.getOrNull()?.takeIf { it.isFinite() }
+                        if (index != null && value != null) index to value else null
+                    }?.maxByOrNull { it.second }
+                    ?.first
+            return likeliest ?: Math.round(score * SCORE_MAX).toInt()
+        }
     }
 }

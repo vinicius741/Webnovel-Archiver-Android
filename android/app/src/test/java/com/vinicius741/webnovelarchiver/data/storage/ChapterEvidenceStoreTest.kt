@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
 import com.google.gson.JsonObject
+import com.vinicius741.webnovelarchiver.domain.model.LifeStage
+import com.vinicius741.webnovelarchiver.domain.model.StoryPhase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -25,6 +27,20 @@ class ChapterEvidenceStoreTest {
         assertNull(ChapterEvidenceStore(root).read("absent"))
         ChapterEvidenceStore(root).write("hash", value)
         assertEquals(value, ChapterEvidenceStore(root).read("hash"))
+    }
+
+    @Test fun `cover phases survive recreation and one malformed story entry loses only its own phases`() {
+        val root = temporary.newFolder()
+        val adult = StoryPhase(LifeStage.ADULT, 24, 300, 277)
+        ChapterEvidenceStore(root).recordPhases("s", listOf(StoryPhase(LifeStage.CHILD, 1, 23, 23), adult))
+        assertEquals(listOf("Child · Ch 1–23", "Adult · Ch 24–300"), ChapterEvidenceStore(root).phases("s").map { it.label })
+        File(root, "cover_phases.json").writeText(
+            """{"broken":"oops","odd":[{"stage":"wizard","first":1,"last":2,"downloaded":2}],""" +
+                """"s":[{"stage":"adult","first":24,"last":300,"downloaded":277}]}""",
+        )
+        val reloaded = ChapterEvidenceStore(root)
+        assertEquals(listOf(adult), reloaded.phases("s"))
+        assertTrue(reloaded.phases("broken").isEmpty() && reloaded.phases("odd").isEmpty())
     }
 
     @Test fun `selections survive recreation overwrite per story and tolerate corrupt files`() {

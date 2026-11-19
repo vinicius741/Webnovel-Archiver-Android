@@ -22,8 +22,9 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
      `New` badge. Tapping a cover makes it the displayed one (free and reversible); long-pressing
      opens its details: a comparison with the cover in use, its prompt, `Use this cover`, and
      `Put prompt in the box`.
-  3. **Make a new cover** — chapter selection, the prompt box, `Write prompt with AI`, `Clear`, and
-     the main button, then one line naming the image and prompt models, linking to AI Settings.
+  3. **Make a new cover** — chapter selection, the **Story phase** row (see below), the prompt box,
+     `Write prompt with AI`, `Clear`, and the main button, then one line naming the image and prompt
+     models, linking to AI Settings.
 - **The prompt box decides the flow** (no mode setting): an empty box makes the main button
   `Generate cover`, which writes a prompt with the text model and paints it in one job; a filled
   box makes it `Generate from prompt`, which bills only the image call. `Write prompt with AI`
@@ -155,6 +156,7 @@ Full backups retain the applied cover as described below.
 | File | Role |
 |------|------|
 | `ai/OpenRouterClient.kt` | `generateImage` (`POST /api/v1/images`, hand-built JSON per the R8 rule, base64-decoded result) and `fetchImageModels` (image catalog with `supported_parameters`). |
+| `ai/CoverPhasePlanning.kt` / `ai/CoverEvidenceSelection.kt` | Story phases from life-stage readings (pure), and the phase-scoped automatic selection with its top-up scan. |
 | `ai/AiCoverPlanning.kt` | Pure logic: prompt-writing messages (metadata + description + chapters), prompt cleanup, image-request parameter gating on the catalog, the `isAiCoverActive` display rule, and media-type → file-extension mapping. |
 | `ai/AiCoverArtEngine.kt` | Stage orchestration: `draft` (one-shot), `draftPrompt` (stage 1), `draftImage` (stage 2, cleans the possibly user-edited prompt); caches the image-model parameter catalog per process. |
 | `ai/AiCoverJobs.kt` | Background job runner (`AiCoverJobCoordinator`) on the shared `AiJobCoordinator` lifecycle: one cover job at a time, running state (`jobs` StateFlow) for progress surfaces, terminal `events` (result persisted before the success event fires). |
@@ -185,9 +187,60 @@ settings row, a pure planning object, an engine method returning a draft, a card
 with the preview-then-apply pattern, and (when it produces files) a per-story storage root plus
 backup/restore handling like `covers/`.
 
+## Story phases (covers that follow a growing protagonist)
+
+Added 2026-11-19. Many web novels open with the protagonist as a child and spend most of the book
+with them grown up. Earlier scans read the opening chapters most closely and the prompt treated
+"apparent age" as a lasting trait, so covers kept painting the child. Now:
+
+- Every cover-scan request also asks the decision model two chapter-level questions: `age_shown`
+  (a Noul: do the passages indicate the main character's current age at all?) and `life_stage` (a
+  four-level score: child, teen, adult, elderly; the body, not the mind, so a reborn adult in a
+  baby's body is a child; flashbacks and dreams do not count). The life stage is the answer's most
+  likely level (`DecisionClient.likeliestLevel`), not its rounded expected score, because a model
+  torn between child and adult would otherwise read as teen. The `temporary` question now says
+  growing up, a time skip, an evolution or a kept new body are not temporary. Both answers are
+  optional when reading a response: a refusal or an older cached response just gives no reading.
+- `CoverPhasePlanning` (pure) takes the confident readings (`age_shown` ≥ 0.5, `temporary` ≤ 0.5),
+  smooths them with a three-reading median, and folds a run into its larger neighbour only when it
+  has fewer than three readings **and** spans less than a tenth of the book (a flashback arc); adult
+  chapters state an age far less often than childhood ones, so two far-apart adult readings still
+  make a phase. Boundaries sit midway between runs, and the phases cover every downloaded chapter
+  (`StoryPhase`: `LifeStage`, chapter range, downloaded-chapter count). The **main phase** is the one
+  with the most downloaded chapters (ties go to the later phase).
+- `Story.aiCoverPhase` stores a life stage key (`adult`), not a phase position, so a rescan that
+  adds a short phase (a reincarnation prologue) cannot redirect it; it resolves to the largest phase
+  of that stage, else the main phase (Auto).
+- Only with **two or more phases** is the cover scoped (`CoverEvidenceSelection.kt`); a single phase
+  can rest on a few readings, so it falls back to the earlier unscoped behaviour and the prompt
+  writer chooses the phase itself. Scoped covers choose useful chapters inside the phase, leaving
+  out chapters whose own confident reading is another stage (a flashback arc). A top-up scan limited
+  to the phase runs only when the phase has fewer useful chapters than it could hold and some of its
+  chapters are still unjudged (cached judgments are free).
+- The prompt writer gets `story_phase` (life stage and chapter range), `appearance_passages` from
+  inside the phase, and up to 4k characters of `earlier_appearance_passages` (the 12k budget is
+  shared). Earlier passages come only from the unbroken run of younger phases right before the
+  depicted one, so a past life's body in a reincarnation prologue never lends its eye or hair
+  color. The system prompt separates lasting traits (eye color, natural hair color, skin tone,
+  birthmarks, species) from phase traits (age, height, build, face shape, hair style, scars,
+  clothing, gear) and uses earlier passages for lasting traits only.
+- **UI:** in automatic mode, once a scan has found more than one phase, the New cover card shows a
+  `Story phase` row ("Auto: Adult · Ch 24–300"); tapping it lists Auto and one choice per life stage.
+  The row also stays while a saved stage exists but no phases are cached (Android cleared the cache,
+  or a backup restored on another device), so a saved choice never steers a cover unseen. A manual
+  chapter selection hides the row. The phases shown are the last scan's, stored beside the last
+  automatic selection in `ChapterEvidenceStore` (`cover_phases.json`, cache, not backed up); the
+  choice itself is `Story.aiCoverPhase`, carried through syncs like the context selection.
+- Cost: the scan floor rose from 30 to 60 chapters (about $0.0003 each with Jev, so about $0.02 per
+  novel once; cached afterwards), and the new questions changed every cover cache key, so existing
+  novels are rescored once. The passage budget per request dropped from 21,000 to 18,500 bytes to
+  keep the body under the 30,000-byte long-context switch.
+- The offline simulator answers `life_stage` as child for chapters 1–3 and adult afterwards, so the
+  `ai-cover` scenario produces two phases and shows the row.
+
 ## Automatic decision-model evidence selection
 
-Automatic mode uses the OpenRouter key saved in Settings → AI Settings. It validates chapters with a decision model through `POST https://openrouter.ai/api/alpha/decisions`. The model is the **Chapter selection model** in AI Settings → Models (shared with automatic description selection, see `ai-description-generation.md`) (`AiSettings.decisionModel`, default the versioned `typesafe/jev-1.14`); its picker lists OpenRouter's decision catalog (`GET /api/v1/models?output_modalities=decisions` — Jev, Cloudflare Clef, Liquid d1, Perplexity Decider, …) with pricing and no reasoning control, plus manual id entry. The [OpenRouter Decisions API reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request) documents the typed request and receipt fields. The scan judges chapters in batches of the configured target count, which defaults to 10, in `ChapterEvidencePlanning.openingThenSpread` order: the first ten chapters in reading order (characters are usually described when introduced, often after a prologue or setup chapters), then interval midpoints breadth-first across the rest of the book. It stops once that many useful chapters are found **and** at least `CoverEvidencePlanning.MIN_SCANNED_CHAPTERS` (30) chapters, or the whole book if shorter, have been judged — decision requests cost a fraction of a cent, so the floor buys appearance coverage cheaply. It then sends the chosen chapters' full texts to the prompt writer, capped at 12k characters each. Each chapter costs one request whose state carries the novel background (`novel.title`, `novel.description`, `novel.tags`) and the chapter from its start as `passages` of up to 1,500 characters (whole lines packed together). Passages stop when the passage budget is spent so the whole body stays under 30,000 bytes: OpenRouter switches Jev to its slower, less accurate long-context mode above about 32,000 bytes, so the tail of a very long chapter (roughly past 15–18k characters) is not judged. Missing chapter files are skipped; no useful evidence produces an actionable error instead of silently reverting to sampling.
+Automatic mode uses the OpenRouter key saved in Settings → AI Settings. It validates chapters with a decision model through `POST https://openrouter.ai/api/alpha/decisions`. The model is the **Chapter selection model** in AI Settings → Models (shared with automatic description selection, see `ai-description-generation.md`) (`AiSettings.decisionModel`, default the versioned `typesafe/jev-1.14`); its picker lists OpenRouter's decision catalog (`GET /api/v1/models?output_modalities=decisions` — Jev, Cloudflare Clef, Liquid d1, Perplexity Decider, …) with pricing and no reasoning control, plus manual id entry. The [OpenRouter Decisions API reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request) documents the typed request and receipt fields. The scan judges chapters in batches of the configured target count, which defaults to 10, in `ChapterEvidencePlanning.openingThenSpread` order: the first ten chapters in reading order (characters are usually described when introduced, often after a prologue or setup chapters), then interval midpoints breadth-first across the rest of the book. It stops once that many useful chapters are found **and** at least `CoverEvidencePlanning.MIN_SCANNED_CHAPTERS` (60) chapters, or the whole book if shorter, have been judged — decision requests cost a fraction of a cent, so the floor buys appearance coverage cheaply. It then sends the chosen chapters' full texts to the prompt writer, capped at 12k characters each. Each chapter costs one request whose state carries the novel background (`novel.title`, `novel.description`, `novel.tags`) and the chapter from its start as `passages` of up to 1,500 characters (whole lines packed together). Passages stop when the passage budget is spent so the whole body stays under 30,000 bytes: OpenRouter switches Jev to its slower, less accurate long-context mode above about 32,000 bytes, so the tail of a very long chapter (roughly past 13–15k characters) is not judged. Missing chapter files are skipped; no useful evidence produces an actionable error instead of silently reverting to sampling.
 
 Each request scores appearance, role/situation, and distinctive imagery separately on four situation-anchored levels (nothing / generic mention / at least one specific drawable detail / drawable without guessing), plus a yes/no probability for an explicitly temporary scene (dream, vision, flashback, disguise, illusion, transformation). Title, description and tags are background for identifying the main character, not evidence. Answers missing the optional `type` discriminator are accepted; a mismatched type or out-of-range value is rejected. Each request also asks one Noul per passage — "Does `passages[i]` describe how the novel's main character looks…?" — a direct, path-addressed question as TypeSafe recommends for Jev (literal reading, weak at indirection). Passages at or above 0.5 are collected from every judged chapter, chosen or not, and the strongest reach the prompt writer verbatim as `appearance_passages` (12k-character budget, back in reading order, exact repeats sent once). Jev cannot write text, so this is selection, not extraction: it points at where the book describes the character and the prompt writer reads those words. Questions run together over the same state. These are relevance judgments, not verified facts or proof of recurrence. A chapter is useful when its best visual dimension reaches the "specific drawable detail" level (2 of 3) and a temporary scene is not likely; the strongest useful chapters within the target are kept, in reading order. The prompt writer chooses a coherent story phase and must not infer recurrence from neighboring chapters repeating a scene.
 
