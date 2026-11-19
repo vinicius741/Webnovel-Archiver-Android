@@ -255,11 +255,8 @@ private fun ScreenHost.useCoverChoice(
     onSettled: (used: Boolean) -> Unit = {},
 ): Boolean {
     // An unfolded legacy archive snapshot (startup folds them all) stays read-only.
+    // A running cover job only writes a draft, never the cover in use, so choosing one is safe meanwhile.
     if (story.isArchived == true) return false
-    if (aiCoverOperationFor(story.id) != null) {
-        toast("Wait for cover generation to finish")
-        return false
-    }
     scope.launch {
         var used = false
         try {
@@ -294,7 +291,9 @@ private fun ScreenHost.showCoverChoiceDetails(
     if (!frameIsAiControls(story.id)) return
     val colors = ThemeManager.colors
     val (dialog, content) = makeAiCoverDialog(if (choice.version == null) "Source cover" else choice.label)
-    val editable = story.isArchived != true && aiCoverOperationFor(story.id) == null
+    val editable = story.isArchived != true
+    // Reusing a prompt rewrites the prompt box, which a running cover job owns until it finishes.
+    val canReusePrompt = editable && aiCoverOperationFor(story.id) == null
     if (choice.inUse) {
         content.addView(
             makeCover(app, 160, 240).apply {
@@ -336,7 +335,7 @@ private fun ScreenHost.showCoverChoiceDetails(
             useCoverChoice(story, choice)
         }
     }
-    if (version != null && version.prompt.isNotBlank() && editable && story.chapters.any { it.downloaded }) {
+    if (version != null && version.prompt.isNotBlank() && canReusePrompt && story.chapters.any { it.downloaded }) {
         content.fullButton("Reuse this prompt", Btn.OUTLINED) {
             dialog.dismiss()
             reuseCoverPrompt(story, version.prompt)

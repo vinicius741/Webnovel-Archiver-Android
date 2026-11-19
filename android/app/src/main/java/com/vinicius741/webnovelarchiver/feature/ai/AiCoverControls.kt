@@ -70,7 +70,8 @@ private fun ScreenHost.addAiNewCoverCard(
     story: Story,
     draft: AiCoverDraft,
 ) {
-    val editable = story.isArchived != true && aiCoverOperationFor(story.id) == null
+    // Deciding on a waiting result stays open while another cover generates: the job never touches the cover in use.
+    val editable = story.isArchived != true
     val colors = ThemeManager.colors
     val radius = dp(ThemeManager.shapes.cardRadius).toFloat()
     val cardView =
@@ -193,7 +194,7 @@ internal fun ScreenHost.resolveAiCoverDraft(
     draft: AiCoverDraft,
     use: Boolean,
 ) {
-    if (story.isArchived == true || aiCoverOperationFor(story.id) != null) return
+    if (story.isArchived == true) return
     scope.launch {
         coverUiAttempt {
             if (use) repository.setAiCover(story.id, draft.bytes, draft.mediaType)
