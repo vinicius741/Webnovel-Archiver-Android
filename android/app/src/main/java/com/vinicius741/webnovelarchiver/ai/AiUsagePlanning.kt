@@ -35,7 +35,6 @@ data class RecentAiRequestGroup(
 }
 
 /** Pure ledger rules. Network clients and storage should hand attempts to this object. */
-@Suppress("TooManyFunctions") // One cohesive set of exact ledger transforms and display helpers.
 object AiUsagePlanning {
     const val MAX_RECENT_RECORDS = 500
 

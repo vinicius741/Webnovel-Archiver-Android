@@ -12,7 +12,6 @@ data class NarrationRequest(
 )
 
 /** Pure narration rules: names, fingerprints, queue edits, keep-ahead and estimates. */
-@Suppress("TooManyFunctions") // One cohesive set of pure rules, each unit-tested on its own.
 object NarrationPlanning {
     const val DEFAULT_KEEP_AHEAD = 5
 

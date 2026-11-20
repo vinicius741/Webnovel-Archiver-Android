@@ -15,7 +15,6 @@ import java.util.concurrent.atomic.AtomicInteger
  * background interceptor, the visible [com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity],
  * and the diagnostics entry in Settings.
  */
-@Suppress("TooManyFunctions")
 object CloudflareCookies {
     private const val CLEARANCE_NAME = "cf_clearance"
 

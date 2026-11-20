@@ -221,7 +221,6 @@ class DownloadQueueSectionPlanningTest {
         behindTitle = behindTitle,
     )
 
-    @Suppress("LongParameterList")
     private fun job(
         storyId: String,
         index: Int,

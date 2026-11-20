@@ -16,7 +16,6 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.util.Locale
 
-@Suppress("TooManyFunctions")
 object RoyalRoadProvider : SourceProvider {
     override val descriptor =
         SourceDescriptor(

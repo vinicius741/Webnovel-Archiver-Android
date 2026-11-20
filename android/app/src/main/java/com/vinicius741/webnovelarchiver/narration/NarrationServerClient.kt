@@ -112,7 +112,6 @@ internal class NarrationServerBusy(
  * sentences costs a handful of TCP (and Tailscale) handshakes instead of one per sentence. Call
  * [close] when done to release them.
  */
-@Suppress("TooManyFunctions") // One connection pool and the HTTP exchange it serves, kept together.
 internal class NarrationServerClient(
     private val endpoint: NarrationServerEndpoint,
     private val token: String,
@@ -299,7 +298,6 @@ internal class NarrationServerClient(
             throw translate(io)
         }
 
-    @Suppress("ThrowsCount") // Stale reuse, timeouts and other I/O failures map to distinct outcomes.
     private fun exchange(
         connection: Connection,
         method: String,
@@ -372,7 +370,6 @@ internal class NarrationServerClient(
             else -> NarrationServerProblem("Lost the connection to $name", transient = true, cause = io)
         }
 
-    @Suppress("ThrowsCount") // Each malformed-response case is its own I/O failure.
     private fun readResponse(
         input: InputStream,
         onFirstByte: () -> Unit,

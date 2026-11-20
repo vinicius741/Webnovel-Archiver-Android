@@ -45,7 +45,6 @@ object ChapterRowPlanning {
         }
 
     /** Compact second line that distinguishes the list position from the source's chapter title. */
-    @Suppress("LongParameterList") // Independent row facts, passed by name from one adapter call.
     fun metadataLabel(
         zeroBasedIndex: Int,
         liveStatus: DownloadJobStatus?,

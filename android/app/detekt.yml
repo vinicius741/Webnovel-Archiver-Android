@@ -15,10 +15,12 @@ complexity:
   LongMethod:
     active: true
     threshold: 200
+  # Size rules that only pushed code between files or into @Suppress were turned off on
+  # 2026-11-20; the function-level complexity rules below stay as the brake on giant functions.
   LongParameterList:
-    active: true
-    functionThreshold: 8
-    constructorThreshold: 8
+    active: false
+  TooManyFunctions:
+    active: false
   ComplexCondition:
     active: true
     threshold: 6
@@ -37,6 +39,13 @@ style:
   MagicNumber:
     active: false  # heavy in programmatic UI layout code
   LoopWithTooManyJumpStatements:
+    active: false
+  ThrowsCount:
+    active: false
+
+performance:
+  active: true
+  SpreadOperator:
     active: false
 
 potential-bugs:
@@ -66,3 +75,5 @@ naming:
   FunctionNaming:
     active: true
     functionPattern: '([a-z][a-zA-Z0-9]*)|(`.*`)'
+  MatchingDeclarationName:
+    active: false

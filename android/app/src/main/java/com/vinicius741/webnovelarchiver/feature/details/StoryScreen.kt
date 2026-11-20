@@ -68,7 +68,7 @@ internal object StoryTabMemory {
     val focusChapter = HashMap<String, String>()
 }
 
-@Suppress("LongParameterList", "LongMethod") // Scaffold wrapper: call sites pass named arguments, one linear layout build.
+@Suppress("LongMethod") // Scaffold wrapper: one linear layout build.
 internal fun ScreenHost.storyScreen(
     route: AppRoute,
     story: Story,

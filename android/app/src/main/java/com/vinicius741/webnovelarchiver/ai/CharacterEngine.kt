@@ -216,7 +216,6 @@ class CharacterEngine internal constructor(
     }
 
     /** One text-model call, retried once on an empty reply; a truncated reply fails. */
-    @Suppress("ThrowsCount") // Each terminal outcome is recorded before its failure propagates.
     private suspend fun complete(
         context: Context,
         messages: List<OpenRouterMessage>,

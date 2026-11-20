@@ -21,7 +21,6 @@ import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 internal class TtsNotificationManager(
     private val context: Context,
 ) {
-    @Suppress("SpreadOperator")
     fun buildNotification(
         snapshot: TtsPlaybackSnapshot?,
         lastErrorText: String?,

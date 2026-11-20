@@ -17,7 +17,6 @@ import org.jsoup.nodes.Element
  * every `/s/{storyId}/{chapterNumber}/{slug}` page. That makes an arbitrary chapter URL importable:
  * metadata is normalized to chapter 1 while downloads retain one URL per chapter.
  */
-@Suppress("TooManyFunctions")
 object FanFictionProvider : SourceProvider {
     override val descriptor =
         SourceDescriptor(

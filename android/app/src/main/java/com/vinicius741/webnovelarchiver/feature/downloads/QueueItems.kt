@@ -93,7 +93,6 @@ internal fun siteName(providerId: String?): String = providerId?.let { SourceReg
  * Flattens the screen plan into list rows: summary, attention cards, then each section. Chapter
  * rows are their own items so a countdown tick rebinds one row, not a novel's whole chapter list.
  */
-@Suppress("LongParameterList")
 internal fun buildQueueItems(
     plan: QueueScreenPlan,
     checkCards: List<SourceCheckCard>,

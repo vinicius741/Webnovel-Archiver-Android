@@ -42,7 +42,6 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
  * rows whose state changed. Rows are transparent; [com.vinicius741.webnovelarchiver.ui.CardListDecoration]
  * draws the card behind them.
  */
-@Suppress("TooManyFunctions") // RecyclerView adapter: overrides plus one bind helper per row part.
 class ChapterListAdapter internal constructor(
     private val host: ScreenHost,
     private var story: Story,

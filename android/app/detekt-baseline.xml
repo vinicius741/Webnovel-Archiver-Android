@@ -6,40 +6,13 @@
     <ID>CyclomaticComplexMethod:DownloadScheduler.kt$DownloadErrorClassifier$fun classify(error: Throwable): ClassifiedDownloadError</ID>
     <ID>CyclomaticComplexMethod:FullBackupManifestValidation.kt$FullBackupManifestValidation$fun validate(manifest: Map&lt;String, Any&gt;?): String?</ID>
     <ID>CyclomaticComplexMethod:ReaderScreen.kt$private fun ScreenHost.renderPreparedReader(document: ReaderDocument)</ID>
-    <ID>CyclomaticComplexMethod:StorySyncEngine.kt$StorySyncEngine$@Suppress("ThrowsCount", "TooGenericExceptionCaught") // Source-boundary failures become typed persisted outcomes. suspend fun fetchOrSync( url: String, tabId: String? = null, mode: StorySyncMode = StorySyncMode.Default, refreshPatreonStats: Boolean = true, status: (String) -&gt; Unit = {}, ): Story</ID>
+    <ID>CyclomaticComplexMethod:StorySyncEngine.kt$StorySyncEngine$@Suppress("TooGenericExceptionCaught") // Source-boundary failures become typed persisted outcomes. suspend fun fetchOrSync( url: String, tabId: String? = null, mode: StorySyncMode = StorySyncMode.Default, refreshPatreonStats: Boolean = true, status: (String) -&gt; Unit = {}, ): Story</ID>
     <ID>InstanceOfCheckForException:PatreonChapterSync.kt$PatreonChapterSync$error is HttpNetworkException</ID>
     <ID>InstanceOfCheckForException:PatreonChapterSync.kt$PatreonChapterSync$error is SourceAccessBlockedException</ID>
     <ID>LargeClass:TtsEngine.kt$TtsEngine</ID>
-    <ID>LongParameterList:DownloadQueueControlPlanningTest.kt$DownloadQueueControlPlanningTest$( id: String, status: String, storyId: String = "story", retryCount: Int = 0, error: String? = null, errorCategory: String? = null, errorCode: String? = null, nextRetryAt: Long? = null, )</ID>
-    <ID>LongParameterList:LibraryQueryTest.kt$LibraryQueryTest$( id: String, title: String, sourceUrl: String = "https://www.royalroad.com/fiction/1/story", tags: MutableList&lt;String&gt;? = null, score: String? = null, lastUpdated: Long? = null, dateAdded: Long? = null, tabId: String? = null, )</ID>
-    <ID>LongParameterList:PatreonStatsCard.kt$( stats: PatreonRawStats?, patreonUrl: String?, earlyAccess: PatreonEarlyAccessPlanning.Display, onShowTrends: () -&gt; Unit, onEarlyAccess: () -&gt; Unit, onEarlyAccessPrompt: (PatreonEarlyAccessPlanning.Action) -&gt; Unit, earlyAccessEnabled: Boolean = true, onEditLink: (() -&gt; Unit)? = null, )</ID>
-    <ID>SpreadOperator:BypassEventLog.kt$BypassEvent$( "seq" to seq, "ts" to timestampMillis, "cat" to category.wire, "type" to type, "host" to host, *fields.map { (key, value) -&gt; key to value }.toTypedArray(), )</ID>
-    <ID>SpreadOperator:PatreonApi.kt$PatreonApi$("posts", *params.toTypedArray())</ID>
-    <ID>ThrowsCount:AiDescriptionEngine.kt$AiDescriptionEngine$suspend fun draft( storyId: String, onProgress: (String) -&gt; Unit = {}, ): String</ID>
-    <ID>ThrowsCount:OpenRouterClient.kt$OpenRouterClient$@Suppress("LongParameterList") // Named optional REST parameters keep callers explicit about request behavior. suspend fun chatCompletion( apiKey: String, model: String, messages: List&lt;OpenRouterMessage&gt;, maxTokens: Int, temperature: Double? = null, responseFormat: JsonObject? = null, provider: JsonObject? = null, reasoningEffort: String? = "low", ): OpenRouterChatCompletionResult</ID>
     <ID>TooGenericExceptionCaught:LocalDiagnostics.kt$LocalDiagnostics$error: Throwable</ID>
     <ID>TooGenericExceptionCaught:NetworkClient.kt$SourceRequestEvents$error: Exception</ID>
     <ID>TooGenericExceptionCaught:PatreonEarlyAccessPicker.kt$error: Exception</ID>
     <ID>TooGenericExceptionCaught:ScribbleHubProvider.kt$ScribbleHubProvider$error: Exception</ID>
-    <ID>TooManyFunctions:AiControlsScreen.kt$com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreen.kt</ID>
-    <ID>TooManyFunctions:AppRepository.kt$AppRepository</ID>
-    <ID>TooManyFunctions:AppRepository.kt$com.vinicius741.webnovelarchiver.data.repository.AppRepository.kt</ID>
-    <ID>TooManyFunctions:AppStorage.kt$AppStorage</ID>
-    <ID>TooManyFunctions:ChapterListAdapter.kt$ChapterListAdapter : Adapter</ID>
-    <ID>TooManyFunctions:DownloadEngine.kt$DownloadEngine</ID>
-    <ID>TooManyFunctions:DownloadQueueControlPlanning.kt$DownloadQueueControlPlanning</ID>
-    <ID>TooManyFunctions:HostUi.kt$com.vinicius741.webnovelarchiver.ui.HostUi.kt</ID>
-    <ID>TooManyFunctions:MainActivity.kt$MainActivity : AppCompatActivityScreenHost</ID>
-    <ID>TooManyFunctions:PatreonCopyPlanning.kt$PatreonCopyPlanning</ID>
-    <ID>TooManyFunctions:PatreonCreatorPlanning.kt$PatreonCreatorPlanning</ID>
-    <ID>TooManyFunctions:PatreonStatsFetcher.kt$PatreonStatsFetcher$Companion</ID>
-    <ID>TooManyFunctions:SettingsTts.kt$com.vinicius741.webnovelarchiver.feature.settings.SettingsTts.kt</ID>
-    <ID>TooManyFunctions:SourceProvider.kt$SourceProvider</ID>
-    <ID>TooManyFunctions:StoryMutations.kt$StoryMutations</ID>
-    <ID>TooManyFunctions:TtsEngine.kt$TtsEngine</ID>
-    <ID>TooManyFunctions:TtsForegroundService.kt$TtsForegroundService : Service</ID>
-    <ID>TooManyFunctions:TtsSpeechEngineHost.kt$TtsSpeechEngineHost</ID>
-    <ID>TooManyFunctions:ViewDsl.kt$com.vinicius741.webnovelarchiver.ui.ViewDsl.kt</ID>
-    <ID>TooManyFunctions:ZoomableImageView.kt$ZoomableImageView : AppCompatImageView</ID>
   </CurrentIssues>
 </SmellBaseline>

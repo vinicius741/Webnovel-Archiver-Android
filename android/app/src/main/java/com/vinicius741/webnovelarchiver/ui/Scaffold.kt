@@ -43,7 +43,6 @@ internal enum class ScreenChrome {
     IMMERSIVE,
 }
 
-@Suppress("LongParameterList") // Programmatic-View scaffold DSL; call sites use named arguments.
 internal fun ScreenHost.screen(
     route: AppRoute,
     title: String,

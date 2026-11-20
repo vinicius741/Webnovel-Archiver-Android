@@ -67,7 +67,6 @@ internal interface NarrationChapterSource {
  * up at the first missing clip. Before publishing it checks the job is still wanted and the text and
  * library unchanged, so audio never lands under the wrong text.
  */
-@Suppress("TooManyFunctions") // One worker: its steps are small on purpose.
 internal class NarrationGenerator(
     private val store: NarrationStore,
     private val queue: NarrationQueue,
@@ -242,7 +241,7 @@ internal class NarrationGenerator(
      * computers sharing the chapter), further ahead than that while an earlier sentence is still
      * generating ([ClipsAhead]); clips are still written, and progress counted, in sentence order.
      */
-    @Suppress("LongParameterList", "CyclomaticComplexMethod") // One chapter's generation state, passed through rather than stored.
+    @Suppress("CyclomaticComplexMethod") // One pass over a chapter's clips; its branches share that state.
     private suspend fun writeClips(
         job: NarrationJob,
         text: NarrationChapterText,
@@ -451,7 +450,6 @@ internal class NarrationGenerator(
         synthesizer = null
     }
 
-    @Suppress("LongParameterList") // One chapter's generation state, passed through rather than stored.
     private fun publishProgress(
         job: NarrationJob,
         text: NarrationChapterText,

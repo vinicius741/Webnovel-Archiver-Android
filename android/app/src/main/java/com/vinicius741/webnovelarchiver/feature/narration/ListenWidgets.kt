@@ -99,7 +99,6 @@ internal fun makeListGroup(context: Context): LinearLayout =
  * A list row: [lead] (an icon in a tinted square, or any view such as a cover), a title with an
  * optional supporting line, and an optional [trailing] view. Tappable when [onClick] is set.
  */
-@Suppress("LongParameterList") // Row DSL; call sites use named arguments.
 internal fun makeListRow(
     context: Context,
     title: CharSequence,

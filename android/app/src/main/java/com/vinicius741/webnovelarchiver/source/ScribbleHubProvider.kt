@@ -17,7 +17,6 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import timber.log.Timber
 
-@Suppress("TooManyFunctions")
 object ScribbleHubProvider : SourceProvider {
     override val descriptor =
         SourceDescriptor(

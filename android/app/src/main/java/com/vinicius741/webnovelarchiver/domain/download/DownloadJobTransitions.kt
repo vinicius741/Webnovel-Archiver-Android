@@ -13,7 +13,6 @@ import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
  * Source-wide access (open circuits, cooldowns) is not job state: it stays owned by
  * `SourceReliabilityCoordinator`, and the scheduler consults it beside [phase].
  */
-@Suppress("TooManyFunctions") // One function per legal transition is the point of this owner.
 object DownloadJobTransitions {
     const val SOURCE_BLOCKED_CATEGORY = "source_blocked"
     private const val SOURCE_BLOCKED_CODE = "SOURCE_BLOCKED"

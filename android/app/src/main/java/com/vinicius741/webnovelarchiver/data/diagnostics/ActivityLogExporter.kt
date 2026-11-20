@@ -41,7 +41,6 @@ object ActivityLogExportPlanning {
             "archived" to story.isArchived,
         ).filterValues { it != null } as LinkedHashMap<String, Any?>
 
-    @Suppress("LongParameterList")
     fun header(
         generatedAtMillis: Long,
         app: Map<String, Any?>,

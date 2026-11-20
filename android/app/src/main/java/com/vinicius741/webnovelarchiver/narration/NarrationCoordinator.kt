@@ -43,7 +43,6 @@ import java.util.concurrent.Executors
  * persisted queue, the generation worker and the keep-ahead rule. Screens, the playback engine and
  * the foreground service all go through it.
  */
-@Suppress("TooManyFunctions") // The facade every screen, the engine and the service share.
 class NarrationCoordinator internal constructor(
     private val context: Context,
     private val repository: AppRepository,

@@ -17,7 +17,6 @@ import java.util.concurrent.TimeUnit
  * Wire JSON is built/parsed by hand — R8 renames Gson DTO fields in release builds and silently
  * corrupts the payload. [baseUrl] is injectable for MockWebServer tests.
  */
-@Suppress("TooManyFunctions") // One thin client for every AI feature.
 class OpenRouterClient(
     private val baseUrl: String = PRODUCTION_BASE_URL,
     private val client: OkHttpClient = defaultClient(),
@@ -30,7 +29,6 @@ class OpenRouterClient(
         private set
 
     /** POST /api/v1/chat/completions; throws [OpenRouterException] with friendly messages for auth/credit/model/rate-limit failures. */
-    @Suppress("LongParameterList") // Named optional REST parameters keep callers explicit about request behavior.
     suspend fun chatCompletion(
         apiKey: String,
         model: String,

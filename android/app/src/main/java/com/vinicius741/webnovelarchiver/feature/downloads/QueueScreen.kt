@@ -211,7 +211,6 @@ private fun ScreenHost.blockedProviders(queue: List<DownloadJob>): Set<String> =
         .blockedSites(queue, ::providerIdForJob, app.appContainer.network::isSourceBlocked)
         .mapTo(HashSet()) { it.providerId }
 
-@Suppress("LongParameterList")
 private fun ScreenHost.renderQueue(
     emptySlot: FrameLayout,
     list: RecyclerView,

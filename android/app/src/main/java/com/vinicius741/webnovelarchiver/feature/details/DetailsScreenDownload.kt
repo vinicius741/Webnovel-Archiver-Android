@@ -138,7 +138,6 @@ internal fun makeStoryOperationProgress(
  * Live download progress banner: progress bar, status headline, and a "Go to Downloads" link. When
  * a site check holds this novel's chapters it leads with that and offers the check directly.
  */
-@Suppress("LongParameterList")
 internal fun makeDownloadProgressBanner(
     context: Context,
     summary: DownloadDetailsPlanning.StoryDownloadSummary,

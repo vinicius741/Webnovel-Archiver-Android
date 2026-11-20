@@ -34,7 +34,6 @@ fun interface NetworkRequestGate {
     suspend fun awaitRequest(claimSourcePermission: suspend () -> Unit)
 }
 
-@Suppress("TooManyFunctions")
 class NetworkClient(
     /** Shared OkHttp client built by [buildDefault]; WebView-earned cookies replay here via [AndroidCookieJar]. */
     val client: OkHttpClient = defaultClient,
@@ -168,7 +167,7 @@ class NetworkClient(
         })
     }
 
-    @Suppress("NestedBlockDepth", "ThrowsCount")
+    @Suppress("NestedBlockDepth")
     private suspend fun <T> executeWithRetries(
         url: String,
         request: Request,

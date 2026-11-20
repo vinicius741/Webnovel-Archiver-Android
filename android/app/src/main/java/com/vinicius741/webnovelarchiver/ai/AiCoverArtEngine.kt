@@ -234,7 +234,6 @@ class AiCoverArtEngine internal constructor(
     }
 
     /** Runs one prompt attempt and records every terminal outcome before returning or throwing. */
-    @Suppress("ThrowsCount") // Distinct terminal outcomes are recorded before propagating the original failure.
     private suspend fun trackedPromptCompletion(
         apiKey: String,
         model: String,

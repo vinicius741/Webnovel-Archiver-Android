@@ -27,7 +27,6 @@ data class SourceReliabilitySnapshot(
  * a source's budget. User download pacing belongs to the download layer; always wait outside the
  * per-host mutex.
  */
-@Suppress("TooManyFunctions")
 class SourceReliabilityCoordinator(
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { delay(it) },

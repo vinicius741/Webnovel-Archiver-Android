@@ -14,7 +14,6 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Completion-driven coordinator for fair, independent source download lanes. */
-@Suppress("LongParameterList")
 internal class DownloadProcessLoop(
     private val storage: DownloadQueueStore,
     private val wakeSignals: ReceiveChannel<Unit>,

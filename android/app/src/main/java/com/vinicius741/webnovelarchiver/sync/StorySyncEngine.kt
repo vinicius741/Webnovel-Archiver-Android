@@ -36,7 +36,7 @@ class StorySyncEngine(
     private val network: NetworkClient,
     private val patreonChapters: PatreonChapterSync = defaultPatreonChapterSync(repository, network),
 ) {
-    @Suppress("ThrowsCount", "TooGenericExceptionCaught") // Source-boundary failures become typed persisted outcomes.
+    @Suppress("TooGenericExceptionCaught") // Source-boundary failures become typed persisted outcomes.
     suspend fun fetchOrSync(
         url: String,
         tabId: String? = null,
@@ -262,7 +262,6 @@ class StorySyncEngine(
         "patreonLinked" to (existing?.patreonEarlyAccess != null),
     )
 
-    @Suppress("LongParameterList")
     private fun recordSyncMerged(
         storyId: String,
         title: String,

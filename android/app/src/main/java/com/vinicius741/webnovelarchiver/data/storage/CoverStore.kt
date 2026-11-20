@@ -37,7 +37,6 @@ enum class AiCoverResultKind { PROMPT, IMAGE }
  * commit. Drafts and experiment history are local to this device and excluded from backups;
  * closing or applying a preview keeps its image and prompt in version history.
  */
-@Suppress("TooManyFunctions")
 internal class CoverStore(
     root: File,
     private val safeName: (String) -> String,

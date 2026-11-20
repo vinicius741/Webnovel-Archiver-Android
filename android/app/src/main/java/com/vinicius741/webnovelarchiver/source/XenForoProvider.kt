@@ -25,7 +25,6 @@ import org.jsoup.parser.Parser
  * XenForo stories are forum threads, so only the main Threadmarks category is treated as the
  * novel. Ordinary replies and optional sidestory/apocrypha categories are deliberately excluded.
  */
-@Suppress("TooManyFunctions")
 open class XenForoProvider(
     override val descriptor: SourceDescriptor,
     private val idPrefix: String,

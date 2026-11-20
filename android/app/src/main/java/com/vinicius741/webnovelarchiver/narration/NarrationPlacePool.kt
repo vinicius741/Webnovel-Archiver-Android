@@ -84,7 +84,6 @@ internal interface NarrationPlace {
  * for a problem waiting cannot fix (a wrong token). Computers that all stopped for memory are waited
  * for [MAX_STOPPED_WAIT_MS].
  */
-@Suppress("TooManyFunctions") // One scheduler: picking, holding back and probing share its state.
 internal class NarrationPlacePool private constructor(
     override val voice: NarrationVoice,
     override val voiceKey: String,
@@ -491,7 +490,7 @@ internal class NarrationPlacePool private constructor(
          * the background. When none can be reached, generation waits for one as it does mid-chapter.
          * Throws when none answers for a reason waiting cannot fix and there is no [phone] to fall back on.
          */
-        @Suppress("LongParameterList", "TooGenericExceptionCaught") // Identity plus where it runs; any failure closes the places.
+        @Suppress("TooGenericExceptionCaught") // Any failure closes the places.
         suspend fun open(
             voice: NarrationVoice,
             voiceKey: String,

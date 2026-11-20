@@ -36,7 +36,6 @@ internal fun ViewGroup.settingsGroup(block: LinearLayout.() -> Unit): LinearLayo
 }
 
 /** A navigational row: tinted leading icon, title, one-line current value, and a chevron. */
-@Suppress("LongParameterList") // Row DSL; call sites use named arguments.
 internal fun LinearLayout.navRow(
     icon: Int,
     title: CharSequence,
@@ -97,7 +96,6 @@ internal fun makeV3Switch(
 }
 
 /** A row with a trailing switch; tapping anywhere on it flips the switch and reports the new value. */
-@Suppress("LongParameterList") // Row DSL; call sites use named arguments.
 internal fun LinearLayout.switchRow(
     title: String,
     supporting: String? = null,

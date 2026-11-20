@@ -24,7 +24,6 @@ import java.util.UUID
  * `current`, so a process death leaves either the old pack or the new one, never a mix. Playback
  * [retain]s the version it reads, so a regeneration published meanwhile does not delete it.
  */
-@Suppress("TooManyFunctions") // The one owner of the pack folders: layout, publication, retention and cleanup.
 class NarrationStore internal constructor(
     val root: File,
     private val codec: NarrationClipCodec? = null,

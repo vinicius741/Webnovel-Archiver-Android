@@ -18,7 +18,6 @@ import kotlin.math.roundToInt
  * dark-reader preference), voice settings, and Copy chapter text. Changes persist immediately;
  * rows that leave the reader close the sheet first so the next screen is not buried under it.
  */
-@Suppress("LongParameterList") // Named callbacks from the Reader; call sites use named arguments.
 internal fun ScreenHost.showReaderSettingsPanel(
     display: DisplayPreferences,
     voiceSummary: String?,

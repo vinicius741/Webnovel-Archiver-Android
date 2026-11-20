@@ -19,8 +19,6 @@ object DownloadScheduler {
     /** Blocked-source recheck interval: a solved challenge resumes the queue, and the recheck costs one queue read. */
     const val BLOCKED_SOURCE_RECHECK_MILLIS = 60_000L
 
-    // Inputs are individually meaningful; call sites use named arguments.
-    @Suppress("LongParameterList")
     fun selectEligibleJobs(
         jobs: List<DownloadJob>,
         now: Long,

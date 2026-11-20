@@ -17,7 +17,6 @@ internal class DetailsBindings(
 )
 
 /** Applies one coherent download snapshot to every live story page surface. */
-@Suppress("LongParameterList") // One snapshot's facts, always passed together.
 internal fun DetailsBindings.patchDownloadStatus(
     host: ScreenHost,
     story: Story,

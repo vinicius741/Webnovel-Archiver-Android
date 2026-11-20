@@ -31,7 +31,6 @@ import java.util.concurrent.TimeUnit
  * so it survives leaving the settings screen; a stopped download resumes where it left off. The model
  * only becomes visible once complete and checked (see [KokoroModelFiles]).
  */
-@Suppress("TooManyFunctions") // One installer for both kinds of package, archive and separate files.
 internal class KokoroModelInstaller(
     context: Context,
     private val scope: CoroutineScope,

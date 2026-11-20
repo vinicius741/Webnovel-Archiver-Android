@@ -154,7 +154,6 @@ private fun ScreenHost.renderSortSection(
     )
 }
 
-@Suppress("LongParameterList")
 private fun ScreenHost.renderFilterSections(
     body: LinearLayout,
     stories: List<Story>,

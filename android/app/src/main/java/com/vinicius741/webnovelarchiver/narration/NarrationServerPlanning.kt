@@ -49,7 +49,6 @@ internal data class GenerateOnChoice(
 }
 
 /** Rules for the user's narration servers: compatibility, how many sentences to send at once, form checks. */
-@Suppress("TooManyFunctions") // Small, related rules about the same computers.
 internal object NarrationServerPlanning {
     const val PROTOCOL = 1
 
