@@ -12,9 +12,12 @@ internal class FakeClipCodec(
     var encodes = 0
     var refuse = false
     var onEncode: () -> Unit = {}
+    var sampleRates: Set<Int>? = null
+
+    override fun supports(sampleRate: Int): Boolean = sampleRates?.contains(sampleRate) ?: true
 
     override fun encode(clip: TtsPcmClip): NarrationEncodedClip? {
-        if (refuse) return null
+        if (refuse || !supports(clip.sampleRate)) return null
         encodes++
         onEncode()
         val audio = ByteArray(delay * 2) + clip.pcm

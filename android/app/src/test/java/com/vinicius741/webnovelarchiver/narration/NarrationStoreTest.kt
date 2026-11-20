@@ -207,7 +207,7 @@ class NarrationStoreTest {
                 listOf("0000", "0001", "title").forEach { File(dir, "$it.pcm").writeBytes(NarrationClipFormat.legacy(24_000, pcm(480))) }
                 store.publish(two, dir, store.indexFor(dir, two, 7L)!!)
             }
-        val converted = store.recompress(legacy)!!
+        val converted = converted(store.recompress(legacy))
         assertEquals(converted.dir, store.pack("story:1", "chapter/1")!!.dir)
         assertFalse(legacy.dir.exists())
         assertEquals(NarrationStore.CODEC_AAC, converted.index.codec)
@@ -225,7 +225,7 @@ class NarrationStoreTest {
         val store = NarrationStore(folder.newFolder(), FakeClipCodec()).apply { load() }
         val legacy = publishLegacy(store, recipe())
         store.retain(legacy)
-        val converted = store.recompress(legacy)!!
+        val converted = converted(store.recompress(legacy))
         assertTrue(legacy.dir.exists())
         store.release(legacy)
         assertFalse(legacy.dir.exists())
@@ -238,10 +238,20 @@ class NarrationStoreTest {
         val store = NarrationStore(folder.newFolder(), codec).apply { load() }
         val legacy = publishLegacy(store, recipe().copy(sentences = listOf("One.", "Two.")))
         codec.onEncode = { codec.refuse = true }
-        assertNull(store.recompress(legacy))
+        assertEquals(Recompression.CodecFailed, store.recompress(legacy))
         assertEquals(1, codec.encodes)
         assertEquals(legacy.dir, store.pack("story:1", "chapter/1")!!.dir)
         assertEquals(1, store.chapterDir("story:1", "chapter/1").listFiles { file -> file.isDirectory }!!.size)
+    }
+
+    @Test
+    fun aPackAtARateTheCodecCannotTakeIsUnconvertibleNotACodecFailure() {
+        val codec = FakeClipCodec().apply { sampleRates = setOf(48_000) }
+        val store = NarrationStore(folder.newFolder(), codec).apply { load() }
+        val legacy = publishLegacy(store, recipe())
+        assertEquals(Recompression.Unconvertible, store.recompress(legacy))
+        assertEquals(0, codec.encodes)
+        assertEquals(legacy.dir, store.pack("story:1", "chapter/1")!!.dir)
     }
 
     @Test
@@ -251,7 +261,7 @@ class NarrationStoreTest {
         val legacy = publishLegacy(store, recipe().copy(sentences = listOf("One.", "Two.", "Three.")))
         var idle = true
         codec.onEncode = { idle = false }
-        assertNull(store.recompress(legacy) { idle })
+        assertEquals(Recompression.Interrupted, store.recompress(legacy) { idle })
         assertEquals(1, codec.encodes)
         assertEquals(legacy.dir, store.pack("story:1", "chapter/1")!!.dir)
         assertEquals(1, store.chapterDir("story:1", "chapter/1").listFiles { file -> file.isDirectory }!!.size)
@@ -261,7 +271,7 @@ class NarrationStoreTest {
     fun playbackHoldingAConvertedPackReadsItsReplacement() {
         val store = NarrationStore(folder.newFolder(), FakeClipCodec()).apply { load() }
         val legacy = publishLegacy(store, recipe())
-        val converted = store.recompress(legacy)!!
+        val converted = converted(store.recompress(legacy))
         assertEquals(converted.dir, store.retain(legacy)!!.dir)
         store.release(converted)
         assertTrue(converted.dir.exists())
@@ -281,13 +291,15 @@ class NarrationStoreTest {
             codec.onEncode = {}
             regenerated = publish(store, recipe(text = "Hello again."))
         }
-        assertNull(store.recompress(legacy))
+        assertEquals(Recompression.Superseded, store.recompress(legacy))
         assertEquals(regenerated!!.dir, store.pack("story:1", "chapter/1")!!.dir)
         assertEquals(1, store.chapterDir("story:1", "chapter/1").listFiles { file -> file.isDirectory }!!.size)
 
         val other = publishLegacy(store, recipe(chapter = "chapter/2"))
         codec.onEncode = { store.deleteChapter("story:1", "chapter/2") }
-        assertNull(store.recompress(other))
+        assertEquals(Recompression.Superseded, store.recompress(other))
         assertNull(store.pack("story:1", "chapter/2"))
     }
+
+    private fun converted(result: Recompression): NarrationPack = (result as Recompression.Converted).pack
 }

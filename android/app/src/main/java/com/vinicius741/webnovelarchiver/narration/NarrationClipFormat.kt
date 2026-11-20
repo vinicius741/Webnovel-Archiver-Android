@@ -112,7 +112,8 @@ internal object NarrationClipFormat {
                     NarrationClipInfo(header.sampleRate, header.frames.toLong(), compressed = true, codec = header.codec)
                 } else {
                     val frames = (length - LEGACY_HEADER_BYTES) / BYTES_PER_FRAME
-                    NarrationClipInfo(legacySampleRate(head), frames, compressed = false, codec = null)
+                    val sampleRate = legacySampleRate(head).takeIf { it in 1..MAX_SAMPLE_RATE } ?: return null
+                    NarrationClipInfo(sampleRate, frames, compressed = false, codec = null)
                 }
             }
         }.getOrNull()
@@ -140,7 +141,9 @@ internal object NarrationClipFormat {
             )
         val valid =
             header.sampleRate in 1..MAX_SAMPLE_RATE && header.frames >= 0 && header.delay >= 0 &&
-                length >= FIXED_HEADER_BYTES + header.setupSize
+                length >= FIXED_HEADER_BYTES + header.setupSize &&
+                // An AAC clip with audio cannot decode without its AudioSpecificConfig.
+                (header.codec != CODEC_AAC_LC || header.frames == 0 || header.setupSize > 0)
         return header.takeIf { valid }
     }
 

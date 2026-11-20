@@ -104,6 +104,9 @@ class NarrationClipFormatTest {
         }
         assertNotNull(NarrationCodecProbe.delay(probe, probe, 6_000))
         assertNull(NarrationCodecProbe.delay(probe, ByteArray(probe.size), 6_000))
+        // A codec returning unrelated audio gives no delay rather than a random one.
+        val unrelated = ByteArray(probe.size + 12_000).also { java.util.Random(7).nextBytes(it) }
+        assertNull(NarrationCodecProbe.delay(probe, unrelated, 6_000))
     }
 
     private fun attenuate(pcm: ByteArray): ByteArray {

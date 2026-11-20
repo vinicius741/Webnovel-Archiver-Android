@@ -147,10 +147,8 @@ class NarrationStore internal constructor(
                 val pcm = codec?.decode(encoded) ?: return null
                 TtsPcmClip(encoded.sampleRate, pcm)
             } else {
-                TtsPcmClip(
-                    NarrationClipFormat.legacySampleRate(bytes),
-                    bytes.copyOfRange(NarrationClipFormat.LEGACY_HEADER_BYTES, bytes.size),
-                )
+                val sampleRate = NarrationClipFormat.legacySampleRate(bytes).takeIf { it > 0 } ?: return null
+                TtsPcmClip(sampleRate, bytes.copyOfRange(NarrationClipFormat.LEGACY_HEADER_BYTES, bytes.size))
             }
         }.onFailure { Timber.w(it, "Narration clip read failed") }.getOrNull()
     }
@@ -215,14 +213,14 @@ class NarrationStore internal constructor(
      * Rewrites [pack]'s PCM clips compressed into a new version and publishes it in place of
      * [pack], keeping its recipe, durations and generation time. Nothing is published if the
      * chapter's pack changed meanwhile (regenerated or deleted); the new version is dropped then.
-     * It also stops, publishing nothing, at the first clip the codec does not compress, or once
-     * [keepGoing] turns false (the generator has work). Returns the published pack, or null.
+     * It also stops, publishing nothing, at the first clip that cannot be compressed, or once
+     * [keepGoing] turns false (the generator has work).
      */
     internal fun recompress(
         pack: NarrationPack,
         keepGoing: () -> Boolean = { true },
-    ): NarrationPack? {
-        val codec = codec ?: return null
+    ): Recompression {
+        val codec = codec ?: return Recompression.Unconvertible
         val versionDir = createVersion(pack.recipe)
         try {
             val sources =
@@ -230,14 +228,17 @@ class NarrationStore internal constructor(
                     .map { clipFile(pack.dir, it) to clipFile(versionDir, it) } +
                     listOfNotNull(pack.recipe.title?.let { titleFile(pack.dir) to titleFile(versionDir) })
             for ((from, to) in sources) {
-                if (!keepGoing() || !compressClip(codec, from, to)) return null
+                if (!keepGoing()) return Recompression.Interrupted
+                compressClip(codec, from, to)?.let { return it }
             }
-            val index = indexFor(versionDir, pack.recipe, pack.index.generatedAt) ?: return null
-            if (index.codec != CODEC_AAC) return null
-            return publishIfCurrent(pack, versionDir, index)
+            val index = indexFor(versionDir, pack.recipe, pack.index.generatedAt) ?: return Recompression.Unconvertible
+            if (index.codec != CODEC_AAC) return Recompression.Unconvertible
+            // Checked again here: a job that started on the last clip may want the old clips to reuse.
+            if (!keepGoing()) return Recompression.Interrupted
+            return publishIfCurrent(pack, versionDir, index)?.let(Recompression::Converted) ?: Recompression.Superseded
         } catch (io: IOException) {
             // Deleting the chapter meanwhile also deletes this version mid-write: nothing to publish.
-            if (pack(pack.storyId, pack.chapterId)?.dir != pack.dir) return null
+            if (pack(pack.storyId, pack.chapterId)?.dir != pack.dir) return Recompression.Superseded
             throw io
         } finally {
             if (!File(versionDir, INDEX_FILE).isFile) versionDir.deleteRecursively()
@@ -246,18 +247,21 @@ class NarrationStore internal constructor(
 
     /**
      * [from]'s clip at [to], compressed: a compressed clip is copied as it is, a PCM one encoded.
-     * Unlike [copyClip] it never falls back to PCM; false when the clip cannot be compressed.
+     * Unlike [copyClip] it never falls back to PCM. Null when done, else why it could not be: a
+     * damaged clip or an unsupported sample rate is the pack's problem, a refusal the codec's.
      */
     private fun compressClip(
         codec: NarrationClipCodec,
         from: File,
         to: File,
-    ): Boolean {
-        val info = clipInfo(from) ?: return false
-        if (info.compressed) return copyClip(from, to)
-        val encoded = codec.encode(readClip(from) ?: return false) ?: return false
+    ): Recompression? {
+        val info = clipInfo(from) ?: return Recompression.Unconvertible
+        if (info.compressed) return if (copyClip(from, to)) null else Recompression.Unconvertible
+        if (!codec.supports(info.sampleRate)) return Recompression.Unconvertible
+        val clip = readClip(from) ?: return Recompression.Unconvertible
+        val encoded = codec.encode(clip) ?: return Recompression.CodecFailed
         writeAtomically(to, NarrationClipFormat.write(encoded))
-        return true
+        return null
     }
 
     /**
@@ -468,4 +472,24 @@ class NarrationStore internal constructor(
         private const val TEMP_SUFFIX = ".tmp"
         private const val DEFAULT_SAMPLE_RATE = 24_000
     }
+}
+
+/** How [NarrationStore.recompress] ended. */
+internal sealed interface Recompression {
+    /** The compressed pack was published in place of the old one. */
+    data class Converted(
+        val pack: NarrationPack,
+    ) : Recompression
+
+    /** The generator got work first; nothing was published, and the chapter can be tried again. */
+    data object Interrupted : Recompression
+
+    /** The chapter was regenerated or deleted meanwhile; nothing was published. */
+    data object Superseded : Recompression
+
+    /** This pack cannot be compressed (a damaged clip, an unsupported sample rate); it stays as it is. */
+    data object Unconvertible : Recompression
+
+    /** The codec refused or failed on a clip it should take: a sign it does not work on this phone. */
+    data object CodecFailed : Recompression
 }

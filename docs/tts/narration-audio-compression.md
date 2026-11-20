@@ -74,12 +74,15 @@ interrupted mid-chapter resumes with both kinds, and every older pack still play
 
 ## Codec (`AacNarrationCodec`)
 
-- Mono AAC-LC at 64 kbit/s, raw access units (no ADTS, no MP4). The platform software codecs
-  `c2.android.aac.encoder`/`decoder` are preferred so every phone stores the same audio. The
-  fallback is whatever `MediaCodecList` offers.
+- Mono AAC-LC at 64 kbit/s, raw access units (no ADTS, no MP4). The platform's Fraunhofer codecs
+  are preferred so every phone stores the same audio: `c2.android.aac.*` (Android 10+), then the
+  same codec under its OMX name `OMX.google.aac.*` (Android 8 and 9), then whatever
+  `MediaCodecList` offers. The name that worked is kept for the process.
 - Android reports no encoder delay. The first clip at each sample rate measures it: 12,000 frames
   of deterministic noise (`NarrationCodecProbe`) go through both codecs, and cross-correlation finds
-  the lag (2048 frames for FDK). Each clip stores the delay it was encoded with. A failed
+  the lag (2048 frames for FDK). The match must be strong: the probe correlates at 0.96 through
+  FDK AAC 64k and unrelated noise at most about 0.07, so the threshold is 0.5 and a codec returning
+  garbage never yields a random delay. Each clip stores the delay it was encoded with. A failed
   measurement is remembered for the process, so a phone whose codec fails stores PCM without
   probing again for every sentence.
 - The synchronous MediaCodec loop queues an input without waiting, then takes every output that is
@@ -115,10 +118,11 @@ still says `pcm`:
   (so the generator can still reuse the old clips). It counts neither as skipped nor as a failure,
   and the chapter is converted once the generator is idle again.
 - `NarrationStore.recompress` writes a new version with the same recipe, durations and
-  `generatedAt`. It never falls back to PCM: the first clip the codec refuses ends that chapter's
-  conversion. It publishes the version only if the chapter's pack is still the one it converted
-  (`publishIfCurrent`). A regeneration or deletion in the meantime wins, and the conversion is
-  dropped.
+  `generatedAt`, and says how it ended (`Recompression`). It never falls back to PCM: the first
+  clip that cannot be compressed ends that chapter's conversion. It publishes the version only if
+  the chapter's pack is still the one it converted (`publishIfCurrent`), and only if the generator
+  is still idle at that moment. A regeneration or deletion in the meantime wins, and the
+  conversion is dropped.
 - Publishing, conversion and deletion take the store's publish lock for their file writes. The
   lock that guards the in-memory map is held only for map reads and updates, so screens reading
   packs never wait on a disk sync.
@@ -127,9 +131,11 @@ still says `pcm`:
   the replacement (same recipe and durations) instead of a folder that is being deleted.
 - If the process dies mid-chapter, only that chapter's unfinished version is lost; the startup
   sweep removes it. The next start continues with the remaining PCM packs.
-- Three failures in a row (the codec not working on this phone) stop the pass until the next
-  start. Each conversion is logged as `narration_compressed` (bytes before and after), and the pass
-  ends with `narration_compression_finished`.
+- A pack that cannot be compressed (a damaged clip, a sample rate AAC does not define) is skipped
+  and stays as PCM; it never holds back the packs after it. Three codec failures in a row (the
+  codec refusing or failing on clips it should take: it does not work on this phone) stop the pass
+  until the next start. Each conversion is logged as `narration_compressed` (bytes before and
+  after), and the pass ends with `narration_compression_finished`. The pass's thread ends with it.
 
 Free-space estimates for new chapters use 9 bytes per audio millisecond (64 kbit/s plus framing).
 
@@ -144,8 +150,10 @@ Free-space estimates for new chapters use 9 bytes per audio millisecond (64 kbit
   22.05 kHz it checks the exact length, alignment (SNR above 15 dB on a voiced test signal), level
   (within 10%) and size (under a quarter of the PCM). It also checks an empty clip and the store's
   round trip.
-- Emulator QA (2026-11-20): the debug library's 14 PCM chapters (300 MB) converted to 67 MB on
-  the first start, about 5.7× smaller, with the same durations and `generatedAt`, and played back.
+- Emulator QA (2026-11-20): the debug library's 14 PCM chapters converted on the first start, with
+  the same durations and `generatedAt`, and played back. The clips shrank about 5.6× (a chapter:
+  18.5 MB to 3.3 MB; 245 MB saved in all). On disk the narration folder
+  went from 300 MB to 67 MB (4.5×), because file-system blocks round up the small clip files.
   One chapter's clips, decoded on a computer, lined up at the stored 2048-frame delay and scored
   ViSQOL 4.71 against the original. A chapter of about 8 minutes converts in under 4 seconds on
   the emulator. The first build took 75 seconds, because its codec loop took one output per round

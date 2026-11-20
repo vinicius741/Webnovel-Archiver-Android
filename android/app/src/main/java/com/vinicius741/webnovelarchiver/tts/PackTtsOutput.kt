@@ -42,6 +42,8 @@ internal class PackTtsOutput(
         // A background conversion may have replaced the pack since it was looked up; retain says which to read.
         val loaded =
             store.retain(requested) ?: run {
+                // Stop the previous chapter's feed: its pack was just released.
+                player.stop()
                 dispatch {
                     if (sent == generation) {
                         listener.onError(TtsPlaybackError(TtsPlaybackErrorKind.AudioNotGenerated, detail = "pack replaced"))

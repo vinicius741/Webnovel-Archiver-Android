@@ -760,7 +760,13 @@ class TtsEngine(
         val point = pointLocked()
         output = TtsOutputPhase.Silent
         speech.cancelInitWatchdog()
-        outputs.active?.pause()
+        if (error.kind == TtsPlaybackErrorKind.AudioNotGenerated) {
+            // The pack cannot be read (a clip is missing, or it was replaced or deleted): unload it so
+            // the next play looks the chapter's audio up again instead of resuming an empty player.
+            outputs.stopActive()
+        } else {
+            outputs.active?.pause()
+        }
         loaded.currentItem = point.item
         loaded.currentOffsetMs = point.offsetMs
         if (loaded.session == null) {

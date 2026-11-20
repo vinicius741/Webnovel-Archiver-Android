@@ -11,9 +11,13 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.sqrt
 
 /** Compresses pack clips and restores them; [NarrationStore] stores what it returns. */
 internal interface NarrationClipCodec {
+    /** Whether clips at [sampleRate] can be compressed at all; others are stored as PCM. */
+    fun supports(sampleRate: Int): Boolean
+
     /** The clip compressed, or null when this codec cannot take it (an unsupported sample rate, no encoder). */
     fun encode(clip: TtsPcmClip): NarrationEncodedClip?
 
@@ -34,11 +38,16 @@ internal interface NarrationClipCodec {
 internal class AacNarrationCodec(
     private val bitrate: Int = BITRATE,
 ) : NarrationClipCodec {
-    /** Measured delay per sample rate; null once a measurement failed, so it is not retried every clip. */
-    private val delays = HashMap<Int, Int?>()
+    /** Measured delay per sample rate; [NO_DELAY] once a measurement failed, so it is not retried every clip. */
+    private val delays = HashMap<Int, Int>()
+
+    /** The codec name that worked for each role ([ENCODERS] or [DECODERS]), so later clips skip the search. */
+    private val names = HashMap<Boolean, String>()
+
+    override fun supports(sampleRate: Int): Boolean = sampleRate in SAMPLE_RATES
 
     override fun encode(clip: TtsPcmClip): NarrationEncodedClip? {
-        if (clip.sampleRate !in SAMPLE_RATES) return null
+        if (!supports(clip.sampleRate)) return null
         if (clip.pcm.isEmpty()) {
             return NarrationEncodedClip(
                 NarrationClipFormat.CODEC_AAC_LC,
@@ -70,18 +79,16 @@ internal class AacNarrationCodec(
     /** The encoder-plus-decoder delay at [sampleRate], measured once per process; null when the codecs fail. */
     @Synchronized
     private fun delayFor(sampleRate: Int): Int? =
-        delays.getOrPut(sampleRate) {
-            runCatching { measureDelay(sampleRate) }
-                .onFailure { Timber.w(it, "AAC delay measurement failed at %d Hz", sampleRate) }
-                .getOrNull()
-        }
-
-    private fun measureDelay(sampleRate: Int): Int {
-        val probe = NarrationCodecProbe.signal(PROBE_FRAMES)
-        val (setup, units) = encodeRaw(sampleRate, probe)
-        val decoded = decodeRaw(sampleRate, setup, units)
-        return NarrationCodecProbe.delay(probe, decoded, MAX_DELAY_FRAMES) ?: throw IOException("AAC delay not found")
-    }
+        delays
+            .getOrPut(sampleRate) {
+                runCatching {
+                    val probe = NarrationCodecProbe.signal(PROBE_FRAMES)
+                    val (setup, units) = encodeRaw(sampleRate, probe)
+                    val decoded = decodeRaw(sampleRate, setup, units)
+                    NarrationCodecProbe.delay(probe, decoded, MAX_DELAY_FRAMES) ?: throw IOException("AAC delay not found")
+                }.onFailure { Timber.w(it, "AAC delay measurement failed at %d Hz", sampleRate) }
+                    .getOrNull() ?: NO_DELAY
+            }.takeIf { it != NO_DELAY }
 
     private fun encodeRaw(
         sampleRate: Int,
@@ -93,7 +100,7 @@ internal class AacNarrationCodec(
                 setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
                 setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, CHUNK_BYTES)
             }
-        val codec = create(ENCODER, encoder = true, format)
+        val codec = create(encoder = true, format)
         try {
             codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             codec.start()
@@ -102,11 +109,14 @@ internal class AacNarrationCodec(
             run(codec, PcmFeed(pcm, sampleRate)) { buffer, info, outputFormat ->
                 when {
                     outputFormat != null -> setup = setup ?: outputFormat.getByteBuffer(CSD)?.let(::bytesOf)
-                    info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0 -> setup = bytesOf(buffer!!)
+                    // An empty config buffer must not replace the setup the format already gave.
+                    info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0 ->
+                        setup =
+                            buffer?.takeIf { info.size > 0 }?.let(::bytesOf) ?: setup
                     info.size > 0 -> units += bytesOf(buffer!!)
                 }
             }
-            return (setup ?: throw IOException("AAC encoder gave no setup")) to units
+            return (setup?.takeIf { it.isNotEmpty() } ?: throw IOException("AAC encoder gave no setup")) to units
         } finally {
             codec.release()
         }
@@ -122,7 +132,7 @@ internal class AacNarrationCodec(
                 setByteBuffer(CSD, ByteBuffer.wrap(setup))
                 setInteger(MediaFormat.KEY_IS_ADTS, 0)
             }
-        val codec = create(DECODER, encoder = false, format)
+        val codec = create(encoder = false, format)
         try {
             codec.configure(format, null, null, 0)
             codec.start()
@@ -280,21 +290,32 @@ internal class AacNarrationCodec(
         return false
     }
 
+    /**
+     * The platform's own AAC codec: Codec2 (Android 10+), then the same Fraunhofer codec under its
+     * OMX name (Android 8 and 9), then whatever the phone offers. The name that worked is kept.
+     */
     private fun create(
-        preferred: String,
         encoder: Boolean,
         format: MediaFormat,
     ): MediaCodec {
-        runCatching { return MediaCodec.createByCodecName(preferred) }
+        synchronized(names) { names[encoder] }?.let { known ->
+            runCatching { return MediaCodec.createByCodecName(known) }
+        }
         val list = MediaCodecList(MediaCodecList.REGULAR_CODECS)
-        val name = if (encoder) list.findEncoderForFormat(format) else list.findDecoderForFormat(format)
-        return name?.let(MediaCodec::createByCodecName) ?: throw IOException("No AAC ${if (encoder) "encoder" else "decoder"}")
+        val fallback = if (encoder) list.findEncoderForFormat(format) else list.findDecoderForFormat(format)
+        for (name in (if (encoder) ENCODERS else DECODERS) + listOfNotNull(fallback)) {
+            val codec = runCatching { MediaCodec.createByCodecName(name) }.getOrNull() ?: continue
+            synchronized(names) { names[encoder] = name }
+            return codec
+        }
+        throw IOException("No AAC ${if (encoder) "encoder" else "decoder"}")
     }
 
     companion object {
         const val BITRATE = 64_000
-        private const val ENCODER = "c2.android.aac.encoder"
-        private const val DECODER = "c2.android.aac.decoder"
+        private val ENCODERS = listOf("c2.android.aac.encoder", "OMX.google.aac.encoder")
+        private val DECODERS = listOf("c2.android.aac.decoder", "OMX.google.aac.decoder")
+        private const val NO_DELAY = -1
         private const val CSD = "csd-0"
 
         /** The rates AAC-LC defines (and Android's encoder takes). */
@@ -340,7 +361,11 @@ internal object NarrationCodecProbe {
         return pcm.array()
     }
 
-    /** The lag (0..[maxLag]) at which [decoded] best matches [probe]; null when nothing matches. */
+    /**
+     * The lag (0..[maxLag]) at which [decoded] best matches [probe]; null when nothing matches. The
+     * match must be strong: through FDK AAC 64k the probe correlates at 0.96, unrelated noise at
+     * most about 0.07, so a codec returning garbage never yields a random delay.
+     */
     fun delay(
         probe: ByteArray,
         decoded: ByteArray,
@@ -361,7 +386,14 @@ internal object NarrationCodecProbe {
                 bestLag = lag
             }
         }
-        return bestLag.takeIf { it >= 0 && best > 0 }
+        if (bestLag < 0 || best <= 0) return null
+        var energyX = 0.0
+        var energyY = 0.0
+        for (i in 0 until length) {
+            energyX += x[start + i].toDouble() * x[start + i]
+            energyY += y[start + bestLag + i].toDouble() * y[start + bestLag + i]
+        }
+        return bestLag.takeIf { best / sqrt(energyX * energyY) >= MIN_CORRELATION }
     }
 
     private fun samples(pcm: ByteArray): ShortArray {
@@ -381,4 +413,5 @@ internal object NarrationCodecProbe {
     private const val AMPLITUDE = 6_000
     private const val WINDOW_START_DIVISOR = 4
     private const val WINDOW_FRAMES = 4_096
+    private const val MIN_CORRELATION = 0.5
 }

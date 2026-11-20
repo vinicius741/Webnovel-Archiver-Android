@@ -84,6 +84,19 @@ class NarrationRecompressorTest {
         }
 
     @Test
+    fun packsThatCannotBeConvertedNeverHoldBackTheRest() =
+        runTest {
+            val codec = FakeClipCodec().apply { sampleRates = setOf(24_000) }
+            val store = NarrationStore(folder.newFolder(), codec).apply { load() }
+            // The three largest packs are at a rate AAC cannot take; three codec failures would stop the pass.
+            (1..3).forEach { legacyPack(store, "odd$it", frames = 1_000 + it, rate = 23_456) }
+            (1..2).forEach { legacyPack(store, "ok$it", frames = 100 + it) }
+            NarrationRecompressor(store) {}.run()
+            assertTrue(store.allPacks().filter { it.chapterId.startsWith("ok") }.all { it.index.codec == NarrationStore.CODEC_AAC })
+            assertTrue(store.allPacks().filter { it.chapterId.startsWith("odd") }.all { it.index.codec == NarrationStore.CODEC_PCM })
+        }
+
+    @Test
     fun doesNothingWithoutACodec() =
         runTest {
             val store = NarrationStore(folder.newFolder()).apply { load() }

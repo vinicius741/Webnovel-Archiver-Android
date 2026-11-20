@@ -73,17 +73,17 @@ class NarrationCoordinator internal constructor(
     /** Converts packs made before compression, on a background-priority thread of its own. */
     private val recompressor =
         NarrationRecompressor(store, isIdle = { generator.progress.value == null }) { generator.progress.first { it == null } }
-    private val recompressScope =
-        CoroutineScope(
-            SupervisorJob() +
-                Executors
-                    .newSingleThreadExecutor { task ->
-                        Thread({
-                            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-                            task.run()
-                        }, "narration-recompress")
-                    }.asCoroutineDispatcher(),
-        )
+
+    /** Its thread ends with the pass ([recompressDispatcher] is closed once the pass is over). */
+    private val recompressDispatcher =
+        Executors
+            .newSingleThreadExecutor { task ->
+                Thread({
+                    Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+                    task.run()
+                }, "narration-recompress")
+            }.asCoroutineDispatcher()
+    private val recompressScope = CoroutineScope(SupervisorJob() + recompressDispatcher)
 
     /** Fingerprints of chapters with packs, so chapter lists need not prepare every chapter's text. */
     private val fingerprints = NarrationFingerprints(File(context.cacheDir, FINGERPRINTS_FILE), BuildConfig.VERSION_CODE.toString())
@@ -126,9 +126,10 @@ class NarrationCoordinator internal constructor(
             }.onFailure { Timber.w(it, "Narration sweep failed") }
             generator.start(workerScope)
             if (hasRunnableWork()) startService()
-            recompressScope.launch {
-                runCatching { recompressor.run() }.onFailure { Timber.w(it, "Narration recompression stopped") }
-            }
+            recompressScope
+                .launch {
+                    runCatching { recompressor.run() }.onFailure { Timber.w(it, "Narration recompression stopped") }
+                }.invokeOnCompletion { recompressDispatcher.close() }
         }
     }
 

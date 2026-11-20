@@ -27,7 +27,7 @@ internal class NarrationRecompressor(
 ) {
     private val skipped = HashSet<String>()
 
-    // One chapter's failure (an odd sample rate, a damaged clip) must not stop the rest; cancellation still escapes.
+    // An unexpected error counts as a codec failure; cancellation still escapes.
     @Suppress("TooGenericExceptionCaught")
     suspend fun run() {
         if (!store.compresses) return
@@ -45,27 +45,31 @@ internal class NarrationRecompressor(
                     throw cancelled
                 } catch (error: Exception) {
                     Timber.w(error, "Narration recompression failed")
-                    null
+                    Recompression.CodecFailed
                 }
-            if (result == null && !isIdle()) {
+            when (result) {
                 // Generation started: not this chapter's fault; it is converted once the generator is idle.
-                continue
-            } else if (result == null) {
-                skipped += pack.dir.path
-                // A chapter regenerated or deleted meanwhile is not a failure of the codec.
-                if (store.pack(pack.storyId, pack.chapterId)?.dir == pack.dir) failuresInARow++
-            } else {
-                failuresInARow = 0
-                converted++
-                savedBytes += pack.index.bytes - result.index.bytes
-                ActivityLog.record(
-                    ActivityCategory.TTS,
-                    "narration_compressed",
-                    "storyId" to pack.storyId,
-                    "chapterId" to pack.chapterId,
-                    "bytesBefore" to pack.index.bytes,
-                    "bytesAfter" to result.index.bytes,
-                )
+                Recompression.Interrupted -> continue
+                Recompression.Superseded -> skipped += pack.dir.path
+                // A damaged or odd pack stays as it is, and must not keep the packs after it from converting.
+                Recompression.Unconvertible -> skipped += pack.dir.path
+                Recompression.CodecFailed -> {
+                    skipped += pack.dir.path
+                    failuresInARow++
+                }
+                is Recompression.Converted -> {
+                    failuresInARow = 0
+                    converted++
+                    savedBytes += pack.index.bytes - result.pack.index.bytes
+                    ActivityLog.record(
+                        ActivityCategory.TTS,
+                        "narration_compressed",
+                        "storyId" to pack.storyId,
+                        "chapterId" to pack.chapterId,
+                        "bytesBefore" to pack.index.bytes,
+                        "bytesAfter" to result.pack.index.bytes,
+                    )
+                }
             }
             yield()
         }
