@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.player
 
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -259,7 +260,12 @@ private fun ScreenHost.buildPlayerControls(
         )
     }
     val canReadAlong = chapterIndex >= 0 && story != null
-    val caption = makeText(app, "", Type.BODY_LARGE, colors.onSurface).apply { maxLines = 3 }
+    // Always three lines tall, so a sentence wrapping to more or fewer lines never shifts the controls below.
+    val caption =
+        makeText(app, "", Type.BODY_LARGE, colors.onSurface).apply {
+            setLines(CAPTION_LINES)
+            ellipsize = TextUtils.TruncateAt.END
+        }
     val captionCard = nowReadingCard(caption) { if (canReadAlong) openReadAlong(state) }
     controls.addView(captionCard)
 
@@ -372,3 +378,4 @@ private const val SHORT_COVER_DP = 170
 private const val SHORT_SCREEN_DP = 760
 private const val HEADER_HEIGHT_DP = 64
 private const val CHAPTER_TITLE_SP = 21f
+private const val CAPTION_LINES = 3
