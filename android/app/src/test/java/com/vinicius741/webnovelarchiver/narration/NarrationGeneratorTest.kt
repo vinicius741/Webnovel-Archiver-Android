@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -255,6 +256,46 @@ class NarrationGeneratorTest {
             generator.runJob(enqueue())
             assertEquals(listOf("Edited second sentence."), synthesizers.spoken)
             assertEquals("Edited second sentence.", store.pack("s", "c")!!.recipe.sentences[1])
+        }
+
+    @Test
+    fun reusedClipsAreCopiedAsStoredNotCompressedAgain() =
+        runTest {
+            val codec = FakeClipCodec()
+            store = NarrationStore(folder.newFolder(), codec).apply { load() }
+            generator = NarrationGenerator(store, queue, source, synthesizers)
+            generator.runJob(enqueue())
+            val first = store.pack("s", "c")!!
+            assertEquals(NarrationStore.CODEC_AAC, first.index.codec)
+            val firstClip = store.clipFile(first.dir, 0).readBytes()
+            assertEquals(4, codec.encodes)
+            source.sentences = listOf("First sentence.", "Edited second sentence.", "Third sentence.")
+            generator.runJob(enqueue())
+            val second = store.pack("s", "c")!!
+            // Only the edited sentence is compressed; the rest are byte-for-byte copies.
+            assertEquals(5, codec.encodes)
+            assertArrayEquals(firstClip, store.clipFile(second.dir, 0).readBytes())
+            assertEquals(NarrationStore.CODEC_AAC, second.index.codec)
+            assertEquals(first.index.sentenceDurationsMs[0], second.index.sentenceDurationsMs[0])
+        }
+
+    @Test
+    fun aReusedPcmClipFromAnOlderPackIsCompressedOnTheWay() =
+        runTest {
+            generator.runJob(enqueue())
+            val legacy = store.pack("s", "c")!!
+            assertEquals(NarrationStore.CODEC_PCM, legacy.index.codec)
+            val codec = FakeClipCodec()
+            store = NarrationStore(store.root, codec).apply { load() }
+            generator = NarrationGenerator(store, queue, source, synthesizers)
+            synthesizers.spoken.clear()
+            source.sentences = listOf("First sentence.", "Edited second sentence.", "Third sentence.")
+            generator.runJob(enqueue())
+            assertEquals(listOf("Edited second sentence."), synthesizers.spoken)
+            val pack = store.pack("s", "c")!!
+            assertEquals(NarrationStore.CODEC_AAC, pack.index.codec)
+            assertEquals(4, codec.encodes)
+            assertEquals(legacy.index.sentenceDurationsMs[0], pack.index.sentenceDurationsMs[0])
         }
 
     @Test

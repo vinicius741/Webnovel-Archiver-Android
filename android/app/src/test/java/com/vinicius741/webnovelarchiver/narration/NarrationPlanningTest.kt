@@ -118,7 +118,7 @@ class NarrationPlanningTest {
     @Test
     fun estimatesAndFormatting() {
         assertEquals(62_000L, NarrationPlanning.estimatedAudioMs(1_000, 62.0))
-        assertEquals(48_000L, NarrationPlanning.estimatedBytes(1_000))
+        assertEquals(9_000L, NarrationPlanning.estimatedBytes(1_000))
         assertEquals(500L, NarrationPlanning.generationMs(1_000, 2.0))
         assertEquals("<1 min", NarrationPlanning.formatDuration(30_000))
         assertEquals("1 h 05 min", NarrationPlanning.formatDuration(65 * 60_000L))
