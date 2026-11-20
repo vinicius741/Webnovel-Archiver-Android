@@ -8,9 +8,13 @@ replies and retries), cover-image generation, and automatic decision-model chapt
 ## User surfaces
 
 - **Settings → AI Settings → AI spend** shows local totals for today, the current month, and all
-  time, plus the eight newest requests with feature, model, timestamp, token count, outcome, and
-  reported cost. Local tracking starts with requests made after this feature is installed; it does
-  not attempt to reconstruct older per-request history.
+  time, plus the eight newest operations/request groups with feature, model, request count (for
+  multi-call operations such as decision-model scans or retries), timestamp, token count, outcome,
+  and combined reported cost. Automatic cover selection and its phase top-up share one operation ID
+  (and adjacent legacy `cover_selection` top-ups from earlier ledgers are also coalesced). Tapping a
+  grouped row opens a bottom sheet with its individual receipts. Local tracking starts with requests
+  made after this feature is installed; it does not attempt to reconstruct older per-request
+  history.
 - The same card can fetch live usage and limit counters for the API key entered on the screen via
   `GET /api/v1/key`. This uses the ordinary inference key, not an OpenRouter management key.
 - Description, cover-prompt, and cover-image preview cards show the latest operation cost. A

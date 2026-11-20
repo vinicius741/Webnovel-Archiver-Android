@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.ai
 import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import timber.log.Timber
+import java.util.UUID
 import kotlin.math.roundToInt
 
 // Automatic cover evidence: the decision-model scan, scoped to one story phase (CoverPhasePlanning).
@@ -20,11 +21,12 @@ internal suspend fun ChapterEvidenceSelector.coverSelection(
     evidenceStore: ChapterEvidenceStore,
     onProgress: (String) -> Unit,
 ): ChapterEvidencePlanning.Selection {
+    val operationId = UUID.randomUUID().toString()
     val downloaded =
         story.chapters.indices
             .filter { story.chapters[it].downloaded }
             .map { it + 1 }
-    var scan = scan(story, apiKey, model, target, CoverEvidencePlanning, onProgress)
+    var scan = scan(story, apiKey, model, target, CoverEvidencePlanning, onProgress, operationId)
     var phases = CoverPhasePlanning.phases(CoverPhasePlanning.readings(scan.scored), downloaded)
     var phase = CoverPhasePlanning.resolve(phases, story.aiCoverPhase)
     if (phase != null && phases.size > 1 && CoverPhasePlanning.needsTopUp(scan.scored, phase, target)) {
@@ -35,7 +37,7 @@ internal suspend fun ChapterEvidenceSelector.coverSelection(
         // and the scan bills only the new chapters it still needs, spread across the phase.
         val (cached, fresh) = positions.partition { downloaded[it] in judged }
         val order = cached + ChapterEvidencePlanning.spreadOrder(fresh.size).map(fresh::get)
-        val topUp = scan(story, apiKey, model, target, PhaseScopedRubric(CoverEvidencePlanning, order), onProgress)
+        val topUp = scan(story, apiKey, model, target, PhaseScopedRubric(CoverEvidencePlanning, order), onProgress, operationId)
         scan =
             ChapterEvidencePlanning.Scan(
                 (scan.scored + topUp.scored).distinctBy { it.sample.chapter }.sortedBy { it.sample.chapter },

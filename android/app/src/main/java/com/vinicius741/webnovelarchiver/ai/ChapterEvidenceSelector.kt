@@ -77,9 +77,9 @@ internal class ChapterEvidenceSelector(
         targetChapters: Int,
         rubric: EvidenceRubric,
         progress: (String) -> Unit,
+        operationId: String = UUID.randomUUID().toString(),
     ): ChapterEvidencePlanning.Scan =
         withContext(Dispatchers.IO) {
-            val operationId = UUID.randomUUID().toString()
             val downloaded =
                 story.chapters.withIndex().filter { it.value.downloaded }.let { chapters ->
                     rubric.scanOrder(chapters.size).map(chapters::get)

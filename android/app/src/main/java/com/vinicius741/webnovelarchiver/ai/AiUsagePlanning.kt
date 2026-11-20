@@ -17,11 +17,30 @@ enum class AiUsagePeriod {
     ALL_TIME,
 }
 
+/** One or more receipts shown as a single row in Recent requests (e.g., a decision-model scan). */
+data class RecentAiRequestGroup(
+    val feature: String,
+    val storyId: String?,
+    val models: List<String>,
+    val records: List<AiUsageRecord>,
+    val totalTokens: Long?,
+    val unknownTokenCount: Int,
+    val costUsd: String?,
+    val unknownCostCount: Int,
+    val latestTimestamp: Long,
+    val earliestTimestamp: Long,
+) {
+    val requestCount: Int get() = records.size
+    val primaryModel: String? get() = models.firstOrNull()
+}
+
 /** Pure ledger rules. Network clients and storage should hand attempts to this object. */
 @Suppress("TooManyFunctions") // One cohesive set of exact ledger transforms and display helpers.
 object AiUsagePlanning {
     const val MAX_RECENT_RECORDS = 500
 
+    private const val ADJACENT_COVER_TOPUP_MERGE_WINDOW_MS = 60_000L
+    private const val FEATURE_COVER_SELECTION = "cover_selection"
     private val ZERO = BigDecimal.ZERO
 
     /** Adds one API attempt, preserving unknown costs instead of silently treating them as zero. */
@@ -155,6 +174,87 @@ object AiUsagePlanning {
     fun normalizeCost(costUsd: String?): String? {
         val value = costUsd?.trim()?.takeIf { it.isNotEmpty() }?.let(::parseCost) ?: return null
         return value.stripTrailingZeros().toPlainString()
+    }
+
+    /**
+     * Collapses multi-call operations of the same feature (such as decision-model scans or retries)
+     * into newest-first display groups before applying [limit], so a burst of small calls does not
+     * push other recent operations out of the list.
+     */
+    fun groupRecentRecords(
+        records: List<AiUsageRecord>,
+        limit: Int,
+    ): List<RecentAiRequestGroup> {
+        if (records.isEmpty() || limit <= 0) return emptyList()
+        val buckets = LinkedHashMap<Any, MutableList<AiUsageRecord>>()
+        records.asReversed().forEachIndexed { index, record ->
+            val key: Any =
+                if (record.operationId.isNotBlank()) {
+                    record.operationId to record.feature
+                } else {
+                    index
+                }
+            buckets.getOrPut(key) { mutableListOf() }.add(record)
+        }
+        val merged = mutableListOf<MutableList<AiUsageRecord>>()
+        for (bucket in buckets.values) {
+            val previous = merged.lastOrNull()
+            if (previous != null && canMergeLegacyCoverTopUp(previous, bucket)) {
+                previous.addAll(bucket)
+            } else {
+                merged.add(bucket)
+            }
+        }
+        return merged.take(limit).map(::toGroup)
+    }
+
+    /** Total tokens reported for a single receipt, falling back to prompt + completion when both exist. */
+    fun recordTokens(record: AiUsageRecord): Long? {
+        record.totalTokens?.takeIf { it >= 0L }?.let { return it }
+        val prompt = record.promptTokens?.takeIf { it >= 0L } ?: return null
+        val completion = record.completionTokens?.takeIf { it >= 0L } ?: return null
+        return prompt + completion
+    }
+
+    /** Coalesces back-to-back cover scans written before main + phase top-up shared an operation ID. */
+    private fun canMergeLegacyCoverTopUp(
+        newer: List<AiUsageRecord>,
+        older: List<AiUsageRecord>,
+    ): Boolean {
+        val newerFirst = newer.first()
+        val olderFirst = older.first()
+        if (newerFirst.operationId.isBlank() || olderFirst.operationId.isBlank()) return false
+        if (newerFirst.feature != FEATURE_COVER_SELECTION || olderFirst.feature != FEATURE_COVER_SELECTION) return false
+        val storyId = newerFirst.storyId?.takeIf { it.isNotBlank() } ?: return false
+        if (storyId != olderFirst.storyId) return false
+        val newerModel = newer.firstNotNullOfOrNull { it.model.takeIf(String::isNotBlank) }
+        val olderModel = older.firstNotNullOfOrNull { it.model.takeIf(String::isNotBlank) }
+        if (newerModel != null && olderModel != null && newerModel != olderModel) return false
+        val gapMs = newer.minOf(AiUsageRecord::timestamp) - older.maxOf(AiUsageRecord::timestamp)
+        return gapMs in 0L..ADJACENT_COVER_TOPUP_MERGE_WINDOW_MS
+    }
+
+    private fun toGroup(records: List<AiUsageRecord>): RecentAiRequestGroup {
+        val knownCosts = records.mapNotNull { normalizeCost(it.costUsd)?.let(::BigDecimal) }
+        val costUsd =
+            if (knownCosts.isEmpty()) {
+                null
+            } else {
+                knownCosts.fold(ZERO, BigDecimal::add).stripTrailingZeros().toPlainString()
+            }
+        val tokenCounts = records.mapNotNull(::recordTokens)
+        return RecentAiRequestGroup(
+            feature = records.first().feature,
+            storyId = records.firstNotNullOfOrNull { it.storyId?.takeIf(String::isNotBlank) },
+            models = records.mapNotNull { it.model.takeIf(String::isNotBlank) }.distinct(),
+            records = records.toList(),
+            totalTokens = tokenCounts.takeIf { it.isNotEmpty() }?.sum(),
+            unknownTokenCount = records.size - tokenCounts.size,
+            costUsd = costUsd,
+            unknownCostCount = records.size - knownCosts.size,
+            latestTimestamp = records.maxOf(AiUsageRecord::timestamp),
+            earliestTimestamp = records.minOf(AiUsageRecord::timestamp),
+        )
     }
 
     private fun parseCost(value: String): BigDecimal? =
