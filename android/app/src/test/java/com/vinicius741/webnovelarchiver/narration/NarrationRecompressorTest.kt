@@ -68,6 +68,39 @@ class NarrationRecompressorTest {
         }
 
     @Test
+    fun codecFailuresPauseThePassInsteadOfEndingIt() =
+        runTest {
+            // Five failures: three in a row pause the pass, and the chapters that failed are tried again after it.
+            val codec = FakeClipCodec().apply { refuseNext = 5 }
+            val store = NarrationStore(folder.newFolder(), codec).apply { load() }
+            (1..5).forEach { legacyPack(store, "c$it", frames = 100 + it) }
+            val recompressor = NarrationRecompressor(store, now = { testScheduler.currentTime }) {}
+            recompressor.run()
+            assertTrue(store.allPacks().all { it.index.codec == NarrationStore.CODEC_AAC })
+            assertTrue("the pass waited before retrying", testScheduler.currentTime >= 60_000L)
+            val status = recompressor.status.value
+            assertEquals(NarrationCompressionStatus.Phase.DONE, status.phase)
+            assertEquals(5, status.convertedChapters)
+            assertEquals(0, status.remainingChapters)
+            assertEquals(0, status.failedChapters)
+            assertTrue(status.convertedBytesBefore > 0)
+        }
+
+    @Test
+    fun aChapterThatKeepsFailingIsGivenUpOnAndCounted() =
+        runTest {
+            val codec = FakeClipCodec().apply { refuse = true }
+            val store = NarrationStore(folder.newFolder(), codec).apply { load() }
+            (1..2).forEach { legacyPack(store, "c$it", frames = 100 + it) }
+            val recompressor = NarrationRecompressor(store) {}
+            recompressor.run()
+            val status = recompressor.status.value
+            assertEquals(NarrationCompressionStatus.Phase.DONE, status.phase)
+            assertEquals(2, status.failedChapters)
+            assertEquals(2, status.remainingChapters)
+        }
+
+    @Test
     fun aChapterGenerationInterruptsIsConvertedOnceIdleAndNotCountedAsFailing() =
         runTest {
             val codec = FakeClipCodec()

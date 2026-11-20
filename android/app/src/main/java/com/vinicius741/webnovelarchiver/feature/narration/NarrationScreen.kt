@@ -69,6 +69,7 @@ internal fun ScreenHost.showNarration() {
     val liveStatus = NarrationLiveStatus(this, hideWhenIdle = true) { banner -> banner.storyId?.let { showStoryChapters(it) } }
     val runningRow = RunningJobRow()
     val nowCard = ListenNowCard(this)
+    val compression = CompressionStatusView(app)
     val scroller =
         ScrollView(app).apply {
             isFillViewport = true
@@ -95,7 +96,7 @@ internal fun ScreenHost.showNarration() {
             )
         }
         val queueBox = section { queueSection(host, document, runningRow, liveStatus.takeIf { sideBySide }) }
-        val generatedBox = section { generatedSection(host, audio) }
+        val generatedBox = section { generatedSection(host, audio, compression) }
         if (sideBySide) {
             content.addView(sideBySide(queueBox, generatedBox))
         } else {
@@ -133,6 +134,7 @@ internal fun ScreenHost.showNarration() {
             liveStatus.observe(host, this)
             launch { ttsEngine.playbackState.collect { nowCard.bind(it.snapshot) } }
             launch { coordinator.progress.collect(runningRow::bind) }
+            launch { coordinator.compression.collect { compression.bind(it, coordinator.store.totalBytes()) } }
             val runningJob = coordinator.progress.map { it?.job?.id }.distinctUntilChanged()
             // Keep-ahead and speed measurements change without anything to rebuild (the stepper and
             // the live banner show them), so they are left out; a rebuild would also cut a held stepper.

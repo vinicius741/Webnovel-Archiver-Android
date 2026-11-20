@@ -96,6 +96,9 @@ class NarrationCoordinator internal constructor(
     /** Whether the worker may run (its foreground service is up); queued work with this false is waiting on Android. */
     val generationRunning: StateFlow<Boolean> get() = generationAllowed
 
+    /** Where the conversion of uncompressed packs stands. */
+    internal val compression: StateFlow<NarrationCompressionStatus> get() = recompressor.status
+
     /** Bumps when a pack is published or deleted. */
     val packsRevision: StateFlow<Long> get() = store.revision
 

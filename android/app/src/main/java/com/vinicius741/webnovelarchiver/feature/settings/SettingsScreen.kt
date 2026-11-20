@@ -13,6 +13,8 @@ import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.data.repository.listBackupFiles
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
+import com.vinicius741.webnovelarchiver.feature.narration.CompressionStatusView
+import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -151,10 +153,14 @@ private fun ScreenHost.refreshHubSummaries(shown: HubSummaries?) {
     }
 }
 
-/** "On this phone": novels, chapters offline, generated audio, and the newest backup file. */
+/**
+ * "On this phone": novels, chapters offline, generated audio (with the background compression of
+ * older audio while it runs), and the newest backup file.
+ */
 private fun ScreenHost.addPhoneSummaryCard(container: LinearLayout) {
     lateinit var values: List<TextView>
     lateinit var backupLine: TextView
+    val compression = CompressionStatusView(app)
 
     fun fill(summary: PhoneSummary) {
         val numbers = NumberFormat.getIntegerInstance()
@@ -169,6 +175,12 @@ private fun ScreenHost.addPhoneSummaryCard(container: LinearLayout) {
     container.tintedCard(ThemeManager.colors.primary) {
         addView(makeEyebrow(context, "On this phone"))
         values = statGrid(listOf("novels", "chapters offline", "audio"))
+        addView(
+            compression.view,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(Spacing.MD)
+            },
+        )
         backupLine =
             makeText(context, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
                 setPadding(0, dp(Spacing.SM + 2), 0, 0)
@@ -192,6 +204,17 @@ private fun ScreenHost.addPhoneSummaryCard(container: LinearLayout) {
         lastPhoneSummary = summary
         fill(summary)
     }
+    // Each converted chapter shrinks the audio: the stat and the status line follow it live.
+    val store = narration.store
+    screenObserver =
+        scope.launch {
+            narration.compression.collect { status ->
+                val total = withContext(Dispatchers.IO) { store.totalBytes() }
+                values[2].text = NarrationPlanning.formatBytes(total)
+                lastPhoneSummary = lastPhoneSummary?.copy(audioBytes = total)
+                compression.bind(status, total)
+            }
+        }
 }
 
 private var lastPhoneSummary: PhoneSummary? = null

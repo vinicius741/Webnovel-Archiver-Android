@@ -42,12 +42,20 @@ internal fun ScreenHost.generatedAudio(): GeneratedAudio {
 internal fun LinearLayout.generatedSection(
     host: ScreenHost,
     audio: GeneratedAudio,
+    compression: CompressionStatusView,
 ) {
     val attached = audio.attached
     val detached = audio.detached
     val used = host.narration.store.totalBytes()
     val free = host.narration.freeBytes()
     listenSectionLabel("Generated audio", "${NarrationPlanning.formatBytes(used)} · ${NarrationPlanning.formatBytes(free)} free")
+    compression.bind(host.narration.compression.value, used)
+    addView(
+        compression.view,
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = context.dp(Spacing.MD)
+        },
+    )
     if (attached.isEmpty()) {
         listenHint("No chapter audio yet. ${NarrationScreenPlanning.HOW_TO_GENERATE}")
     } else {

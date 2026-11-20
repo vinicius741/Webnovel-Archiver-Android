@@ -11,6 +11,9 @@ internal class FakeClipCodec(
 ) : NarrationClipCodec {
     var encodes = 0
     var refuse = false
+
+    /** Refuses this many encodes, then works: a codec failing for a while, as a reclaimed one does. */
+    var refuseNext = 0
     var onEncode: () -> Unit = {}
     var sampleRates: Set<Int>? = null
 
@@ -18,6 +21,10 @@ internal class FakeClipCodec(
 
     override fun encode(clip: TtsPcmClip): NarrationEncodedClip? {
         if (refuse || !supports(clip.sampleRate)) return null
+        if (refuseNext > 0) {
+            refuseNext--
+            return null
+        }
         encodes++
         onEncode()
         val audio = ByteArray(delay * 2) + clip.pcm

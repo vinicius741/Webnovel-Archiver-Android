@@ -108,8 +108,8 @@ is compressed.
 
 ## Converting existing packs (`NarrationRecompressor`)
 
-Once the library is ready at startup, the coordinator runs one pass over every pack whose index
-still says `pcm`:
+Once the library is ready at startup, the coordinator starts one pass over every pack whose index
+still says `pcm`, and keeps at it until none is left that it can convert:
 
 - One chapter at a time, largest first, on its own thread at background priority. That priority
   covers the app's feeding loop; Android's software codecs run in the system's media process.
@@ -132,10 +132,25 @@ still says `pcm`:
 - If the process dies mid-chapter, only that chapter's unfinished version is lost; the startup
   sweep removes it. The next start continues with the remaining PCM packs.
 - A pack that cannot be compressed (a damaged clip, a sample rate AAC does not define) is skipped
-  and stays as PCM; it never holds back the packs after it. Three codec failures in a row (the
-  codec refusing or failing on clips it should take: it does not work on this phone) stop the pass
-  until the next start. Each conversion is logged as `narration_compressed` (bytes before and
-  after), and the pass ends with `narration_compression_finished`. The pass's thread ends with it.
+  and stays as PCM; it never holds back the packs after it.
+- Codec failures pause the pass instead of ending it. On the owner's phone (2026-11-20) the
+  platform encoder threw a bare `CodecException` from `queueInputBuffer` four times while a
+  chapter was playing, after 146 chapters converted fine; the old rule ("three in a row stop the
+  pass until the next start") then left about half the PCM in place for days, because the process
+  rarely restarts. Now three failures in a row pause the pass for 1, 5, 15, then 60 minutes; the
+  chapters that failed are tried again after the pause, and a chapter is given up on (until the
+  next start) only after three failures of its own. Each failure is logged as
+  `narration_compression_failed` with the chapter and the codec's `errorCode`, `isTransient`,
+  `isRecoverable` and diagnostic info; each pause as `narration_compression_paused`.
+- Each conversion is logged as `narration_compressed` (bytes before and after), and the pass ends
+  with `narration_compression_finished` (converted, saved, given up, remaining). The pass's thread
+  ends with it.
+- `NarrationRecompressor.status` (`NarrationCoordinator.compression`) publishes the phase
+  (compressing, waiting for generation, paused until a time, done), chapters and bytes still PCM,
+  and what this start converted and saved. Settings' "On this phone" card and Listen › Generated
+  show it live through `CompressionStatusView`, worded by `NarrationCompressionText`: what is
+  left, a progress bar, the space saved so far and where the audio total is heading (the
+  remaining PCM shrunk by the ratio seen so far, or 17.5% before any conversion).
 
 Free-space estimates for new chapters use 9 bytes per audio millisecond (64 kbit/s plus framing).
 
