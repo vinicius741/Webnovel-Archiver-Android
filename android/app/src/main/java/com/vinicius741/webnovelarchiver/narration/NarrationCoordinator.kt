@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.narration
 
 import android.app.ActivityManager
 import android.content.Context
+import android.os.Process
 import android.os.StatFs
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
@@ -22,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -34,6 +36,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.Executors
 
 /**
  * Process-wide owner of generated narration (one instance in `AppContainer`): the pack store, the
@@ -53,7 +56,7 @@ class NarrationCoordinator internal constructor(
     private val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    val store = NarrationStore(root)
+    val store = NarrationStore(root, AacNarrationCodec())
     private val queue = NarrationQueue(File(root, QUEUE_FILE))
     private val source = RepositoryNarrationSource(repository, root)
     private val generationAllowed = MutableStateFlow(false)
@@ -66,6 +69,21 @@ class NarrationCoordinator internal constructor(
             onPublished = ::onPublished,
             generationAllowed = generationAllowed,
         )
+
+    /** Converts packs made before compression, on a background-priority thread of its own. */
+    private val recompressor =
+        NarrationRecompressor(store, isIdle = { generator.progress.value == null }) { generator.progress.first { it == null } }
+
+    /** Its thread ends with the pass ([recompressDispatcher] is closed once the pass is over). */
+    private val recompressDispatcher =
+        Executors
+            .newSingleThreadExecutor { task ->
+                Thread({
+                    Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+                    task.run()
+                }, "narration-recompress")
+            }.asCoroutineDispatcher()
+    private val recompressScope = CoroutineScope(SupervisorJob() + recompressDispatcher)
 
     /** Fingerprints of chapters with packs, so chapter lists need not prepare every chapter's text. */
     private val fingerprints = NarrationFingerprints(File(context.cacheDir, FINGERPRINTS_FILE), BuildConfig.VERSION_CODE.toString())
@@ -108,6 +126,10 @@ class NarrationCoordinator internal constructor(
             }.onFailure { Timber.w(it, "Narration sweep failed") }
             generator.start(workerScope)
             if (hasRunnableWork()) startService()
+            recompressScope
+                .launch {
+                    runCatching { recompressor.run() }.onFailure { Timber.w(it, "Narration recompression stopped") }
+                }.invokeOnCompletion { recompressDispatcher.close() }
         }
     }
 

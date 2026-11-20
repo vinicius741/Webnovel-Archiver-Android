@@ -35,11 +35,22 @@ internal class PackTtsOutput(
     }
 
     override fun load(request: TtsOutputLoad) {
-        val loaded = requireNotNull(request.pack) { "A pack output needs a pack" }
+        val requested = requireNotNull(request.pack) { "A pack output needs a pack" }
         generation++
         val sent = generation
         releasePack()
-        store.retain(loaded)
+        // A background conversion may have replaced the pack since it was looked up; retain says which to read.
+        val loaded =
+            store.retain(requested) ?: run {
+                // Stop the previous chapter's feed: its pack was just released.
+                player.stop()
+                dispatch {
+                    if (sent == generation) {
+                        listener.onError(TtsPlaybackError(TtsPlaybackErrorKind.AudioNotGenerated, detail = "pack replaced"))
+                    }
+                }
+                return
+            }
         pack = loaded
         applyDurations(request.timeline, loaded)
         val reportedMissing = AtomicBoolean(false)

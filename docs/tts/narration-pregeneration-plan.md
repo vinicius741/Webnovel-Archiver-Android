@@ -59,10 +59,14 @@ not on the phone generates on the user's computers first, then plays (see `built
 
 ## 1. Storage: the chapter pack
 
-### Format: uncompressed per-sentence clips (v1)
+### Format: per-sentence clips (v1 PCM, compressed AAC since 2026-11-20)
 
-Each sentence is stored as its own file, in the same format `TtsAudioCache` uses today (a 4-byte
-sample-rate header plus 16-bit mono PCM, already trimmed with the 15 ms pad and 5 ms fade).
+Each sentence is stored as its own file, already trimmed with the 15 ms pad and 5 ms fade. Since
+2026-11-20 a clip is AAC-LC at 64 kbit/s with its exact length and codec delay in a header
+(`NNNN.clip`, `NarrationClipFormat`), and packs made before that are converted in the background.
+`narration-audio-compression.md` has the measurements and the design. The rest of this section is
+the original v1 decision: a 4-byte sample-rate header plus 16-bit mono PCM (`NNNN.pcm`), which still
+plays.
 
 Why not AAC, which was the first draft: both reviewers showed that cutting sentences back out of one
 lossy stream depends on encoder priming that `MediaMuxer`/`MediaExtractor` do not report reliably,
@@ -74,7 +78,9 @@ playback reads a clip with one file read: no decoder, no decode cache, exact dur
 Cost: 2.9 MB per minute at 24 kHz, about 55 MB for a 20-minute chapter. The Narration screen shows
 the space used and free, per story and per chapter, and deletes on request. Compression stays
 possible later: `index.json` carries `"codec": "pcm"`, so a future lossless (FLAC) or validated
-lossy codec can sit next to it without breaking existing packs.
+lossy codec can sit next to it without breaking existing packs. (That happened: the codec delay is
+now measured on the phone and stored per clip instead of trusted from a muxer, and silence trimming
+and phrase-pause detection were checked to behave identically after AAC 64k.)
 
 ### Location and names
 
@@ -88,8 +94,8 @@ narration/
     current                     name of the published version (written by rename)
     v-<id>/
       recipe.json               immutable: what this version is generated from
-      0000.pcm … NNNN.pcm       one clip per narration sentence (chunk index)
-      title.pcm                 the spoken chapter title, when there is one
+      0000.clip … NNNN.clip     one clip per narration sentence (chunk index); `.pcm` in older packs
+      title.clip                the spoken chapter title, when there is one
       index.json                written last: durations, bytes, time. Its presence means complete.
 ```
 
@@ -208,7 +214,7 @@ Failure handling:
 - Empty output 5 times in a row means the voice is broken, as in today's renderer.
 - Out of space (`IOException` while free space is below the margin) **pauses the queue** with "Not
   enough storage". The job's clips are kept, so Resume continues where it stopped.
-- Free space is checked before each chapter: its estimated PCM size, from text length and the
+- Free space is checked before each chapter: its estimated compressed size, from text length and the
   measured ms per character, plus a 200 MB margin.
 
 ### Service, Doze and background starts
@@ -290,7 +296,7 @@ itself when generation finishes: a pause is the listener's decision.
 ### `PackTtsOutput`
 
 - It implements `TtsOutput` with a `TtsPcmPlayer` and a `TtsPcmFeed` backed by the pack. Speech
-  item `k` maps to clip `k`, and the title item maps to `title.pcm` (or plays as empty if the pack
+  item `k` maps to clip `k`, and the title item maps to the title clip (or plays as empty if the pack
   has none).
 - The fingerprint guarantees the sentence texts are the ones generated. A chapter title changed
   since generation does not invalidate the pack: the pack's own title is spoken.

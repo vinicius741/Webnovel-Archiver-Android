@@ -3,7 +3,6 @@ package com.vinicius741.webnovelarchiver.narration
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
-import com.vinicius741.webnovelarchiver.tts.BYTES_PER_FRAME
 import com.vinicius741.webnovelarchiver.tts.TtsPcmClip
 import com.vinicius741.webnovelarchiver.tts.TtsPcmPlanning
 import kotlinx.coroutines.CancellationException
@@ -205,7 +204,7 @@ internal class NarrationGenerator(
             return if (it == JobOutcome.Interrupted) interrupted(job, versionDir) else it
         }
         checkBeforePublish(job, recipe, versionDir, startedGeneration)?.let { return it }
-        val index = buildIndex(versionDir, recipe) ?: return JobOutcome.Failed("The voice changed sample rate mid-chapter")
+        val index = store.indexFor(versionDir, recipe, now()) ?: return JobOutcome.Failed("The voice changed sample rate mid-chapter")
         var pack: NarrationPack? = null
         // Serialize publication with queue edits, including removal and voice replacement.
         queue.update { document ->
@@ -299,16 +298,21 @@ internal class NarrationGenerator(
                 val (target, sentence) = item
                 if (target.isFile) continue
                 if (done > 0 && done % REFIT_CHECK_CLIPS == 0) voice.fitToDevice()
-                val reused = reuse[sentence]?.let(store::readClip)
+                val reusable = reuse[sentence]?.takeIf { store.clipInfo(it) != null }
                 ahead.fill(done)
-                // Started ahead unless a reusable clip was expected; one that turns out unreadable is generated now.
-                val pending = ahead.take(done) ?: if (reused == null) ahead.start(done) else null
-                val generated = pending?.let { ahead.await(it, done, interrupted) }
+                // Started ahead unless a reusable clip was expected. That one is copied as stored (a
+                // compressed clip is never compressed twice); one that turns out unreadable is generated now.
+                val started = ahead.take(done)
+                if (started == null && reusable != null && store.copyClip(reusable, target)) {
+                    consecutiveEmpty = 0
+                    continue
+                }
+                val generated = ahead.await(started ?: ahead.start(done), done, interrupted)
                 if (generated === Interrupt) return@coroutineScope stop(JobOutcome.Interrupted)
                 val clip =
-                    reused ?: generated as TtsPcmClip?
+                    generated as TtsPcmClip?
                         ?: return@coroutineScope stop(JobOutcome.Failed("Could not generate: \"${sentence.take(FAILED_TEXT_CHARS)}\""))
-                consecutiveEmpty = if (clip.pcm.isEmpty() && reused == null) consecutiveEmpty + 1 else 0
+                consecutiveEmpty = if (clip.pcm.isEmpty()) consecutiveEmpty + 1 else 0
                 if (consecutiveEmpty >= MAX_CONSECUTIVE_EMPTY) return@coroutineScope stop(JobOutcome.Failed("The voice produced no audio"))
                 store.writeClip(target, clip)
             }
@@ -396,31 +400,6 @@ internal class NarrationGenerator(
         } finally {
             temporary.delete()
         }
-    }
-
-    private fun buildIndex(
-        versionDir: File,
-        recipe: NarrationRecipe,
-    ): NarrationPackIndex? {
-        val clips =
-            recipe.sentences.indices.map { store.clipFile(versionDir, it) } +
-                listOfNotNull(recipe.title?.let { store.titleFile(versionDir) })
-        val rates = clips.mapNotNull { file -> store.readClip(file)?.takeIf { it.pcm.isNotEmpty() }?.sampleRate }.toSet()
-        if (rates.size > 1) return null
-        val sampleRate = rates.firstOrNull() ?: DEFAULT_SAMPLE_RATE
-
-        fun durationOf(file: File): Long =
-            TtsPcmPlanning.framesToMs(((file.length() - CLIP_HEADER_BYTES).coerceAtLeast(0L)) / BYTES_PER_FRAME, sampleRate)
-        val durations = recipe.sentences.indices.map { durationOf(store.clipFile(versionDir, it)) }
-        val title = recipe.title?.let { durationOf(store.titleFile(versionDir)) }
-        return NarrationPackIndex(
-            sampleRate = sampleRate,
-            sentenceDurationsMs = durations,
-            titleDurationMs = title,
-            totalDurationMs = durations.sum() + (title ?: 0L),
-            bytes = clips.sumOf { it.length() },
-            generatedAt = now(),
-        )
     }
 
     /** A removed job's unfinished version is dropped now; a paused one keeps it to resume. */
@@ -608,8 +587,6 @@ internal class NarrationGenerator(
         /** How often (in clips) a long chapter re-fits the voice, e.g. after the app went to the background. */
         const val REFIT_CHECK_CLIPS = 40
         const val FAILED_TEXT_CHARS = 60
-        const val DEFAULT_SAMPLE_RATE = 24_000
-        const val CLIP_HEADER_BYTES = 4L
         const val MIN_STATS_CHARACTERS = 500L
         const val MIN_STATS_REAL_MS = 2_000L
     }

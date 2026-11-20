@@ -25,8 +25,8 @@ object NarrationPlanning {
     /** Kokoro on the owner's phone: about 2.5x real time. Replaced once generation is measured. */
     const val DEFAULT_SPEED = 2.0
 
-    /** 16-bit mono at the 24 kHz Kokoro and most Android voices use. */
-    const val BYTES_PER_AUDIO_MS = 48L
+    /** AAC at 64 kbit/s (8 bytes per ms) plus the clips' framing, rounded up. */
+    const val BYTES_PER_AUDIO_MS = 9L
 
     /** Room kept free beyond a chapter's estimated size before generating it. */
     const val FREE_SPACE_MARGIN_BYTES = 200L * 1024L * 1024L
