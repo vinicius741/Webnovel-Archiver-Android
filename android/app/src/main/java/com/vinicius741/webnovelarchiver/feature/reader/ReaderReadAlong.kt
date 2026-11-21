@@ -11,7 +11,6 @@ import android.webkit.WebView
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.feature.narration.playIfGenerated
-import com.vinicius741.webnovelarchiver.feature.story.navigateChapter
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
@@ -307,14 +306,14 @@ internal class ReaderReadAlong(
                 val route = host.navigator.current
                 if (route !is AppRoute.Reader || route.storyId != storyId || route.chapterId != chapterId) return@post
                 val story = host.repository.story(storyId) ?: return@post
-                val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return@post
+                if (story.chapters.none { it.id == chapterId }) return@post
                 // When this chapter is the active TTS session, advance the session (keeping a pause)
                 // so read-along follows to the next chapter; otherwise navigate without touching TTS.
                 val playing = host.ttsEngine.playbackState.value.snapshot
                 if (playing?.storyId == storyId && playing.chapterId == chapterId) {
                     TtsForegroundService.command(host.app, TtsForegroundService.ACTION_NEXT_CHAPTER)
                 } else {
-                    host.navigateChapter(story, chapter, 1)
+                    readableChapter(story.chapters, chapterId, 1)?.let { host.showReader(storyId, it) }
                 }
             }
         }

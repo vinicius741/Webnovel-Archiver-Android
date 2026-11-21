@@ -138,19 +138,37 @@ internal class ReaderDocumentPreparer(
                     persistedSession = input.persistedSession,
                     colors = colors,
                     webViewHtml =
-                        ReaderContentRenderer.document(
-                            input.chapter.title,
-                            annotated.annotatedHtml,
-                            input.display.readerFontScale,
-                            colors,
-                            includeTtsScript = true,
-                            frame = readerFrame(input.story, input.chapterIndex),
-                        ),
+                        readerWebViewHtml(input.story, input.chapter, input.chapterIndex, annotated, input.display.readerFontScale, colors),
                 ),
             )
         }
     }
 }
+
+/** The page the WebView loads: the annotated chapter with the read-along script, at [fontScale]. */
+private fun readerWebViewHtml(
+    story: Story,
+    chapter: Chapter,
+    chapterIndex: Int,
+    annotated: TtsTextPreparation.TtsAnnotatedHtml,
+    fontScale: Float,
+    colors: ReaderDocumentColors,
+): String =
+    ReaderContentRenderer.document(
+        chapter.title,
+        annotated.annotatedHtml,
+        fontScale,
+        colors,
+        includeTtsScript = true,
+        frame = readerFrame(story, chapterIndex),
+    )
+
+/** This document at another text size (the reader settings change it while the page is open). */
+internal fun ReaderDocument.withFontScale(fontScale: Float): ReaderDocument =
+    copy(
+        display = display.copy(readerFontScale = fontScale),
+        webViewHtml = readerWebViewHtml(story, chapter, chapterIndex, annotated, fontScale, colors),
+    )
 
 /** The kicker above the chapter and what follows it: the next downloaded chapter, or why there is none. */
 internal fun readerFrame(

@@ -1,18 +1,10 @@
 package com.vinicius741.webnovelarchiver.feature.reader
 
-import android.view.Gravity
-import android.widget.ImageView
-import android.widget.LinearLayout
-import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.feature.reader.ReaderContentRenderer.ReaderDocumentColors
-import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
-import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.iconButton
 
 /** The v3 reading page: a warm near-black sheet with soft ivory text and the gold highlight. */
 internal fun readerDocumentColors(): ReaderDocumentColors =
@@ -50,58 +42,3 @@ internal fun currentReaderSnapshot(
         isPlaying = !session.isPaused,
     )
 }
-
-internal fun ScreenHost.readerTtsTransport(
-    snapshot: TtsPlaybackSnapshot?,
-    onPlayPause: (ImageView) -> Unit,
-    onPrev: () -> Unit,
-    onPlayPauseTap: () -> Unit,
-    onNext: () -> Unit,
-    onStop: () -> Unit,
-): LinearLayout {
-    val colors = ThemeManager.colors
-    val bar =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(colors.elevation1)
-            setPadding(dp(Spacing.MD), dp(Spacing.XS), dp(Spacing.MD), dp(Spacing.XS))
-        }
-
-    fun transportIcon(
-        desc: String,
-        icon: Int,
-        action: () -> Unit,
-    ) = app.iconButton(icon, desc, colors.primary, onClick = action).apply {
-        (layoutParams as LinearLayout.LayoutParams).apply {
-            marginStart = dp(Spacing.XS)
-            marginEnd = dp(Spacing.XS)
-        }
-    }
-    bar.addView(transportIcon("Previous sentence", R.drawable.wna_skip_prev, onPrev))
-    val isPaused = snapshot?.isPaused != false
-    val playPause =
-        transportIcon(
-            if (isPaused) "Play TTS" else "Pause TTS",
-            if (isPaused) R.drawable.wna_play else R.drawable.wna_pause,
-            onPlayPauseTap,
-        )
-    onPlayPause(playPause)
-    bar.addView(playPause)
-    bar.addView(transportIcon("Next sentence", R.drawable.wna_skip_next, onNext))
-    bar.addView(
-        android.view.View(app).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
-        },
-    )
-    bar.addView(transportIcon("Stop TTS", R.drawable.wna_stop, onStop))
-    return bar
-}
-
-/** The reader route shown now when it is one of [story]'s chapters. */
-internal fun ScreenHost.readerOfStory(
-    story: com.vinicius741.webnovelarchiver.domain.model.Story,
-): com.vinicius741.webnovelarchiver.navigation.AppRoute.Reader? =
-    (navigator.current as? com.vinicius741.webnovelarchiver.navigation.AppRoute.Reader)?.takeIf { route ->
-        route.storyId == story.id && story.chapters.any { it.id == route.chapterId }
-    }

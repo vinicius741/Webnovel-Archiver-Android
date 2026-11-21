@@ -7,7 +7,6 @@ import com.vinicius741.webnovelarchiver.epub.EpubConfigPlanning
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.details.storyTabShowing
-import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.updates.isSyncingFromUpdates
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.storyOperation
@@ -123,27 +122,6 @@ internal fun ScreenHost.generateEpub(
             toast(error.message ?: "EPUB failed")
             showStoryPage(story.id)
         }
-    }
-}
-
-internal fun ScreenHost.navigateChapter(
-    story: Story,
-    chapter: Chapter,
-    delta: Int,
-) {
-    // Walk from the current chapter toward delta and open the first downloaded chapter, skipping
-    // gaps. Non-downloaded chapters aren't readable (no reader placeholder), so prev/next should land
-    // on real content rather than a dead end. If there is no downloaded chapter in that direction,
-    // do nothing — matching the previous `?: return` behavior at the end of the list.
-    val startIndex = story.chapters.indexOfFirst { it.id == chapter.id }
-    if (startIndex < 0) return
-    var i = startIndex + delta
-    while (i in story.chapters.indices) {
-        if (story.chapters[i].downloaded) {
-            showReader(story.id, story.chapters[i].id)
-            return
-        }
-        i += delta
     }
 }
 
