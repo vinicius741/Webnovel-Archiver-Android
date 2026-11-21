@@ -171,7 +171,12 @@ Rules for screens:
 
 ### Phase 3 — Remaining state-heavy screens (≈1 screen group per change series, paced by owner QA)
 
-- [ ] AI Controls (Cover, Characters, Description tabs; removes the `Scaffold` coupling)
+- [x] AI Controls (Cover, Characters, Description tabs; removes the `Scaffold` coupling)
+  - Done as `AiControlsScreenModel` + `AiControlsRenderer`, with the app-level `AiAttention` holder for
+    drafts, unseen markers and chip failures, and description drafts on a process-wide
+    `AiDescriptionJobCoordinator`. The story page's `refreshPage` hook is gone (it observes
+    `coverToReview`). Not done: the Characters list and portraits could not be exercised on the
+    emulator (the simulator's chapters yield no character names).
 - [ ] Listen / Narration
 - [ ] Reader chrome (the WebView and read-along controller stay as they are; only screen state moves)
 - [ ] Library
@@ -230,3 +235,4 @@ The draft got these wrong. They are fixed above and recorded here so future audi
 | Date | Item | Commits | Main Kotlin lines after | `fun ScreenHost.` | Notes |
 |---|---|---|---|---|---|
 | 2026-11-21 | Phase 2 pilot: story page | `d749494`..`94a17d7` | 84,404 | 438 | Story page on `StoryPageScreenModel`; `detailsOperationSlot`/`detailsAiOperationSlot` and `DetailsBindings` removed; `appContainer` in `feature/` 93 → 84, ScreenHost properties 30 → 28. Pilot lines: details + story + operations 7,917 → 8,117 production, 876 → 1,421 test. Fixed the app-bar ⋮ menu acting on a story read at render time (cleanup counted chapters from before a download). Gate decision pending. |
+| 2026-11-21 | Phase 3: AI Controls | `7b257e9` (+ docs) | 85,067 | 408 | AI tab on `AiControlsScreenModel`; `AiControlsScreenState`, `AiControlsBinding`, the bridge's redraws, `refreshStoryHero` and the `Scaffold` coupling removed; `appContainer` in `feature/` 84 → 69, ScreenHost properties 28 → 27. Group lines (`feature/ai` + bridge + description jobs): 4,244 → 4,875 production, 169 → 722 test. Fixed: a description draft now survives activity recreation (process-wide job and holder). Changed lifetime: the open sub-tab and character page reset when the story leaves the history. |
