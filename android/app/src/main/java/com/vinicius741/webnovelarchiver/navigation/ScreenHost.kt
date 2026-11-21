@@ -107,14 +107,6 @@ interface ScreenHost {
     val updatesSyncState: UpdatesSyncState
 
     /**
-     * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by
-     * `storyId`. A story absent from the map defaults to expanded when it has active work or
-     * failures, collapsed otherwise. Survives the screen's periodic re-renders (which rebuild the
-     * whole tree) so a user's manual collapse isn't undone 30s later.
-     */
-    val storyExpandOverride: MutableMap<String, Boolean>
-
-    /**
      * What system Back does on the current screen, set by [com.vinicius741.webnovelarchiver.ui.screen]
      * (see [ScreenBack]). `null` before the first screen renders.
      */

@@ -1,9 +1,9 @@
 package com.vinicius741.webnovelarchiver.feature.downloads
 
+import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -20,7 +20,8 @@ internal data class QueueMenuEntry(
 )
 
 /** A v3 sheet with icon rows; tapping a row closes the sheet, then runs it. */
-internal fun ScreenHost.showQueueMenu(
+internal fun showQueueMenu(
+    app: Context,
     title: String,
     subtitle: String?,
     entries: List<QueueMenuEntry?>,

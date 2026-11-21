@@ -98,7 +98,6 @@ class MainActivity :
     override val backupExportState: BackupExportState = BackupExportState()
     override val cleanupScreenState: CleanupScreenState = CleanupScreenState()
     override val updatesSyncState: UpdatesSyncState = UpdatesSyncState()
-    override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
     override var rerender: (() -> Unit)? = null
