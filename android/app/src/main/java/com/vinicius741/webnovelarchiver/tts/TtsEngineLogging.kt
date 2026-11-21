@@ -13,15 +13,13 @@ internal object TtsEngineLogging {
         chapterId: String,
         chunkCount: Int,
         startIndex: Int,
-        initialized: Boolean,
     ) {
         Timber.i(
-            "TTS session start: story=%s chapter=%s chunks=%d startIndex=%d initialized=%b",
+            "TTS session start: story=%s chapter=%s chunks=%d startIndex=%d",
             storyId,
             chapterId,
             chunkCount,
             startIndex,
-            initialized,
         )
     }
 

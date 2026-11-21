@@ -11,13 +11,10 @@ internal enum class TtsOutputPhase {
     /** Nothing should sound: paused, stopped, errored, or between chapters. */
     Silent,
 
-    /** Playback was requested but the speech engine is still initializing; nothing sounds yet. */
-    WaitingForEngine,
-
     /** The output has been told to play. */
     Running,
     ;
 
-    /** Playback was requested, even if the engine cannot produce audio yet. */
+    /** Playback was requested. */
     val wantsAudio: Boolean get() = this != Silent
 }

@@ -28,10 +28,6 @@ internal class TtsLoadedSession {
     var fingerprint: String = ""
         private set
 
-    /**
-     * A story description speaks through the speech engine; a chapter plays only its generated audio.
-     */
-    val speaksLive: Boolean get() = session?.chapterId?.let(TtsDescriptionPlanning::isDescriptionSession) == true
     private var chapterIndex = -1
     private var chapterCount = 0
 
@@ -119,7 +115,7 @@ internal class TtsLoadedSession {
     /** Remembers where the listener is before a jump, so it can be undone. */
     fun recordJump(point: TtsTimelinePoint) {
         val current = session ?: return
-        if (TtsDescriptionPlanning.isDescriptionSession(current.chapterId) || chunks.isEmpty()) return
+        if (chunks.isEmpty()) return
         val place = savePoint(point)
         val entry =
             TtsHistoryEntry(
@@ -137,7 +133,6 @@ internal class TtsLoadedSession {
     fun snapshot(
         isPlaying: Boolean,
         point: TtsTimelinePoint,
-        isLiveOutput: Boolean,
         sleepTimer: TtsSleepTimerMode,
     ): TtsPlaybackSnapshot? {
         val base = TtsPlaybackState.snapshotForSession(session, chunks.size, isPlaying) ?: return null
@@ -146,9 +141,8 @@ internal class TtsLoadedSession {
             sleepTimerEndOfChapter = sleepTimer is TtsSleepTimerMode.EndOfChapter,
             positionMs = timeline?.positionMs(point.item, point.offsetMs) ?: 0L,
             durationMs = timeline?.totalMs() ?: 0L,
-            timingExact = !isLiveOutput && timeline?.isExact == true,
+            timingExact = timeline?.isExact == true,
             capturedAtElapsedMs = SystemClock.elapsedRealtime(),
-            isLiveOutput = isLiveOutput,
             chapterIndex = chapterIndex,
             chapterCount = chapterCount,
             olderText = olderText,

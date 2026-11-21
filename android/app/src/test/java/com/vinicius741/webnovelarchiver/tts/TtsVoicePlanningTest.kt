@@ -37,7 +37,7 @@ class TtsVoicePlanningTest {
     fun toVoiceInfoNullVoicesReturnsEmpty() {
         // A non-null Voice set can't be exercised in a pure JVM unit test: android.speech.tts.Voice
         // accessors (getName, hashCode, ...) are not mocked outside an instrumentation run. The
-        // sort/filter/map path is covered by TtsEngine.availableVoices on-device.
+        // sort/filter/map path is covered by TtsSpeechEngineHost.availableVoices on-device.
         assertTrue(TtsVoicePlanning.toVoiceInfo(null).isEmpty())
     }
 

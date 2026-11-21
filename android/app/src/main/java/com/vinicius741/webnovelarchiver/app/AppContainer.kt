@@ -241,24 +241,16 @@ class AppContainer internal constructor(
 
     val ttsEngine: TtsEngine =
         TtsEngine(
-            context = appContext,
             repository = repository,
             awaitRepositoryReady = {
                 repositoryStartup.awaitReady()
                 narration.awaitLoaded()
             },
-            builtIns = builtIns,
             narration = narration,
         )
 
     /** Starts load/recovery/hydration on the process IO scope without blocking Application. */
     fun init() {
-        // A chapter that started while a built-in model was still downloading switches to it once installed.
-        modelInstallers.values.forEach { installer ->
-            applicationScope.launch {
-                installer.state.collect { if (it is KokoroModelState.Installed) ttsEngine.refreshEngine() }
-            }
-        }
         runCatching {
             (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
                 .registerDefaultNetworkCallback(networkCallback)

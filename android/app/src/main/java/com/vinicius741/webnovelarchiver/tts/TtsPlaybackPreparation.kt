@@ -177,23 +177,8 @@ internal class TtsPlaybackPreparer(
     suspend fun persistedSession(): TtsSession? =
         withContext(ioDispatcher) { source.session() }?.takeIf(TtsSessionPlanning::isResumeEligible)
 
-    /** The next chapter's sentences for rendering ahead; marks nothing as read. */
-    suspend fun upcomingTexts(session: TtsSession): List<String> {
-        if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId)) return emptyList()
-        val next =
-            withContext(ioDispatcher) {
-                val story = source.story(session.storyId) ?: return@withContext null
-                TtsSessionPlanning.nextChapterIndex(story, session.chapterId)?.let { story.chapters[it] }
-            } ?: return emptyList()
-        val input = load(session.storyId, next.id) ?: return emptyList()
-        val prepared = builder.build(input, 0, speakTitle = true) ?: return emptyList()
-        return listOfNotNull(prepared.spokenTitle) + prepared.chunks
-    }
-
     suspend fun nextChapter(session: TtsSession): NextChapterOutcome {
-        // Description narration has no following chapter; finish playback.
         // Playback never moves the bookmark: only an explicit bookmark action does.
-        if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId)) return NextChapterOutcome.NoNextChapter
         return when (val next = lookupNextChapter(session)) {
             NextChapterLookup.NoNextChapter -> NextChapterOutcome.NoNextChapter
             // A missing story or a current chapter dropped from the list is ambiguity, not a proven
@@ -223,7 +208,6 @@ internal class TtsPlaybackPreparer(
         session: TtsSession,
         delta: Int,
     ): PreparedTtsPlayback? {
-        if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId)) return null
         val target =
             withContext(ioDispatcher) {
                 val story = source.story(session.storyId) ?: return@withContext null
@@ -295,8 +279,7 @@ private class TtsPlaybackBuilder(
         val announce =
             speakTitle &&
                 point.chunkIndex == 0 &&
-                input.settings.announceChapters &&
-                !TtsDescriptionPlanning.isDescriptionSession(input.chapter.id)
+                input.settings.announceChapters
         return PreparedTtsPlayback(
             story = input.story,
             chapter = input.chapter,

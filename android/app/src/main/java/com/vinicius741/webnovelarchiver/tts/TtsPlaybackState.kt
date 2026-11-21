@@ -30,8 +30,6 @@ data class TtsPlaybackSnapshot(
     val timingExact: Boolean = false,
     /** [android.os.SystemClock.elapsedRealtime] when [positionMs] was read. */
     val capturedAtElapsedMs: Long = 0L,
-    /** True when the speech engine plays the audio itself rather than this app. */
-    val isLiveOutput: Boolean = false,
     /**
      * The chapter plays audio made from text that has changed since, so its sentences do not line up
      * with the page: the reader shows no highlight and sentence taps do not seek.
