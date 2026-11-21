@@ -1,4 +1,4 @@
-package com.vinicius741.webnovelarchiver.feature.story
+package com.vinicius741.webnovelarchiver.operations
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -9,13 +9,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-internal data class ManualStorySyncResult(
+data class ManualStorySyncResult(
     val story: Story,
     val downloads: SyncDownloadPlan,
 )
 
 /** Fetches and plans on I/O. Progress callbacks may run off the main thread. */
-internal class ManualStorySync(
+class ManualStorySync(
     private val lookup: (String?, String) -> Story?,
     private val fetch: suspend (String, String?, StorySyncMode, (String) -> Unit) -> Story,
 ) {

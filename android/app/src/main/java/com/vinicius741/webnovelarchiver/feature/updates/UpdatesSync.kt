@@ -7,9 +7,9 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesCopy
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning
 import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
-import com.vinicius741.webnovelarchiver.feature.story.ManualStorySync
-import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadAction
-import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadPlan
+import com.vinicius741.webnovelarchiver.operations.ManualStorySync
+import com.vinicius741.webnovelarchiver.operations.SyncDownloadAction
+import com.vinicius741.webnovelarchiver.operations.SyncDownloadPlan
 import com.vinicius741.webnovelarchiver.feature.story.clearStoryOperation
 import com.vinicius741.webnovelarchiver.feature.story.handleManualSyncDownloads
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload

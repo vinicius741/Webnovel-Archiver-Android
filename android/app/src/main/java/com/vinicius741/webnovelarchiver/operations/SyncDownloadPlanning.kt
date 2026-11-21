@@ -1,4 +1,4 @@
-package com.vinicius741.webnovelarchiver.feature.story
+package com.vinicius741.webnovelarchiver.operations
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 

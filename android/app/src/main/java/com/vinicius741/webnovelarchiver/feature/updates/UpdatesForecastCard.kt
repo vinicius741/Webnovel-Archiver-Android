@@ -9,8 +9,8 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesCopy
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning.Overview
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning.Section
-import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.operations.SyncDownloadPlanning
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
