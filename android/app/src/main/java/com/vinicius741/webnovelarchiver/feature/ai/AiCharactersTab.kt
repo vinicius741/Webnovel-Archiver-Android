@@ -3,26 +3,15 @@ package com.vinicius741.webnovelarchiver.feature.ai
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.ai.CharacterJobKind
 import com.vinicius741.webnovelarchiver.ai.CharacterJobState
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.data.repository.characterPortraits
-import com.vinicius741.webnovelarchiver.data.repository.characterRoster
-import com.vinicius741.webnovelarchiver.data.repository.deleteCharacterPortrait
-import com.vinicius741.webnovelarchiver.data.repository.latestCharacterPortraits
-import com.vinicius741.webnovelarchiver.domain.model.CharacterPortrait
 import com.vinicius741.webnovelarchiver.domain.model.CharacterRole
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryCharacter
-import com.vinicius741.webnovelarchiver.feature.story.CoverViewerAction
-import com.vinicius741.webnovelarchiver.feature.story.CoverViewerItem
-import com.vinicius741.webnovelarchiver.feature.story.showCoverViewer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -44,8 +33,6 @@ import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.launch
 import java.io.File
 
 /*
@@ -62,69 +49,45 @@ internal const val HEADER_WIDTH_DP = 120
 
 internal fun ScreenHost.addAiCharactersTab(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
 ) {
     val slot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     container.addView(slot)
-    // A render replaces the progress line; the old one belongs to a detached tree.
-    aiControlsScreenState.characterProgress = null
-    val openId = aiControlsScreenState.openCharacters[story.id]
-    // The last loaded view renders at once, so a re-render keeps its scroll position; the files are
-    // then re-read and the tab re-renders only if they changed.
-    val cached = aiControlsScreenState.characterViews[story.id]?.takeIf { it.openId == openId }
-    cached?.let { renderCharactersTab(slot, story, it) }
-    scope.launch {
-        val roster = repository.characterRoster(story.id)
-        val open = roster?.firstOrNull { it.id == openId }
-        val fresh =
-            CharactersView(
-                openId = openId,
-                roster = roster,
-                thumbs = runCatching { repository.latestCharacterPortraits(story.id) }.getOrDefault(emptyMap()),
-                portraits = open?.let { runCatching { repository.characterPortraits(story.id, it.id) }.getOrNull() }.orEmpty(),
-            )
-        if (!frameIsAiControls(story.id) || aiControlsTab(story.id) != AiControlsTab.CHARACTERS || !slot.isAttachedToWindow) return@launch
-        if (fresh == cached) return@launch
-        aiControlsScreenState.characterViews[story.id] = fresh
-        if (cached == null) renderCharactersTab(slot, story, fresh) else showAiControls(story.id)
-    }
+    render.charactersSlot = slot
+    // The list loaded last renders at once, so a re-render keeps its scroll position; the model
+    // re-reads the files and the renderer fills or re-renders when they changed.
+    if (render.state.characters?.openId == render.state.openCharacterId) fillCharactersSlot(slot, render, render.state)
 }
 
-private fun ScreenHost.renderCharactersTab(
+/** Fills the Characters tab's slot from [state]'s loaded list. */
+internal fun ScreenHost.fillCharactersSlot(
     slot: LinearLayout,
-    story: Story,
-    view: CharactersView,
+    render: AiTabRender,
+    state: AiControlsUiState,
 ) {
-    val job = app.appContainer.characterJobCoordinator.jobFor(story.id)
+    val view = state.characters ?: return
+    slot.removeAllViews()
+    render.characterProgress = null
+    val job = state.characterJob
     val open = view.roster?.firstOrNull { it.id == view.openId }
     when {
-        open != null -> addCharacterPage(slot, story, open, view.portraits, job)
-        view.roster.isNullOrEmpty() -> addFindCharactersCard(slot, story, job)
-        else -> addCharacterList(slot, story, view.roster, view.thumbs, job)
+        open != null -> addCharacterPage(slot, render, open, view.portraits, job)
+        view.roster.isNullOrEmpty() -> addFindCharactersCard(slot, render, job)
+        else -> addCharacterList(slot, render, view.roster, view.thumbs, job)
     }
-    if (open == null && view.openId != null) aiControlsScreenState.openCharacters.remove(story.id)
-    val settings = repository.aiSettings.get()
-    addAiModelFooter(slot, "Text" to settings.descriptionModel, "Image" to settings.imageModel)
+    addAiModelFooter(slot, "Text" to state.settings.descriptionModel, "Image" to state.settings.imageModel)
     // Built after screen() ran its own pass, so this rebuild needs it too (android/AGENTS.md).
     slot.dropUnusedBaselineAlignment()
 }
 
-/** True while the tab shows one character's page; system Back then returns to the list. */
-internal fun ScreenHost.characterPageOpen(storyId: String): Boolean =
-    aiControlsTab(storyId) == AiControlsTab.CHARACTERS && aiControlsScreenState.openCharacters[storyId] != null
-
-internal fun ScreenHost.closeCharacterPage(storyId: String) {
-    aiControlsScreenState.openCharacters.remove(storyId)
-    showAiControls(storyId)
-}
-
-internal fun ScreenHost.canRunCharacters(story: Story): Boolean = story.isArchived != true && story.chapters.any { it.downloaded }
+internal fun canRunCharacters(story: Story): Boolean = story.isArchived != true && story.chapters.any { it.downloaded }
 
 private fun ScreenHost.addFindCharactersCard(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
     job: CharacterJobState?,
 ) {
+    val story = render.story
     val colors = ThemeManager.colors
     container.addView(
         container.card {
@@ -132,7 +95,7 @@ private fun ScreenHost.addFindCharactersCard(
             spacer(Space.XS)
             text(
                 "Find the novel's characters, then paint a portrait of anyone you like. Names are counted on your phone " +
-                    "for free; one call to ${repository.aiSettings.get().descriptionModel} groups them into a list with roles " +
+                    "for free; one call to ${render.state.settings.descriptionModel} groups them into a list with roles " +
                     "and short bios (a few cents with a mid-priced model).",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
@@ -146,35 +109,36 @@ private fun ScreenHost.addFindCharactersCard(
                 if (job?.kind == CharacterJobKind.FIND) "Finding characters..." else "Find characters",
                 Btn.FILLED,
                 R.drawable.wna_group,
-                enabled = !characterJobsBusy(),
+                enabled = !render.state.charactersBusy,
                 topMarginDp = Space.MD,
                 bottomMarginDp = 0,
-            ) { startFindCharacters(story) }
-            job?.let { addCharacterProgress(this, story.id, it) }
-            addOtherNovelBusyNote(this, job)
+            ) { render.model.startFindCharacters() }
+            job?.let { addCharacterProgress(this, render, it) }
+            addOtherNovelBusyNote(this, render, job)
         },
     )
 }
 
 private fun ScreenHost.addCharacterList(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
     roster: List<StoryCharacter>,
     thumbs: Map<String, File>,
     job: CharacterJobState?,
 ) {
+    val story = render.story
     val colors = ThemeManager.colors
     val groups = roster.groupBy { it.role }
     groups[CharacterRole.PROTAGONIST]?.let { lead ->
         container.section("Lead")
-        lead.forEach { container.addView(characterRow(story, it, thumbs[it.id], job)) }
+        lead.forEach { container.addView(characterRow(render, it, thumbs[it.id], job)) }
     }
     groups[CharacterRole.MAJOR]?.let { major ->
         container.section("Main characters")
-        major.forEach { container.addView(characterRow(story, it, thumbs[it.id], job)) }
+        major.forEach { container.addView(characterRow(render, it, thumbs[it.id], job)) }
     }
     groups[CharacterRole.SUPPORTING]?.let { supporting ->
-        val expanded = story.id in aiControlsScreenState.expandedSupporting
+        val expanded = render.state.supportingExpanded
         container.addView(
             LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -198,18 +162,10 @@ private fun ScreenHost.addCharacterList(
                     ripple(roundedBg(android.graphics.Color.TRANSPARENT, dp(Space.SM).toFloat()), dp(Space.SM).toFloat(), colors.onSurface)
                 isClickable = true
                 contentDescription = if (expanded) "Hide supporting characters" else "Show supporting characters"
-                setOnClickListener {
-                    if (expanded) {
-                        aiControlsScreenState.expandedSupporting -= story.id
-                    } else {
-                        aiControlsScreenState.expandedSupporting +=
-                            story.id
-                    }
-                    showAiControls(story.id)
-                }
+                setOnClickListener { render.model.toggleSupporting() }
             },
         )
-        if (expanded) supporting.forEach { container.addView(characterRow(story, it, thumbs[it.id], job)) }
+        if (expanded) supporting.forEach { container.addView(characterRow(render, it, thumbs[it.id], job)) }
     }
     container.addView(
         container.card {
@@ -224,26 +180,26 @@ private fun ScreenHost.addCharacterList(
                     if (job?.kind == CharacterJobKind.FIND) "Finding characters..." else "Find characters again",
                     Btn.OUTLINED,
                     R.drawable.wna_group,
-                    enabled = !characterJobsBusy(),
+                    enabled = !render.state.charactersBusy,
                     topMarginDp = Space.MD,
                     bottomMarginDp = 0,
                 ) {
                     confirm(
                         "Find the characters again? This reads every downloaded chapter and makes one AI call with " +
-                            "${repository.aiSettings.get().descriptionModel}, which uses your OpenRouter credits.",
+                            "${render.state.settings.descriptionModel}, which uses your OpenRouter credits.",
                         confirmLabel = "Find characters",
-                    ) { startFindCharacters(story) }
+                    ) { render.model.startFindCharacters() }
                 }
             }
-            job?.takeIf { it.kind == CharacterJobKind.FIND }?.let { addCharacterProgress(this, story.id, it) }
-            addOtherNovelBusyNote(this, job)
+            job?.takeIf { it.kind == CharacterJobKind.FIND }?.let { addCharacterProgress(this, render, it) }
+            addOtherNovelBusyNote(this, render, job)
         },
     )
 }
 
 /** Thumbnail, name, role and chapters, a two-line bio; a running portrait shows on its row. */
 private fun ScreenHost.characterRow(
-    story: Story,
+    render: AiTabRender,
     character: StoryCharacter,
     thumb: File?,
     job: CharacterJobState?,
@@ -275,7 +231,7 @@ private fun ScreenHost.characterRow(
                             },
                         )
                     }
-                    if (job?.kind == CharacterJobKind.PORTRAIT && job.characterId == character.id) addCharacterProgress(this, story.id, job)
+                    if (job?.kind == CharacterJobKind.PORTRAIT && job.characterId == character.id) addCharacterProgress(this, render, job)
                 },
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
             )
@@ -287,10 +243,7 @@ private fun ScreenHost.characterRow(
     cardView.foreground = ripple(roundedBg(android.graphics.Color.TRANSPARENT, radius), radius, colors.onSurface)
     cardView.isClickable = true
     cardView.contentDescription = "${character.name}, ${character.role.label}. Open portraits"
-    cardView.setOnClickListener {
-        aiControlsScreenState.openCharacters[story.id] = character.id
-        showAiControls(story.id)
-    }
+    cardView.setOnClickListener { render.model.openCharacter(character.id) }
     return cardView
 }
 

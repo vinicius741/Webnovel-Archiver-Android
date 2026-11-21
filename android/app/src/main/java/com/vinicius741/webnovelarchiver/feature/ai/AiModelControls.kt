@@ -15,10 +15,13 @@ import com.vinicius741.webnovelarchiver.ai.AiModelSelection
 import com.vinicius741.webnovelarchiver.ai.AiReasoningPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.settings.AiReasoningEffort
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
@@ -28,6 +31,10 @@ import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /*
@@ -46,7 +53,9 @@ internal fun ScreenHost.addAiModelsCard(
     advancedContainer: LinearLayout,
 ) {
     val modelRefreshers = mutableListOf<() -> Unit>()
-    aiControlsScreenState.refreshModels = { modelRefreshers.forEach { it() } }
+    // Picker callbacks can outlive a fold-triggered render, so they poke the model, and whichever
+    // render of these rows is attached then refreshes.
+    container.bindWhileAttached(scope, aiModelFields().changes) { modelRefreshers.forEach { it() } }
 
     /** One row per global model choice; [save] applies the picked id (+ reasoning effort) to settings. */
     class ModelRow(
@@ -108,6 +117,21 @@ internal fun ScreenHost.addAiModelsCard(
 }
 
 internal enum class AiModelRowKind { TEXT, IMAGE, DECISIONS }
+
+/** Tells the AI Settings model rows on screen to re-read the models, for as long as AI Settings is in the history. */
+internal class AiModelFieldsModel : ScreenModel() {
+    private val revision = MutableStateFlow(0)
+    val changes: StateFlow<Int> = revision.asStateFlow()
+
+    fun changed() = revision.update { it + 1 }
+}
+
+private fun ScreenHost.aiModelFields(): AiModelFieldsModel = screenModels.get(AppRoute.AiSettings.stableKey) { AiModelFieldsModel() }
+
+/** Refreshes the model rows of the AI Settings render on screen, which a fold may have replaced while a picker stayed open. */
+internal fun ScreenHost.refreshAiModelFields() {
+    screenModels.find<AiModelFieldsModel>(AppRoute.AiSettings.stableKey)?.changed()
+}
 
 private fun ScreenHost.addAiModelRow(
     container: LinearLayout,

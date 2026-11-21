@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -48,8 +49,8 @@ data class StoryPageUiState(
     /** Library and queue versions of the download snapshot this state was read from. */
     val libraryVersion: Long = 0L,
     val queueVersion: Long = 0L,
-    /** Bumped by [StoryPageScreenModel.refreshPage] when something outside this state changed. */
-    val revision: Int = 0,
+    /** A finished AI cover waits for "Use it" or "Keep current"; the hero leads to it. */
+    val coverToReview: Boolean = false,
 ) {
     /** A content operation runs on this story, so its content actions are off. */
     val isBusy: Boolean get() = content != null
@@ -107,12 +108,14 @@ class StoryPageScreenModel(
     private val ticker: Flow<Long>,
     private val nowMillis: () -> Long,
     private val operations: StoryOperations,
+    /** Whether a finished AI cover of the story waits for review; asked again when [coverReviewChanges] emits. */
+    private val coverToReview: (storyId: String) -> Boolean = { false },
+    private val coverReviewChanges: Flow<Any?> = emptyFlow(),
     private val providerName: (sourceId: String?, url: String) -> String? = { sourceId, url ->
         SourceRegistry.getProvider(sourceId, url)?.name
     },
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : ScreenModel(scope) {
-    private var revision = 0
     private var readSnapshot: DownloadUiSnapshot? = null
     private var publishedStory: Story? = null
     private var download = DownloadPart(story = null)
@@ -127,7 +130,14 @@ class StoryPageScreenModel(
                 .distinctUntilChanged()
                 .collectLatest { observed ->
                     if (observed) {
-                        merge(data.downloads, pacingSnapshots, operations.content, operations.ai, ticker).collect { refresh() }
+                        merge(
+                            data.downloads,
+                            pacingSnapshots,
+                            operations.content,
+                            operations.ai,
+                            coverReviewChanges,
+                            ticker,
+                        ).collect { refresh() }
                     }
                 }
         }
@@ -135,12 +145,6 @@ class StoryPageScreenModel(
 
     /** Recomputes the state from its sources now and returns it. */
     fun refresh(): StoryPageUiState = compute().also { mutableState.value = it }
-
-    /** Asks the page to redraw its hero for a change this state does not carry (an AI draft). */
-    fun refreshPage() {
-        revision += 1
-        refresh()
-    }
 
     fun toggleBookmark(chapterId: String) {
         scope.launch { data.toggleBookmark(storyId, chapterId) }
@@ -176,7 +180,7 @@ class StoryPageScreenModel(
             ai = operations.aiFor(storyId),
             libraryVersion = snapshot.libraryVersion,
             queueVersion = snapshot.queueVersion,
-            revision = revision,
+            coverToReview = coverToReview(storyId),
         )
     }
 

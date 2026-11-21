@@ -29,8 +29,10 @@ class ArchitectureRulesTest {
             // The download service's notification opens the Cloudflare solver activity.
             "download/DownloadForegroundService.kt:feature.browser.CloudflareSolveActivity",
             // Persisted AI record types that the AI screens display.
-            "feature/ai/AiContextChapterPicker.kt:data.storage.EvidenceSelectionKind",
-            "feature/ai/AiCoverGeneration.kt:data.storage.AiCoverDraftRecord",
+            "feature/ai/AiControlsRepositoryData.kt:data.storage.AiCoverDraftRecord",
+            "feature/ai/AiControlsRepositoryData.kt:data.storage.AiCoverVersion",
+            "feature/ai/AiControlsRepositoryData.kt:data.storage.EvidenceSelectionKind",
+            "feature/ai/AiControlsScreenModel.kt:data.storage.AiCoverVersion",
             "feature/ai/AiCoverVersionsUi.kt:data.storage.AiCoverVersion",
             "feature/ai/AiJobChipPlanning.kt:data.storage.AiCoverResultKind",
         )
@@ -140,14 +142,14 @@ class ArchitectureRulesTest {
 
     @Test
     fun oldScreenPatternOnlyShrinks() {
-        assertRatchet("`fun ScreenHost.` extensions", count(".", Regex("""\bfun\s+ScreenHost\.""")), baseline = 438)
-        assertRatchet("`appContainer` lookups in feature/", count("feature", Regex("""\bappContainer\b""")), baseline = 84)
+        assertRatchet("`fun ScreenHost.` extensions", count(".", Regex("""\bfun\s+ScreenHost\.""")), baseline = 408)
+        assertRatchet("`appContainer` lookups in feature/", count("feature", Regex("""\bappContainer\b""")), baseline = 69)
         val hostProperties =
             File(root, "navigation/ScreenHost.kt")
                 .readLines()
                 .dropWhile { !it.startsWith("interface ScreenHost") }
                 .count { Regex("""^\s{4}(val|var)\s""").containsMatchIn(it) }
-        assertRatchet("ScreenHost properties", hostProperties, baseline = 28)
+        assertRatchet("ScreenHost properties", hostProperties, baseline = 27)
     }
 
     @Test

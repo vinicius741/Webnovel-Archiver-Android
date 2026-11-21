@@ -15,9 +15,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
-import com.vinicius741.webnovelarchiver.feature.ai.patchAiDraftProgress
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
-import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -26,7 +24,6 @@ import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -42,11 +39,19 @@ class AiSimplificationDeviceTest {
             scenario.onActivity { activity ->
                 val field = activity.promptField()
                 field.setText("Keep this pending prompt")
-                assertEquals("Keep this pending prompt", activity.aiControlsScreenState.coverPrompts[ID])
+                assertEquals(
+                    "Keep this pending prompt",
+                    activity.appContainer.aiAttention.state.value.coverPrompts[ID]
+                        ?.text,
+                )
                 activity.showDetails(ID)
                 activity.showAiControls(ID)
                 assertEquals("Keep this pending prompt", activity.promptField().text.toString())
-                assertEquals("Keep this pending prompt", activity.aiControlsScreenState.coverPrompts[ID])
+                assertEquals(
+                    "Keep this pending prompt",
+                    activity.appContainer.aiAttention.state.value.coverPrompts[ID]
+                        ?.text,
+                )
             }
             // The strip loads asynchronously; the source choice is present and not in use (the AI cover is showing).
             scenario.eventually { it.coverChoice("Source") != null }
@@ -101,46 +106,48 @@ class AiSimplificationDeviceTest {
     @Test
     fun progressPatchesTheAttachedTreeAndIgnoresLateMessages() =
         withFixture { scenario ->
+            var root: View? = null
             scenario.onActivity { activity ->
-                activity.aiOperation = StoryOperationState(ID, StoryOperationKind.AI_DESCRIPTION, "Starting")
+                activity.operations.setAi(StoryOperationState(ID, StoryOperationKind.AI_DESCRIPTION, "Starting"))
                 activity.showAiControls(ID, AiControlsTab.DESCRIPTION)
-                val binding = activity.aiControlsScreenState.binding!!
-                val root = activity.frame.getChildAt(0)
-                assertNotNull(activity.textView("Starting"))
-                assertFalse(activity.textView("Generating...")!!.isEnabled)
-                repeat(100) { activity.patchAiDraftProgress(ID, "Message $it") }
-                assertSame(root, activity.frame.getChildAt(0))
-                assertSame(binding, activity.aiControlsScreenState.binding)
-                assertNotNull(activity.textView("Message 99"))
-                // The description card stays gated for the whole run.
-                assertFalse(activity.textView("Generating...")!!.isEnabled)
-                // A cover operation changes the busy kind and the tab that renders it; switching re-renders.
-                activity.aiOperation = StoryOperationState(ID, StoryOperationKind.AI_COVER, "Cover starting")
-                activity.showAiControls(ID, AiControlsTab.COVER)
-                assertNotSame(root, activity.frame.getChildAt(0))
-                val coverBinding = activity.aiControlsScreenState.binding!!
-                val coverRoot = activity.frame.getChildAt(0)
-                assertNotNull(activity.textView("Cover starting"))
-                assertFalse(activity.promptField().isEnabled)
-                repeat(100) {
-                    activity.aiOperation = activity.aiOperation!!.copy(message = "Cover $it")
-                    activity.updateAiControlsProgress(activity.aiOperation!!)
-                }
-                assertSame(coverRoot, activity.frame.getChildAt(0))
-                assertSame(coverBinding, activity.aiControlsScreenState.binding)
-                assertNotNull(activity.textView("Cover 99"))
-                // Leaving the screen drops the binding; late messages cannot patch a detached tree.
-                activity.showDetails(ID)
-                assertNull(activity.aiControlsScreenState.binding)
-                val detailsRoot = activity.frame.getChildAt(0)
-                activity.updateAiControlsProgress(StoryOperationState(ID, StoryOperationKind.AI_COVER, "Late"))
-                assertSame(detailsRoot, activity.frame.getChildAt(0))
-                assertNull(activity.textView("Late"))
-                activity.aiOperation = null
-                activity.showAiControls(ID, AiControlsTab.DESCRIPTION)
-                assertNull(activity.textView("Generating..."))
-                assertTrue(activity.textView("Generate Description with AI")!!.isEnabled)
             }
+            scenario.eventually { it.textView("Starting") != null }
+            scenario.onActivity { activity ->
+                root = activity.frame.getChildAt(0)
+                assertFalse(activity.textView("Generating...")!!.isEnabled)
+                repeat(100) { activity.operations.updateAi(ID, StoryOperationKind.AI_DESCRIPTION, "Message $it") }
+            }
+            // Progress patches the line in place; the description card stays gated for the whole run.
+            scenario.eventually { it.textView("Message 99") != null }
+            scenario.onActivity { activity ->
+                assertSame(root, activity.frame.getChildAt(0))
+                assertFalse(activity.textView("Generating...")!!.isEnabled)
+                // A cover job changes the busy kind; the tab that shows it re-renders.
+                activity.operations.clearAi(ID, StoryOperationKind.AI_DESCRIPTION)
+                activity.operations.setAi(StoryOperationState(ID, StoryOperationKind.AI_COVER, "Cover starting"))
+                activity.showAiControls(ID, AiControlsTab.COVER)
+            }
+            scenario.eventually { it.textView("Cover starting") != null }
+            scenario.onActivity { activity ->
+                assertNotSame(root, activity.frame.getChildAt(0))
+                root = activity.frame.getChildAt(0)
+                assertFalse(activity.promptField().isEnabled)
+                repeat(100) { activity.operations.updateAi(ID, StoryOperationKind.AI_COVER, "Cover $it") }
+            }
+            scenario.eventually { it.textView("Cover 99") != null }
+            scenario.onActivity { activity ->
+                assertSame(root, activity.frame.getChildAt(0))
+                // Off the AI tab, late messages cannot patch a detached tree.
+                activity.showDetails(ID)
+                root = activity.frame.getChildAt(0)
+                activity.operations.updateAi(ID, StoryOperationKind.AI_COVER, "Late")
+            }
+            scenario.onActivity { activity ->
+                assertSame(root, activity.frame.getChildAt(0))
+                activity.operations.clearAi(ID, StoryOperationKind.AI_COVER)
+                activity.showAiControls(ID, AiControlsTab.DESCRIPTION)
+            }
+            scenario.eventually { it.textView("Generate Description with AI")?.isEnabled == true }
             scenario.recreate()
             scenario.eventually { (it.navigator.current as? AppRoute.AiControls)?.storyId == ID && it.promptField().isShown }
         }

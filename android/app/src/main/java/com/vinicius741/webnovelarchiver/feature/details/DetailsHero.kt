@@ -21,6 +21,7 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
+import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.downloads.startSourceCheck
 import com.vinicius741.webnovelarchiver.feature.downloads.storySourceCheck
@@ -83,7 +84,7 @@ internal fun ScreenHost.buildStoryHero(
         }
     column.addView(buildHeroTop(story))
     if (StoryActionGuards.canSync(story)) column.addView(buildForecastBanner(story, operation?.kind == StoryOperationKind.SYNC, isBusy))
-    val aiSlot = addHeroNotices(column, story, tab, state.ai)
+    val aiSlot = addHeroNotices(column, story, tab, state)
     // Stable slot: progress ticks patch in place instead of rebuilding the page.
     val operationSlot = operation?.let { makeStoryOperationSlot(app, it) }?.also(column::addView)
     val bannerSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
@@ -113,8 +114,9 @@ private fun ScreenHost.addHeroNotices(
     column: LinearLayout,
     story: Story,
     tab: StoryTab,
-    aiOperation: StoryOperationState?,
+    state: StoryPageUiState,
 ): LinearLayout? {
+    val aiOperation = state.ai
     if (story.isArchived != true && story.sourceSyncState.availability != SourceAvailability.available) {
         column.addView(buildSourceAvailabilityNotice(story))
     }
@@ -123,12 +125,11 @@ private fun ScreenHost.addHeroNotices(
     if (tab == StoryTab.AI) return null
     if (aiOperation?.kind == StoryOperationKind.AI_COVER) {
         return makeStoryOperationSlot(app, aiOperation).also(column::addView)
-    } else if (story.id in repository.aiCoverUnseen.value || aiControlsScreenState.coverDrafts[story.id] != null) {
+    } else if (state.coverToReview) {
         // A finished background cover waits for a decision; lead straight to it.
         column.addView(
             makeFullWidthButton(app, "Review new AI cover", Btn.TONAL, R.drawable.wna_auto_awesome, dp(Spacing.SM)) {
-                aiControlsScreenState.tabs[story.id] = AiControlsTab.COVER
-                switchStoryTab(story.id, StoryTab.AI)
+                showAiControls(story.id, AiControlsTab.COVER)
             }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(Spacing.SM) },
         )
     }

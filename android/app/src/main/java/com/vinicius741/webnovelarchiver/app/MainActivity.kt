@@ -21,7 +21,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
-import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.feature.ai.attachAiJobChip
 import com.vinicius741.webnovelarchiver.feature.browser.ACTION_IMPORT_CURRENT_URL
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
@@ -100,7 +99,6 @@ class MainActivity :
     override val routeMemory: RouteViewMemory = RouteViewMemory()
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
     override val backupExportState: BackupExportState = BackupExportState()
-    override val aiControlsScreenState: AiControlsScreenState = AiControlsScreenState()
     override val libraryScreenState: LibraryScreenState = LibraryScreenState()
     override val cleanupScreenState: CleanupScreenState = CleanupScreenState()
     override val updatesSyncState: UpdatesSyncState = UpdatesSyncState()
@@ -383,8 +381,6 @@ class MainActivity :
 
     override fun onDestroy() {
         finishPerfSession()
-        aiControlsScreenState.binding = null
-        aiControlsScreenState.characterProgress = null
         screenObserver?.cancel()
         screenModels.clear()
         // Destroy lingering reader WebViews so they can't leak the activity reference.

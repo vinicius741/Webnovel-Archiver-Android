@@ -9,7 +9,6 @@ import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
-import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
 import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
@@ -139,9 +138,6 @@ interface ScreenHost {
     val addStoryScreenState: AddStoryScreenState
 
     val backupExportState: BackupExportState
-
-    /** Pending AI-description drafts for the AI Controls screen (see [AiControlsScreenState]). */
-    val aiControlsScreenState: AiControlsScreenState
 
     /** Library view memory (query/tags/per-tab scroll) surviving navigation; see [LibraryScreenState]. */
     val libraryScreenState: LibraryScreenState

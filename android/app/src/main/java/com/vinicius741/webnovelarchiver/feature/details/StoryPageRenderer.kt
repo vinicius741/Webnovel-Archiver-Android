@@ -17,6 +17,7 @@ import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.tickerFlow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
 /*
@@ -30,6 +31,7 @@ import kotlinx.coroutines.launch
 internal fun ScreenHost.storyPageModel(storyId: String): StoryPageScreenModel =
     screenModels.get(AppRoute.Details(storyId).stableKey) {
         val container = app.appContainer
+        val attention = container.aiAttention
         StoryPageScreenModel(
             storyId = storyId,
             data = RepositoryStoryPageData(repository),
@@ -37,16 +39,10 @@ internal fun ScreenHost.storyPageModel(storyId: String): StoryPageScreenModel =
             ticker = tickerFlow(nowMillis = container.time::nowMillis),
             nowMillis = container.time::nowMillis,
             operations = operations,
+            coverToReview = { id -> id in repository.aiCoverUnseen.value || id in attention.state.value.coverDrafts },
+            coverReviewChanges = merge(repository.aiCoverUnseen, attention.state),
         )
     }
-
-/**
- * Asks the story page on screen to redraw its hero for a change its state does not carry (an AI
- * draft waiting for review). Other screens are left alone.
- */
-internal fun ScreenHost.refreshStoryHero(storyId: String) {
-    if (storyTabShowing(storyId)) screenModels.find<StoryPageScreenModel>(AppRoute.Details(storyId).stableKey)?.refreshPage()
-}
 
 /** The slim strip a tab without the hero shows under the tab strip for a running sync / cleanup / EPUB; gone while idle. */
 internal fun buildOperationStrip(
@@ -81,7 +77,7 @@ private fun renderOperationStrip(
  *
  * - An operation ending re-renders the tab: its results (new chapters, a cleaned text, an EPUB)
  *   reach every part of it.
- * - An operation starting, or [StoryPageScreenModel.refreshPage], redraws what shows it: the
+ * - An operation starting, or a finished AI cover starting or stopping to wait for review, redraws what shows it: the
  *   Overview re-renders, a tab beside the inner screen's hero pane rebuilds only the pane, and a
  *   tab without the hero updates its operation strip.
  * - Progress ticks patch the progress slots; download events patch the hero's actions, banner and
@@ -119,7 +115,7 @@ internal class StoryPageRenderer(
         }
         val contentStarted = next.content != null && next.content.kind != previous.content?.kind
         val aiStarted = next.ai != null && next.ai.kind != previous.ai?.kind
-        if ((contentStarted || aiStarted || next.revision != previous.revision) && redrawOperations(next)) return
+        if ((contentStarted || aiStarted || next.coverToReview != previous.coverToReview) && redrawOperations(next)) return
         next.content?.takeIf { it != previous.content }?.let { operation ->
             (hero?.operationSlot ?: strip)?.let { renderStoryOperationProgress(it, operation) }
         }
@@ -160,7 +156,7 @@ internal class StoryPageRenderer(
         hero = rebuilt
     }
 
-    /** Patches the AI job's progress, or empties its slots once it ends (the AI bridge redraws its results). */
+    /** Patches the AI job's progress, or empties its slots once it ends (a waiting cover redraws through [StoryPageUiState.coverToReview]). */
     private fun patchAi(operation: StoryOperationState?) {
         val slots = listOfNotNull(hero?.aiSlot, aboutAiSlot)
         if (operation == null) {

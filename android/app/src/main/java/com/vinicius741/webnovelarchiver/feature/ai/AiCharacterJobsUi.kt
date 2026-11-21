@@ -1,11 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.ai
 
 import android.widget.LinearLayout
-import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.ai.CharacterJobState
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.domain.model.CharacterRole
-import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryCharacter
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -14,85 +10,52 @@ import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.toast
 
-// Starting Characters-tab jobs on the process-wide CharacterJobCoordinator, and their progress line.
+// The Characters tab's job progress line, its start confirmation, and its busy note.
 
-internal fun ScreenHost.addCharacterProgress(
+/** The running character job's progress line; the renderer patches its text as the job reports. */
+internal fun addCharacterProgress(
     container: LinearLayout,
-    storyId: String,
+    render: AiTabRender,
     job: CharacterJobState,
 ) {
     container.addView(
-        makeText(app, job.message, Type.BODY_SMALL, ThemeManager.colors.tertiary).apply {
-            setPadding(0, dp(Space.SM), 0, 0)
-            tag = storyId
-            aiControlsScreenState.characterProgress = this
+        makeText(container.context, job.message, Type.BODY_SMALL, ThemeManager.colors.tertiary).apply {
+            setPadding(0, container.context.dp(Space.SM), 0, 0)
+            render.characterProgress = this
         },
     )
 }
 
-/** Patches the visible progress line in place; false when a re-render is needed instead. */
-internal fun ScreenHost.patchCharacterProgress(job: CharacterJobState): Boolean {
-    val label = aiControlsScreenState.characterProgress ?: return false
-    if (label.tag != job.storyId || !label.isAttachedToWindow) return false
-    label.text = job.message
-    return true
-}
-
-internal fun ScreenHost.startFindCharacters(story: Story) {
-    val coordinator = app.appContainer.characterJobCoordinator
-    if (!coordinator.startFind(story.id)) {
-        toast("Please wait for the current character job to finish")
-        return
-    }
-    AiJobForegroundService.start(app, "Finding characters...")
-    showAiControls(story.id)
-}
-
+/** Paints a portrait; another one of the same character says what it costs first. */
 internal fun ScreenHost.startPortrait(
-    story: Story,
+    render: AiTabRender,
     character: StoryCharacter,
     firstRun: Boolean,
 ) {
-    fun start() {
-        // The lead's evidence is the cover scan: running both at once would judge (and bill) chapters twice.
-        if (character.role == CharacterRole.PROTAGONIST && aiCoverOperationFor(story.id) != null) {
-            toast("Wait for the cover to finish, then paint the lead")
-            return
-        }
-        if (!app.appContainer.characterJobCoordinator.startPortrait(story.id, character.id)) {
-            toast("Please wait for the current character job to finish")
-            return
-        }
-        AiJobForegroundService.start(app, "Painting a portrait...")
-        showAiControls(story.id)
-    }
     if (firstRun) {
-        start()
+        render.model.startPortrait(character)
         return
     }
     confirm(
         "Paint another portrait of ${character.name}? This calls OpenRouter and uses your API credits. Earlier portraits are kept.",
         confirmLabel = "Generate",
-    ) { start() }
+    ) { render.model.startPortrait(character) }
 }
 
-/** True while any novel's character job runs: one runs at a time. */
-internal fun ScreenHost.characterJobsBusy(): Boolean = app.appContainer.characterJobCoordinator.isBusy()
-
 /** Explains a disabled button when the running character job belongs to another novel. */
-internal fun ScreenHost.addOtherNovelBusyNote(
+internal fun addOtherNovelBusyNote(
     container: LinearLayout,
+    render: AiTabRender,
     job: CharacterJobState?,
 ) {
-    if (job != null || !characterJobsBusy()) return
+    if (job != null || !render.state.charactersBusy) return
     container.addView(
         makeText(
-            app,
+            container.context,
             "Another novel's character job is running. This one can start when it finishes.",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
-        ).apply { setPadding(0, dp(Space.SM), 0, 0) },
+        ).apply { setPadding(0, container.context.dp(Space.SM), 0, 0) },
     )
 }

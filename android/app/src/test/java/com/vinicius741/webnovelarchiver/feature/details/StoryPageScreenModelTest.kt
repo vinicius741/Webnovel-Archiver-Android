@@ -39,6 +39,7 @@ class StoryPageScreenModelTest {
     private val pacing = MutableStateFlow<Map<String, DownloadPacingSnapshot>>(emptyMap())
     private val ticker = MutableSharedFlow<Long>()
     private val operations = StoryOperations()
+    private val coversToReview = MutableStateFlow<Set<String>>(emptySet())
     private var now = 1_000_000L
 
     private fun TestScope.model(): StoryPageScreenModel =
@@ -49,6 +50,8 @@ class StoryPageScreenModelTest {
             ticker = ticker,
             nowMillis = { now },
             operations = operations,
+            coverToReview = { it in coversToReview.value },
+            coverReviewChanges = coversToReview,
             providerName = { _, _ -> "Source" },
             scope = CoroutineScope(SupervisorJob() + dispatcher),
         )
@@ -262,14 +265,19 @@ class StoryPageScreenModelTest {
         }
 
     @Test
-    fun refreshPageBumpsTheRevision() =
+    fun aWaitingAiCoverReachesTheStateWhileObserved() =
         runTest(dispatcher) {
             val model = model()
-            val before = model.state.value.revision
+            observe(model)
+            assertEquals(false, model.state.value.coverToReview)
 
-            model.refreshPage()
+            coversToReview.value = setOf("s1")
+            runCurrent()
+            assertEquals(true, model.state.value.coverToReview)
 
-            assertEquals(before + 1, model.state.value.revision)
+            coversToReview.value = setOf("other")
+            runCurrent()
+            assertEquals(false, model.state.value.coverToReview)
         }
 
     @Test
