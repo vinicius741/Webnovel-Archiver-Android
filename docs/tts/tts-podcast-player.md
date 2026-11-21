@@ -127,9 +127,12 @@ inline content); otherwise the viewed chapter plays from the top.
 
 ## Reader auto-follow guard
 
-Chapter auto-follow only fires while that reader chapter is the current route, so a chapter
-transition anywhere else (player skip, background auto-advance) does not hijack the screen the user
-is looking at. It checks the story's current chapter list, not the one the page opened with.
+Chapter auto-follow only fires while that reader chapter is the current route **and** was itself
+reading along (`ReadAlongState.showsPlayer`), so opening another chapter of the same story while
+playback is active or paused stays on the chosen chapter instead of bouncing back to the playing
+chapter, and a chapter transition anywhere else (player skip, background auto-advance) does not
+hijack the screen the user is looking at. It checks the story's current chapter list, not the one
+the page opened with.
 
 ## Storage layout
 

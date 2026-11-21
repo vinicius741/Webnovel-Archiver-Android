@@ -93,14 +93,35 @@ class ReadAlongPlanningTest {
     }
 
     @Test
-    fun opensThePlayingChapterFromTheCurrentChapterList() {
+    fun opensThePlayingChapterFromTheCurrentChapterListWhenReadingAlong() {
+        val readingAlong = ReadAlongState(snapshot(chunk = 5))
+        val pausedHere = ReadAlongState(snapshot(chunk = 5, playing = false))
         val next = snapshot(chapter = "chapter-2")
 
-        assertEquals("chapter-2", ReadAlongPlanning.chapterToOpen(STORY, CHAPTER, next, listOf(CHAPTER, "chapter-2")))
+        assertEquals("chapter-2", ReadAlongPlanning.chapterToOpen(readingAlong, STORY, CHAPTER, next, listOf(CHAPTER, "chapter-2")))
+        assertEquals("chapter-2", ReadAlongPlanning.chapterToOpen(pausedHere, STORY, CHAPTER, next, listOf(CHAPTER, "chapter-2")))
         // Not in the story (yet): stay put rather than open nothing.
-        assertNull(ReadAlongPlanning.chapterToOpen(STORY, CHAPTER, next, listOf(CHAPTER)))
-        assertNull(ReadAlongPlanning.chapterToOpen(STORY, CHAPTER, snapshot(chunk = 5), listOf(CHAPTER)))
-        assertNull(ReadAlongPlanning.chapterToOpen(STORY, CHAPTER, snapshot(story = "other", chapter = "chapter-2"), listOf("chapter-2")))
+        assertNull(ReadAlongPlanning.chapterToOpen(readingAlong, STORY, CHAPTER, next, listOf(CHAPTER)))
+        assertNull(ReadAlongPlanning.chapterToOpen(readingAlong, STORY, CHAPTER, snapshot(chunk = 5), listOf(CHAPTER)))
+        assertNull(
+            ReadAlongPlanning.chapterToOpen(
+                readingAlong,
+                STORY,
+                CHAPTER,
+                snapshot(story = "other", chapter = "chapter-2"),
+                listOf("chapter-2"),
+            ),
+        )
+    }
+
+    @Test
+    fun doesNotHijackAnotherChapterOpenedWhilePlaybackSitsElsewhere() {
+        val browsingOtherChapter = ReadAlongState(snapshot = null)
+        val playingElsewhere = snapshot(chapter = "chapter-71")
+        val pausedElsewhere = snapshot(chapter = "chapter-71", playing = false)
+
+        assertNull(ReadAlongPlanning.chapterToOpen(browsingOtherChapter, STORY, CHAPTER, playingElsewhere, listOf(CHAPTER, "chapter-71")))
+        assertNull(ReadAlongPlanning.chapterToOpen(browsingOtherChapter, STORY, CHAPTER, pausedElsewhere, listOf(CHAPTER, "chapter-71")))
     }
 
     @Test

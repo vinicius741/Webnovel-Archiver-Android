@@ -28,6 +28,7 @@ import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
+import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
@@ -186,13 +187,14 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         navHolder?.visibility = if (state.showsPlayer) View.GONE else View.VISIBLE
         pill.visibility = if (state.showsPill) View.VISIBLE else View.GONE
     }
+    val persisted = currentReaderSnapshot(document.persistedSession, story.id, chapter.id, document.annotated.chunks.size)
     readAlong =
         ReaderReadAlong(
             host = this,
             page = reader,
             storyId = story.id,
             chapterId = chapter.id,
-            initial = currentReaderSnapshot(document.persistedSession, story.id, chapter.id, document.annotated.chunks.size),
+            initial = TtsPlaybackState.snapshotAfterUpdate(persisted, ttsEngine.playbackState.value, story.id, chapter.id),
             onChange = ::showReadAlong,
         )
 
@@ -349,7 +351,12 @@ private fun ScreenHost.startReadAloud(
                 iconRes = R.drawable.wna_history,
             ) {
                 sheet.dismiss()
-                playIfGenerated(story.id, saved.chapterId) { TtsForegroundService.start(app, story.id, chapter.id) }
+                playIfGenerated(story.id, saved.chapterId) {
+                    TtsForegroundService.start(app, story.id, chapter.id)
+                    if (navigator.current == AppRoute.Reader(story.id, chapter.id)) {
+                        showReader(story.id, saved.chapterId)
+                    }
+                }
             },
         )
         body.addView(

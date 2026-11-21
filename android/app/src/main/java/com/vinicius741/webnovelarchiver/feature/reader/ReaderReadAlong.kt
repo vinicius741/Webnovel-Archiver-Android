@@ -163,9 +163,9 @@ internal class ReaderReadAlong(
         apply(ReadAlongPlanning.afterPlayback(state, update, storyId, chapterId))
     }
 
-    /** Playback moved to another chapter of this story while this page is on screen: open it. */
+    /** Playback left this chapter for another chapter of this story while this page is on screen: open it. */
     private fun openPlayingChapter(snapshot: TtsPlaybackSnapshot?): Boolean {
-        if (snapshot == null || snapshot.storyId != storyId || snapshot.chapterId == chapterId) return false
+        if (!state.showsPlayer || snapshot == null || snapshot.storyId != storyId || snapshot.chapterId == chapterId) return false
         // Only while the user is looking at this page; a skip from Now Playing must not pull it here.
         val route = host.navigator.current
         if (route !is AppRoute.Reader || route.storyId != storyId || route.chapterId != chapterId) return false
@@ -175,7 +175,7 @@ internal class ReaderReadAlong(
                 ?.chapters
                 ?.map { it.id }
                 .orEmpty()
-        val target = ReadAlongPlanning.chapterToOpen(storyId, chapterId, snapshot, chapterIds)
+        val target = ReadAlongPlanning.chapterToOpen(state, storyId, chapterId, snapshot, chapterIds)
         if (target == null) {
             if (missingChapterLogged != snapshot.chapterId) {
                 missingChapterLogged = snapshot.chapterId
@@ -308,11 +308,10 @@ internal class ReaderReadAlong(
                 if (route !is AppRoute.Reader || route.storyId != storyId || route.chapterId != chapterId) return@post
                 val story = host.repository.story(storyId) ?: return@post
                 val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return@post
-                // With this story's session loaded the reader follows the spoken chapter, so opening
-                // the next one directly would bounce back; move the session instead (it keeps a pause).
-                if (host.ttsEngine.playbackState.value.snapshot
-                        ?.storyId == storyId
-                ) {
+                // When this chapter is the active TTS session, advance the session (keeping a pause)
+                // so read-along follows to the next chapter; otherwise navigate without touching TTS.
+                val playing = host.ttsEngine.playbackState.value.snapshot
+                if (playing?.storyId == storyId && playing.chapterId == chapterId) {
                     TtsForegroundService.command(host.app, TtsForegroundService.ACTION_NEXT_CHAPTER)
                 } else {
                     host.navigateChapter(story, chapter, 1)

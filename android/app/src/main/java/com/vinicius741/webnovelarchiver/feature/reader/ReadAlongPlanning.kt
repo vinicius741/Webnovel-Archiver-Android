@@ -71,16 +71,22 @@ internal object ReadAlongPlanning {
         }
 
     /**
-     * The chapter the reader should open when playback moved to another chapter of this story, or
-     * null. [storyChapterIds] is the story's current chapter list, not the one the page opened with:
-     * chapters synced since then must still be followed.
+     * The chapter the reader should open when playback leaves this chapter for another chapter of
+     * this story, or null. Only a page that is reading along ([ReadAlongState.showsPlayer]) follows
+     * a chapter change; opening another chapter while a session sits elsewhere stays on that
+     * chapter. [storyChapterIds] is the story's current chapter list, not the one the page opened
+     * with: chapters synced since then must still be followed.
      */
     fun chapterToOpen(
+        state: ReadAlongState,
         storyId: String,
         chapterId: String,
         snapshot: TtsPlaybackSnapshot?,
         storyChapterIds: Collection<String>,
-    ): String? = TtsPlaybackState.readerChapterTransition(storyId, chapterId, snapshot)?.takeIf { it in storyChapterIds }
+    ): String? {
+        if (!state.showsPlayer) return null
+        return TtsPlaybackState.readerChapterTransition(storyId, chapterId, snapshot)?.takeIf { it in storyChapterIds }
+    }
 
     /** The page script's view of [state]: "sentence following", e.g. "12 1"; -1 clears the highlight. */
     fun pageState(
