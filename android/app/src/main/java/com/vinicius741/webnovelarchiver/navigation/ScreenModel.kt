@@ -53,6 +53,14 @@ class ScreenModelStore {
         noinline create: () -> T,
     ): T = get(key, T::class.java, create)
 
+    /** The model already kept for [key], without creating one (null when absent or of another type). */
+    fun <T : ScreenModel> find(
+        key: String,
+        type: Class<T>,
+    ): T? = models[key]?.takeIf(type::isInstance)?.let(type::cast)
+
+    inline fun <reified T : ScreenModel> find(key: String): T? = find(key, T::class.java)
+
     /** Drops every model whose key is no longer in the history. */
     fun retainOnly(keys: Set<String>) {
         val dropped = models.keys - keys

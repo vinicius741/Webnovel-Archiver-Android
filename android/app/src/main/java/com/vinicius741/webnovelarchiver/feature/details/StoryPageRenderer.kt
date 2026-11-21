@@ -13,6 +13,7 @@ import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Spacing
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.tickerFlow
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +45,7 @@ internal fun ScreenHost.storyPageModel(storyId: String): StoryPageScreenModel =
  * draft waiting for review). Other screens are left alone.
  */
 internal fun ScreenHost.refreshStoryHero(storyId: String) {
-    if (storyTabShowing(storyId)) storyPageModel(storyId).refreshPage()
+    if (storyTabShowing(storyId)) screenModels.find<StoryPageScreenModel>(AppRoute.Details(storyId).stableKey)?.refreshPage()
 }
 
 /** The slim strip a tab without the hero shows under the tab strip for a running sync / cleanup / EPUB; gone while idle. */
@@ -105,18 +106,7 @@ internal class StoryPageRenderer(
     private var downloadPatchPending = false
 
     fun start() {
-        // Main, not Main.immediate: a state change made while a new render is being built lands after it.
-        val job = host.scope.launch(Dispatchers.Main) { model.state.collect(::apply) }
-        root.addOnAttachStateChangeListener(
-            object : View.OnAttachStateChangeListener {
-                override fun onViewAttachedToWindow(v: View) = Unit
-
-                override fun onViewDetachedFromWindow(v: View) {
-                    job.cancel()
-                    v.removeOnAttachStateChangeListener(this)
-                }
-            },
-        )
+        root.bindWhileAttached(host.scope, model.state) { apply(it) }
     }
 
     private fun apply(next: StoryPageUiState) {

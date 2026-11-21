@@ -46,6 +46,16 @@ class ScreenModelStoreTest {
     }
 
     @Test
+    fun findNeverCreatesAModel() {
+        assertEquals(null, store.find<Recording>("k"))
+        val model = store.get("k") { Recording() }
+
+        assertSame(model, store.find<Recording>("k"))
+        assertEquals(null, store.find<Other>("k"))
+        assertEquals(1, store.size)
+    }
+
+    @Test
     fun aModelOfAnotherTypeUnderTheSameKeyIsReplaced() {
         val old = store.get("k") { Recording() }
         store.get("k") { Other() }
