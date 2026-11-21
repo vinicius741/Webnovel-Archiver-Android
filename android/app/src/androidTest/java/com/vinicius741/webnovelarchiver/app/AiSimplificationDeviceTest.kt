@@ -176,26 +176,20 @@ class AiSimplificationDeviceTest {
                 )
             runBlocking {
                 repository.upsertStory(fixture)
-                val json = repository.exportBackup()
+                // JSON export was removed in November 2026; only the full ZIP round trip remains.
+                val zip = repository.exportFullBackup()
                 try {
-                    repository.importBackupUri(android.net.Uri.fromFile(json))
-                    assertEquals(fixture.sourceSyncState, repository.story(ID)!!.sourceSyncState)
-                    val zip = repository.exportFullBackup()
-                    try {
-                        val result = repository.importFullBackupUri(android.net.Uri.fromFile(zip))
-                        assertFalse(result, result.contains("failed", ignoreCase = true))
-                        val restored = repository.story(ID)!!
-                        assertEquals(fixture.sourceSyncState, restored.sourceSyncState)
-                        assertEquals(listOf(0), restored.aiContextChapterIndices)
-                        assertEquals(listOf(0), restored.aiCoverContextChapterIndices)
-                        assertEquals("one", restored.lastReadChapterId)
-                        assertEquals(listOf("one"), restored.chapters.map { it.id })
-                        assertEquals("<p>Fixture chapter.</p>", repository.readChapter(restored.chapters.single()))
-                    } finally {
-                        zip.delete()
-                    }
+                    val result = repository.importFullBackupUri(android.net.Uri.fromFile(zip))
+                    assertFalse(result, result.contains("failed", ignoreCase = true))
+                    val restored = repository.story(ID)!!
+                    assertEquals(fixture.sourceSyncState, restored.sourceSyncState)
+                    assertEquals(listOf(0), restored.aiContextChapterIndices)
+                    assertEquals(listOf(0), restored.aiCoverContextChapterIndices)
+                    assertEquals("one", restored.lastReadChapterId)
+                    assertEquals(listOf("one"), restored.chapters.map { it.id })
+                    assertEquals("<p>Fixture chapter.</p>", repository.readChapter(restored.chapters.single()))
                 } finally {
-                    json.delete()
+                    zip.delete()
                 }
             }
             scenario.onActivity { it.showAiControls(ID) }
