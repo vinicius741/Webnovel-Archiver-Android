@@ -26,6 +26,7 @@ under `android/`.
 | File | Description |
 |------|-------------|
 | `activity-log.md` | Persistent activity log: what syncs, downloads, library changes, backups, network access, warnings and crashes record, 7-day file retention outside the storage root, the Settings → Share Activity Logs export format, and privacy rules. |
+| `architecture-plan-2026-11-21.md` | Proposal (awaiting owner decision) for a screen layer: guardrail checks and a slimmer `AGENTS.md`, `operations/StoryOperations`, per-screen models with View renderers piloted on Details with a stop gate; includes the Gemini 4 Neon and Fable 5.2 reviews, the worth-it verdict, and what is deliberately not done (Compose, Room, Media3, modules). Supersedes Phases 4–6 of the 2026-10-06 roadmap. |
 | `implicit-state-machines-2026-11-07.md` | Static inventory of 75 implicit and partially explicit workflow boundaries, their state fields, transitions, source locations, and refactoring priorities. |
 | `simplification-roadmap-2026-10-06.md` | Structural simplification roadmap with checklists: file-cap and planning-rule cleanup, one AI job pipeline, generic settings documents, screen architecture (Compose or per-screen controllers), Room for library/queue, and TTS on Media3; includes baseline measurements and a progress log. |
 | `ui-v3-design.md` | The v3 "Restructured" UI: five destinations, the app shell (docked mini player, bottom bar or right-hand rail), story-page tabs, badges, palette, bottom sheets, steppers, whole covers, and the owner feedback that shaped it. |
