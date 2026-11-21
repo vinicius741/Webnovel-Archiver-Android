@@ -2,6 +2,7 @@
 # Builds and installs the narration server for this user (macOS or Linux) and, with --service,
 # starts it at login and keeps it running. Re-running rebuilds the server, adds models it lacks, and
 # keeps the models and token it has. Models: Kokoro v0.19 and v1.0 (sherpa-onnx) and Phonon 31M.
+# Where the processor allows it, it also sets up Kokoro v1.0's fast path (OpenVINO, see below).
 #
 #   scripts/narration-server/setup.sh             install, then print how to start it
 #   scripts/narration-server/setup.sh --service   install and run it as a background service
@@ -65,6 +66,10 @@ TheThingUnderTheStairs:GXaSqMEmOg12OIYb:bfa37bac98aefbb9de80f792c47d01a0f9e3b94e
 VyrmathraxTheAncient:xO8xQo3BrB8FuI6J:63ab4b15427844a804480a1603774262e8903dee33cb279e2749860dbfaedd10"
 # The sherpa-onnx the app ships (android/app/build.gradle), so clips match the phone's.
 SHERPA_VERSION=1.12.21
+# Kokoro v1.0's fast path: OpenVINO's libraries, and the Python packages split_kokoro.py needs.
+OPENVINO_VERSION=2026.4.1
+ONNX_VERSION=1.23.2
+NUMPY_VERSION=2.5.5
 SHERPA_RELEASES="https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_VERSION}"
 LABEL=com.webnovelarchiver.narration-server
 UNIT=webnovel-narration.service
@@ -129,7 +134,7 @@ mkdir -p "$DATA/models" "$DATA/lib" "$DATA/bin"
 if [ "$(cat "$DATA/lib/VERSION" 2>/dev/null)" != "$ARCHIVE" ]; then
   echo "Downloading sherpa-onnx $SHERPA_VERSION..."
   WORK="$(mktemp -d)"
-  trap 'rm -rf "$WORK"' EXIT
+  trap 'rm -rf "${WORK:-}" "${FAST_WORK:-}"' EXIT
   curl -fL --progress-bar -o "$WORK/sherpa.tar.bz2" "$SHERPA_RELEASES/$ARCHIVE.tar.bz2"
   tar -xjf "$WORK/sherpa.tar.bz2" -C "$WORK" "$ARCHIVE/lib"
   rm -rf "$DATA/lib"
@@ -166,6 +171,54 @@ sherpa_model() {
 }
 sherpa_model "$MODEL" "330 MB"
 sherpa_model "$MODEL_V1" "350 MB"
+
+# --- Kokoro v1.0's fast path (optional) -------------------------------------------------------------
+# Where the processor has a fast reduced precision (src/fast.rs: AVX-512 BF16 on x86-64), the server
+# runs Kokoro v1.0's generator through OpenVINO, about a third faster. That needs OpenVINO's
+# libraries in lib/openvino and the model cut in three (split_kokoro.py) in the model's fast/ folder,
+# about 420 MB together. Both come from Python packages, installed with uv into a temporary folder
+# (uv itself too, when the machine has none). If a step fails, the server keeps the normal path.
+fast_path() {
+  local model="$DATA/models/$MODEL_V1" libs="$DATA/lib/openvino" stamp uv site link
+  stamp="$(sed -n 's/^FORMAT = "\(.*\)"$/\1/p' "$HERE/split_kokoro.py") $(wc -c < "$model/model.onnx" | tr -d ' ')"
+  if [ "$(cat "$libs/VERSION" 2>/dev/null)" = "$OPENVINO_VERSION" ] && [ "$(cat "$model/fast/format" 2>/dev/null)" = "$stamp" ]; then
+    return 0
+  fi
+  echo "Setting up Kokoro v1.0's fast path (OpenVINO $OPENVINO_VERSION, about 420 MB)..."
+  FAST_WORK="$(mktemp -d)"
+  trap 'rm -rf "${WORK:-}" "${FAST_WORK:-}"' EXIT
+  uv="$(command -v uv || true)"
+  if [ -z "$uv" ]; then
+    # A private uv, with its cache and its Python, all gone when this script ends.
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="$FAST_WORK/uv" sh >/dev/null 2>&1 || return 1
+    uv="$FAST_WORK/uv/uv"
+    export UV_CACHE_DIR="$FAST_WORK/cache" UV_PYTHON_INSTALL_DIR="$FAST_WORK/python"
+  fi
+  "$uv" venv --quiet --python 3.12 "$FAST_WORK/venv" || return 1
+  "$uv" pip install --quiet --python "$FAST_WORK/venv/bin/python" \
+    "openvino==$OPENVINO_VERSION" "onnx==$ONNX_VERSION" "numpy==$NUMPY_VERSION" || return 1
+  # Only the C API, the runtime, its CPU plugin, the ONNX reader and the threading library.
+  site="$(echo "$FAST_WORK"/venv/lib/python3.12/site-packages/openvino/libs)"
+  rm -rf "$libs.new"
+  mkdir -p "$libs.new" || return 1
+  cp -P "$site"/libopenvino.* "$site"/libopenvino_c.* "$site"/libopenvino_*cpu_plugin* \
+    "$site"/libopenvino_onnx_frontend* "$site"/libtbb* "$libs.new/" || return 1
+  cp -P "$site"/libhwloc* "$libs.new/" 2>/dev/null || true
+  # The name the server opens, whatever version suffix the release carries.
+  if [ "$OS" = mac ]; then link=libopenvino_c.dylib; else link=libopenvino_c.so; fi
+  (cd "$libs.new" && ln -sf "$(ls libopenvino_c.* | head -1)" "$link") || return 1
+  rm -rf "$libs"
+  mv "$libs.new" "$libs" || return 1
+  "$FAST_WORK/venv/bin/python" "$HERE/split_kokoro.py" "$model/model.onnx" "$model/fast" || return 1
+  echo "$OPENVINO_VERSION" > "$libs/VERSION"
+}
+FAST_PATH=0
+case "$OS-$(uname -m)" in
+  linux-x86_64) if grep -qw avx512_bf16 /proc/cpuinfo 2>/dev/null; then FAST_PATH=1; fi ;;
+esac
+if [ "$FAST_PATH" = 1 ] && ! fast_path; then
+  echo "Could not set up Kokoro v1.0's fast path; the server runs it the normal way. Run this script again to retry."
+fi
 
 # Phonon: a ptts checkpoint folder, voices named as the app asks for them (voices/<Name>.safetensors).
 # Each file is checked against its pinned SHA-256; a file that does not match is fetched again, and

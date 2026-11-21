@@ -130,7 +130,14 @@ impl Tts {
     /// file, so the files are checked first. v1.0 reads English through its US lexicon first and
     /// espeak-ng only for words the lexicon lacks, as the app configures it.
     pub fn load(kind: Kind, model_dir: &Path, threads: usize) -> Result<Tts, String> {
-        let mut files = vec!["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"];
+        Tts::load_as(kind, model_dir, "model.onnx", threads, 0.2)
+    }
+
+    /// As [load], with [model] (a path inside the folder) in place of `model.onnx`, and sherpa-onnx's
+    /// shortening of pauses set to [silence_scale] (1 leaves the model's output untouched). The fast
+    /// path loads its front model this way (see `fast.rs`).
+    pub fn load_as(kind: Kind, model_dir: &Path, model: &str, threads: usize, silence_scale: f32) -> Result<Tts, String> {
+        let mut files = vec![model, "voices.bin", "tokens.txt", "espeak-ng-data"];
         if kind == Kind::KokoroV1 {
             files.push(LEXICON_V1);
         }
@@ -157,7 +164,7 @@ impl Tts {
         config.model.provider = provider.as_ptr();
         // The phone's defaults (sherpa-onnx Kotlin API): one sentence per batch, silence scale 0.2.
         config.max_num_sentences = 1;
-        config.silence_scale = 0.2;
+        config.silence_scale = silence_scale;
         // SAFETY: every pointer in config outlives this call.
         let raw = unsafe { SherpaOnnxCreateOfflineTts(&config) };
         if raw.is_null() {
@@ -177,6 +184,11 @@ impl Tts {
     /// Speaks [text] at 1x and returns 16-bit PCM, converted as the app's TtsWavWriter does (clamp,
     /// x32767, round half up), plus its sample rate.
     pub fn generate(&self, text: &str, speaker: u32) -> Result<(u32, Vec<u8>), String> {
+        self.with_samples(text, speaker, to_pcm16)
+    }
+
+    /// Speaks [text] at 1x and hands the model's output to [read], with its sample rate.
+    pub fn with_samples<R>(&self, text: &str, speaker: u32, read: impl FnOnce(&[f32]) -> R) -> Result<(u32, R), String> {
         let text = CString::new(text).map_err(|_| "The text contains a NUL character".to_string())?;
         // SAFETY: self.raw is live for &self; text outlives the call.
         let audio = unsafe { SherpaOnnxOfflineTtsGenerate(self.raw, text.as_ptr(), speaker as i32, 1.0) };
@@ -191,7 +203,7 @@ impl Tts {
             } else {
                 std::slice::from_raw_parts(generated.samples, generated.n as usize)
             };
-            (generated.sample_rate.max(0) as u32, to_pcm16(samples))
+            (generated.sample_rate.max(0) as u32, read(samples))
         };
         // SAFETY: destroyed exactly once.
         unsafe { SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio) };

@@ -8,7 +8,8 @@
 //!   addressed by name.
 //!
 //! Each loads on first use and unloads when idle, on its own (see `engine.rs`), so a server that has
-//! all three installed holds none of them until a chapter asks.
+//! all three installed holds none of them until a chapter asks. Where the processor allows it,
+//! Kokoro v1.0 runs its generator through OpenVINO at reduced precision (see `fast.rs`).
 
 use std::path::Path;
 use std::sync::Arc;
@@ -93,7 +94,15 @@ impl Kind {
         }
     }
 
-    pub fn load(self, dir: &Path, threads: usize) -> Result<Arc<dyn Synth>, String> {
+    /// Loads the model. With [fast], Kokoro v1.0 takes its fast path (`fast.rs`); if that fails to
+    /// load, it speaks through sherpa-onnx alone as before.
+    pub fn load(self, dir: &Path, threads: usize, fast: Option<&crate::fast::Options>) -> Result<Arc<dyn Synth>, String> {
+        if let (Kind::KokoroV1, Some(options)) = (self, fast) {
+            match crate::fast::Fast::load(dir, threads, options) {
+                Ok(model) => return Ok(Arc::new(model)),
+                Err(error) => crate::engine::log(&format!("{}: the fast path did not load ({error}); using the normal path", self.name())),
+            }
+        }
         Ok(match self {
             Kind::KokoroV019 | Kind::KokoroV1 => Arc::new(crate::sherpa::Tts::load(self, dir, threads)?),
             Kind::Phonon => Arc::new(crate::phonon::Phonon::load(dir)?),

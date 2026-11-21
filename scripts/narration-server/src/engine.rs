@@ -34,9 +34,22 @@ pub struct Settings {
     pub kind: Kind,
     pub model_dir: PathBuf,
     pub threads: usize,
+    /// Kokoro v1.0's fast path, where it applies (see `fast.rs`).
+    pub fast: Option<crate::fast::Options>,
     pub policy: Policy,
     pub idle_unload: Duration,
     pub verbose: bool,
+}
+
+impl Settings {
+    /// Memory a freshly loaded model needs before its first sentence; the fast path holds more.
+    fn default_load_cost(&self) -> u64 {
+        if self.fast.is_some() {
+            crate::fast::LOAD_COST
+        } else {
+            self.kind.default_load_cost()
+        }
+    }
 }
 
 /// Why a request could not get a slot; the client should retry after [retry_after], unless [broken].
@@ -129,7 +142,7 @@ impl Engine {
     pub fn new(settings: Settings) -> Engine {
         let snapshot = memory::snapshot();
         let budget = memory::decide(&snapshot, &settings.policy, Level::Normal, 0, memory::DEFAULT_SLOT_COST);
-        let load_cost = settings.kind.default_load_cost();
+        let load_cost = settings.default_load_cost();
         Engine {
             settings,
             state: Mutex::new(State {
@@ -267,10 +280,11 @@ impl Engine {
     /// Loads the model with the lock released, so status requests keep answering.
     fn load_locked<'a>(&'a self, mut state: MutexGuard<'a, State>) -> MutexGuard<'a, State> {
         state.loading = true;
+        let fast = self.settings.fast.as_ref().map(|options| options.for_slots(state.budget.slots));
         drop(state);
         let before = memory::snapshot().own;
         let started = Instant::now();
-        let loaded = self.settings.kind.load(&self.settings.model_dir, self.settings.threads);
+        let loaded = self.settings.kind.load(&self.settings.model_dir, self.settings.threads, fast.as_ref());
         let own = memory::snapshot().own;
         let mut state = self.lock();
         state.loading = false;
@@ -290,7 +304,7 @@ impl Engine {
                 // Costs are re-learned from this load's peaks, so one unusual chapter does not
                 // lower the slot count forever.
                 state.slot_cost = ((state.slot_cost + memory::DEFAULT_SLOT_COST) / 2).max(memory::DEFAULT_SLOT_COST);
-                let default = self.settings.kind.default_load_cost();
+                let default = self.settings.default_load_cost();
                 state.load_cost = ((state.load_cost + default) / 2).max(default);
             }
             Err(error) => {
@@ -498,6 +512,7 @@ mod tests {
             kind: Kind::KokoroV019,
             model_dir: PathBuf::from("/nonexistent"),
             threads: 1,
+            fast: None,
             policy,
             idle_unload: Duration::MAX,
             verbose: false,

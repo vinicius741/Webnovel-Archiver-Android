@@ -15,9 +15,11 @@
 
 mod bench_text;
 mod engine;
+mod fast;
 mod http;
 mod memory;
 mod models;
+mod openvino;
 mod phonon;
 mod sherpa;
 
@@ -41,6 +43,7 @@ const USAGE: &str = "Usage: narration-server [options]
   --reserve-mb N         keep this much memory available for everything else (default: 20% of RAM, 1.5-4 GB)
   --critical-mb N        stop and unload below this much available (default: a third of the reserve)
   --idle-unload-s N      unload the model after this many idle seconds (default 300; 0 = never)
+  --no-fast              run Kokoro v1.0 at full precision even where its fast path applies
   --verbose              log every request
   --addresses            print this machine's addresses and exit
   --bench [ROUNDS]       measure speed and memory at each slot count, then exit
@@ -59,6 +62,9 @@ struct Args {
     reserve_mb: Option<u64>,
     critical_mb: Option<u64>,
     idle_unload: u64,
+    no_fast: bool,
+    /// Where OpenVINO's libraries are, for Kokoro v1.0's fast path.
+    openvino_dir: PathBuf,
     verbose: bool,
     addresses: bool,
     bench: Option<usize>,
@@ -84,6 +90,8 @@ fn parse_args() -> Result<Args, String> {
         reserve_mb: None,
         critical_mb: None,
         idle_unload: 300,
+        no_fast: false,
+        openvino_dir: home.join("lib").join("openvino"),
         verbose: false,
         addresses: false,
         bench: None,
@@ -109,6 +117,7 @@ fn parse_args() -> Result<Args, String> {
             "--reserve-mb" => args.reserve_mb = Some(number(value(&flag)?, &flag)?),
             "--critical-mb" => args.critical_mb = Some(number(value(&flag)?, &flag)?),
             "--idle-unload-s" => args.idle_unload = number(value(&flag)?, &flag)?,
+            "--no-fast" => args.no_fast = true,
             "--verbose" => args.verbose = true,
             "--addresses" => args.addresses = true,
             "--bench" => {
@@ -249,6 +258,14 @@ impl Args {
             _ => self.models_dir.join(kind.name()),
         }
     }
+
+    /// Kokoro v1.0's fast path on this machine, or why it is off.
+    fn fast(&self) -> Result<fast::Options, String> {
+        if self.no_fast {
+            return Err("turned off with --no-fast".to_string());
+        }
+        fast::Options::detect(&self.openvino_dir, &self.model_dir(Kind::KokoroV1), self.max_slots)
+    }
 }
 
 fn policy(args: &Args) -> Policy {
@@ -297,6 +314,7 @@ fn main() {
     if installed.is_empty() {
         fail(&format!("No model found in {}. Run setup.sh first.", args.models_dir.display()));
     }
+    let fast = args.fast();
     let engines: Vec<Engine> = installed
         .iter()
         .map(|kind| {
@@ -304,6 +322,7 @@ fn main() {
                 kind: *kind,
                 model_dir: args.model_dir(*kind),
                 threads: args.threads,
+                fast: fast.as_ref().ok().filter(|_| *kind == Kind::KokoroV1).cloned(),
                 policy,
                 idle_unload: if args.idle_unload == 0 { Duration::MAX } else { Duration::from_secs(args.idle_unload) },
                 verbose: args.verbose,
@@ -346,6 +365,12 @@ fn main() {
         policy.reserve / MIB,
         policy.critical / MIB
     ));
+    if installed.contains(&Kind::KokoroV1) {
+        match &fast {
+            Ok(options) => log(&format!("  {}: fast path on (OpenVINO, {} generator)", Kind::KokoroV1.name(), options.precision)),
+            Err(why) => log(&format!("  {}: fast path off ({why})", Kind::KokoroV1.name())),
+        }
+    }
     // Looked up beside the server, never before it: finding them runs other programs.
     let port = args.port;
     let _ = std::thread::Builder::new().name("addresses".into()).spawn(move || {
@@ -374,20 +399,22 @@ fn bench(args: &Args, rounds: usize) {
             None => fail(&format!("No voices in {}", dir.display())),
         },
     };
+    let fast = args.fast().ok().filter(|_| kind == Kind::KokoroV1);
     println!(
-        "{} ({:?}), sherpa-onnx {}, {} threads, {} round(s) of {} sentences",
+        "{} ({:?}), sherpa-onnx {}, {} threads, {} round(s) of {} sentences{}",
         kind.name(),
         voice,
         sherpa::version(),
         args.threads,
         rounds,
-        bench_text::SENTENCES.len()
+        bench_text::SENTENCES.len(),
+        fast.as_ref().map(|options| format!(", fast path ({})", options.precision)).unwrap_or_default()
     );
     let work: Vec<&str> = (0..rounds.max(1)).flat_map(|_| bench_text::SENTENCES.iter().copied()).collect();
     println!("slots  speed   peak MB");
     for slots in 1..=args.max_slots {
         let before = memory::snapshot().own;
-        let tts = match kind.load(&dir, args.threads) {
+        let tts = match kind.load(&dir, args.threads, fast.as_ref()) {
             Ok(tts) => tts,
             Err(error) => fail(&error),
         };
