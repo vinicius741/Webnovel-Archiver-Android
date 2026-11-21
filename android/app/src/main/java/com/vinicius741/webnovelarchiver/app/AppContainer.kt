@@ -28,6 +28,8 @@ import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.ai.AiAttention
 import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
+import com.vinicius741.webnovelarchiver.operations.AppListenStartData
+import com.vinicius741.webnovelarchiver.operations.ListenStarts
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
@@ -256,6 +258,9 @@ class AppContainer internal constructor(
             },
             narration = narration,
         )
+
+    /** Every "listen" request: plays generated audio, or queues the chapter and plays it once ready. */
+    val listenStarts: ListenStarts = ListenStarts(AppListenStartData(narration, ttsEngine, repository))
 
     /** Starts load/recovery/hydration on the process IO scope without blocking Application. */
     fun init() {
