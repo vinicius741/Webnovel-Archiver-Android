@@ -153,12 +153,16 @@ Rules for screens:
 
 ### Phase 2 — Pilot: Details and the Chapters tab (≈1 week including owner QA)
 
-- [ ] Migrate the story page (Overview, Chapters tab, download banner, operation progress) to
+- [x] Migrate the story page (Overview, Chapters tab, download banner, operation progress) to
   `DetailsScreenModel` plus a View renderer.
   - Delete `DetailsBindings`, the observer's patch paths, and the slot fields.
   - The chapter list uses `ListAdapter`/`DiffUtil`.
-- [ ] Add JVM tests of the model: download events, operation progress, and tab state.
-- [ ] Do emulator QA on the cover and inner displays, including a live fold, an active download, and a
+  - Done as `StoryPageScreenModel` + `StoryPageRenderer`; sync / cleanup / EPUB work moved to
+    `operations/StoryWork`. Not done: the chapter adapter keeps its existing hand-rolled DiffUtil with
+    stable ids (no `ListAdapter` conversion), and tab memory stays in `StoryTabMemory`.
+- [x] Add JVM tests of the model: download events, operation progress, and tab state.
+  - Model and `StoryWork` tests; no tab-state tests, since tab state did not move into the model.
+- [x] Do emulator QA on the cover and inner displays, including a live fold, an active download, and a
   sync while on the page.
 - [ ] **Gate: measure and decide.**
   - Measure lines and files before and after, model test lines, state/stale-view bugs found, and perf
@@ -220,3 +224,9 @@ The draft got these wrong. They are fixed above and recorded here so future audi
   testability, not survival.
 - **Line savings will be small.** The October phases predicted 1,500+ lines and delivered −340. The
   payoff here is structure and testability, not size.
+
+## Progress log
+
+| Date | Item | Commits | Main Kotlin lines after | `fun ScreenHost.` | Notes |
+|---|---|---|---|---|---|
+| 2026-11-21 | Phase 2 pilot: story page | `d749494`..`94a17d7` | 84,404 | 438 | Story page on `StoryPageScreenModel`; `detailsOperationSlot`/`detailsAiOperationSlot` and `DetailsBindings` removed; `appContainer` in `feature/` 93 → 84, ScreenHost properties 30 → 28. Pilot lines: details + story + operations 7,917 → 8,117 production, 876 → 1,421 test. Fixed the app-bar ⋮ menu acting on a story read at render time (cleanup counted chapters from before a download). Gate decision pending. |
