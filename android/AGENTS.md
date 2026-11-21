@@ -16,7 +16,7 @@ Before editing a package listed here, read its `AGENTS.md`. Paths are under
 | `download/` | Download engine, scheduler and service, and the global queue screen (`feature/downloads/`) |
 | `domain/` | Models, story and metric rules, download job transitions |
 | `data/` | JSON storage, restore crash recovery, backups, activity log, removed-from-source chapters |
-| `tts/` | Speech engines, built-in models (Kokoro, Phonon), playback, player UI, reader read-along |
+| `tts/` | Speech engines, built-in models (Kokoro, Phonon), playback, player UI, the Reader and its read-along |
 | `narration/` | Pre-generated chapter audio, generation queue, computers (narration servers), the Listen screen |
 | `ai/` | OpenRouter, evidence selection, covers, characters, descriptions, AI Controls |
 | `appupdate/` | GitHub Releases update checks and the update UI |
