@@ -13,8 +13,9 @@ import com.vinicius741.webnovelarchiver.feature.details.showStoryScreen
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.updates.isSyncingFromUpdates
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.storyOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.confirm
@@ -241,8 +242,8 @@ internal fun ScreenHost.setStoryOperation(
     progress: Float? = null,
 ) {
     val previous = storyOperation
-    val next = StoryOperationState(storyId, kind, message, progress)
-    storyOperation = next
+    operations.setContent(storyId, kind, message, progress)
+    val next = checkNotNull(storyOperation)
     if (activeStory?.id != storyId) return
     // First tick for this operation (or kind change): full Details rebuild so buttons disable and
     // the progress slot is allocated. Subsequent ticks only swap the slot's message/bar — a full
@@ -263,8 +264,7 @@ internal fun ScreenHost.clearStoryOperation(
     kind: StoryOperationKind,
     rerender: Boolean = true,
 ) {
-    if (storyOperation?.storyId == storyId && storyOperation?.kind == kind) {
-        storyOperation = null
+    if (operations.clearContent(storyId, kind)) {
         detailsOperationSlot = null
         if (activeStory?.id == storyId) {
             // Without a re-render the caller redraws the page itself; only the strip under the tabs is cleared now.

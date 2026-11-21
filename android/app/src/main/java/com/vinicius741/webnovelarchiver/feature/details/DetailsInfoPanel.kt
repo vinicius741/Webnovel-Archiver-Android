@@ -18,8 +18,10 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.story.StoryTab
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.aiOperation
+import com.vinicius741.webnovelarchiver.navigation.storyOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.source.PatreonSession
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn

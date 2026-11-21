@@ -27,7 +27,9 @@ import com.vinicius741.webnovelarchiver.feature.downloads.storySourceCheck
 import com.vinicius741.webnovelarchiver.feature.story.StoryTab
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
+import com.vinicius741.webnovelarchiver.navigation.aiOperation
+import com.vinicius741.webnovelarchiver.navigation.storyOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.ui.BlurredBackdropView
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.ChapterCoverageBar

@@ -4,8 +4,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.feature.details.makeStoryOperationProgress
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.aiOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 
 /** Only the attached AI Controls tree owns these Views. Drafts have a separate activity lifetime. */
 internal class AiControlsBinding(

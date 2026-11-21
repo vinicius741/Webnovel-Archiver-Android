@@ -13,31 +13,17 @@ import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
 import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
+import com.vinicius741.webnovelarchiver.operations.StoryOperations
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 
-enum class StoryOperationKind {
-    EPUB,
-    CLEANUP,
-    SYNC,
-    AI_DESCRIPTION,
-    AI_COVER,
-}
-
-data class StoryOperationState(
-    val storyId: String,
-    val kind: StoryOperationKind,
-    val message: String,
-    val progress: Float? = null,
-)
-
 /**
  * Transient UI state for the Add Story screen. Kept on [ScreenHost] so it survives the in-place
- * re-renders the screen performs while a fetch is in flight (mirroring [storyOperation] for the
- * Details screen). `status` is `null` when idle; a non-null value means a fetch is running.
+ * re-renders the screen performs while a fetch is in flight. `status` is `null` when idle; a non-null value means a fetch is running.
  *
  * A mutable holder rather than two `var`s on the interface because the Add Story screen reads and
  * writes both fields together and Kotlin `var` interface properties backed by `MainActivity` fields
@@ -123,29 +109,23 @@ interface ScreenHost {
     val ttsEngine: TtsEngine
     var activeStory: Story?
 
-    /**
-     * The in-flight content operation (sync / cleanup / EPUB) — the only slot that gates the
-     * Details content actions, since those operations read or rewrite the same story files.
-     */
-    var storyOperation: StoryOperationState?
+    /** Sync / cleanup / EPUB and AI work in flight on a story, observed by every screen that shows it. */
+    val operations: StoryOperations
 
-    /**
-     * The in-flight AI job (cover / description). Kept apart from [storyOperation]: AI jobs only
-     * produce drafts, so they never block sync, cleanup, downloads, or EPUB generation.
-     */
-    var aiOperation: StoryOperationState?
+    /** One [ScreenModel] per history entry; see android/AGENTS.md, "Screen architecture". */
+    val screenModels: ScreenModelStore
 
     /**
      * Direct reference to the Details in-flight operation progress slot (sync / cleanup / EPUB).
      * Captured at [com.vinicius741.webnovelarchiver.feature.details.showDetails] render time so
-     * subsequent [storyOperation] ticks can patch the message/bar in place instead of rebuilding
+     * subsequent [StoryOperations.content] ticks can patch the message/bar in place instead of rebuilding
      * the whole Details tree (same pattern as the download banner slot). May be null when no
      * operation is active, or when Details is not on screen. Cleared/reassigned on each Details
      * render.
      */
     var detailsOperationSlot: ViewGroup?
 
-    /** Details progress slot for [aiOperation], patched in place like [detailsOperationSlot]. */
+    /** Details progress slot for [StoryOperations.ai], patched in place like [detailsOperationSlot]. */
     var detailsAiOperationSlot: ViewGroup?
     val navigator: AppNavigator
 
@@ -233,3 +213,9 @@ interface ScreenHost {
     val importFullBackupLauncher: ActivityResultLauncher<Array<String>>
     val notificationPermissionLauncher: ActivityResultLauncher<String>
 }
+
+/** The running content operation (sync / cleanup / EPUB), read-only; change it through [ScreenHost.operations]. */
+val ScreenHost.storyOperation: StoryOperationState? get() = operations.content.value
+
+/** The running AI job (cover / description), read-only; change it through [ScreenHost.operations]. */
+val ScreenHost.aiOperation: StoryOperationState? get() = operations.ai.value

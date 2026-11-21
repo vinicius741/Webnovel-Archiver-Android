@@ -15,7 +15,8 @@ import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.feature.player.TTS_MINI_PLAYER_TAG
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
+import com.vinicius741.webnovelarchiver.navigation.aiOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type

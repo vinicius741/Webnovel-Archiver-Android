@@ -46,11 +46,12 @@ import com.vinicius741.webnovelarchiver.navigation.LibraryScreenState
 import com.vinicius741.webnovelarchiver.navigation.RouteViewMemory
 import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.ScreenModelStore
 import com.vinicius741.webnovelarchiver.navigation.ShellBadgePlanning
 import com.vinicius741.webnovelarchiver.navigation.ShellDestination
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.openDestination
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperations
 import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
 import com.vinicius741.webnovelarchiver.perf.PerfRecorder
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
@@ -94,8 +95,8 @@ class MainActivity :
     override lateinit var frame: FrameLayout
     override lateinit var shell: AppShell
     override var activeStory: Story? = null
-    override var storyOperation: StoryOperationState? = null
-    override var aiOperation: StoryOperationState? = null
+    override val operations = StoryOperations()
+    override val screenModels = ScreenModelStore()
     override var detailsOperationSlot: ViewGroup? = null
     override var detailsAiOperationSlot: ViewGroup? = null
     override val navigator = AppNavigator()
@@ -388,6 +389,7 @@ class MainActivity :
         aiControlsScreenState.binding = null
         aiControlsScreenState.characterProgress = null
         screenObserver?.cancel()
+        screenModels.clear()
         // Destroy lingering reader WebViews so they can't leak the activity reference.
         com.vinicius741.webnovelarchiver.platform.WebViewSafety
             .disposeAll(frame)

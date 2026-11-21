@@ -13,8 +13,7 @@ import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
@@ -91,12 +90,8 @@ private fun MainActivity.attachCoverJobBridge() {
                     job.persistedPrompt?.let { prompt ->
                         aiControlsScreenState.replaceCoverPreviewWithPrompt(job.storyId, prompt)
                     } ?: false
-                val current = aiOperation
-                val ownsSlot =
-                    current == null || (current.storyId == job.storyId && current.kind == StoryOperationKind.AI_COVER)
-                if (ownsSlot) {
-                    val next = StoryOperationState(job.storyId, StoryOperationKind.AI_COVER, job.message)
-                    aiOperation = next
+                val next = operations.updateAi(job.storyId, StoryOperationKind.AI_COVER, job.message, startIfIdle = true)
+                if (next != null) {
                     if (promptChanged || renderedMessages[job.storyId] != job.message) {
                         detailsAiOperationSlot?.let { renderStoryOperationProgress(it, next) }
                         updateAiControlsProgress(next, structuralChange = promptChanged)
@@ -115,8 +110,7 @@ private fun MainActivity.attachCoverJobBridge() {
 
 /** Clears this kind's progress slot and refreshes the visible surface so nothing stays stale. */
 private fun MainActivity.clearOperationSlot(kind: StoryOperationKind) {
-    val cleared = aiOperation?.takeIf { it.kind == kind } ?: return
-    aiOperation = null
+    val cleared = operations.clearAi(kind) ?: return
     detailsAiOperationSlot = null
     // The event collector may re-render before or after this clearing; refresh the visible
     // surface so a finished job never leaves a stale progress slot behind.

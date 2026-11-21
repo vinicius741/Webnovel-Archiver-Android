@@ -18,8 +18,9 @@ import com.vinicius741.webnovelarchiver.feature.settings.showAiSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.aiOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.SegmentedControl.Segment
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -291,7 +292,7 @@ private fun ScreenHost.startAiDescriptionDraft(story: Story) {
         toast("Please wait for the current AI generation to finish")
         return
     }
-    aiOperation = StoryOperationState(story.id, StoryOperationKind.AI_DESCRIPTION, "Generating description...")
+    operations.setAi(StoryOperationState(story.id, StoryOperationKind.AI_DESCRIPTION, "Generating description..."))
     detailsAiOperationSlot = null
     aiControlsScreenState.clearChipHistory(story.id, AiControlsTab.DESCRIPTION)
     showAiControls(story.id)
@@ -302,10 +303,7 @@ private fun ScreenHost.startAiDescriptionDraft(story: Story) {
                     app.runOnUiThread { patchAiDraftProgress(story.id, message) }
                 }
             aiControlsScreenState.drafts[story.id] = draft
-            if (aiOperation?.storyId == story.id && aiOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
-                aiOperation = null
-                detailsAiOperationSlot = null
-            }
+            if (operations.clearAi(story.id, StoryOperationKind.AI_DESCRIPTION)) detailsAiOperationSlot = null
             // Off its tab, the app-wide job chip points back to the waiting preview.
             if (!frameIsAiControls(story.id) || aiControlsTab(story.id) != AiControlsTab.DESCRIPTION) {
                 aiControlsScreenState.unseenDescriptions += story.id
@@ -315,10 +313,7 @@ private fun ScreenHost.startAiDescriptionDraft(story: Story) {
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             Timber.w(error, "AI description generation failed for %s", story.id)
-            if (aiOperation?.storyId == story.id && aiOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
-                aiOperation = null
-                detailsAiOperationSlot = null
-            }
+            if (operations.clearAi(story.id, StoryOperationKind.AI_DESCRIPTION)) detailsAiOperationSlot = null
             val message = error.message ?: "AI description failed"
             if (frameIsAiControls(story.id)) {
                 toast(message)
@@ -337,9 +332,7 @@ internal fun ScreenHost.patchAiDraftProgress(
     storyId: String,
     message: String,
 ) {
-    val operation = aiOperation?.takeIf { it.storyId == storyId && it.kind == StoryOperationKind.AI_DESCRIPTION } ?: return
-    val next = operation.copy(message = message)
-    aiOperation = next
+    val next = operations.updateAi(storyId, StoryOperationKind.AI_DESCRIPTION, message) ?: return
     detailsAiOperationSlot?.let { renderStoryOperationProgress(it, next) }
     updateAiControlsProgress(next)
     aiControlsScreenState.refreshJobChip()

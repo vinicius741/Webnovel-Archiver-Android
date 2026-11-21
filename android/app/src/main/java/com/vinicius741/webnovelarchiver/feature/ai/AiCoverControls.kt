@@ -20,7 +20,8 @@ import com.vinicius741.webnovelarchiver.feature.story.CoverViewerAction
 import com.vinicius741.webnovelarchiver.feature.story.CoverViewerItem
 import com.vinicius741.webnovelarchiver.feature.story.showCoverViewer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.aiOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager

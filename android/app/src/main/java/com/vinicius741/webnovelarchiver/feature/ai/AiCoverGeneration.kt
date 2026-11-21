@@ -8,8 +8,9 @@ import com.vinicius741.webnovelarchiver.data.repository.loadAiCoverDraft
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.aiOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
@@ -87,7 +88,7 @@ private fun ScreenHost.startAiCoverJob(
     onAccepted()
     aiControlsScreenState.clearChipHistory(story.id, AiControlsTab.COVER)
     // Optimistic set for the first re-render; the activity bridge syncs the slot on every emission.
-    aiOperation = StoryOperationState(story.id, StoryOperationKind.AI_COVER, initialMessage)
+    operations.setAi(StoryOperationState(story.id, StoryOperationKind.AI_COVER, initialMessage))
     detailsAiOperationSlot = null
     showAiControls(story.id)
     AiJobForegroundService.start(app, "Generating AI cover...")

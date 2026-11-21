@@ -5,7 +5,8 @@ import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.feature.story.StoryTab
 import com.vinicius741.webnovelarchiver.feature.story.StoryTabPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
+import com.vinicius741.webnovelarchiver.navigation.storyOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout

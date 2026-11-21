@@ -12,7 +12,8 @@ import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.updates.isSyncingFromUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
+import com.vinicius741.webnovelarchiver.navigation.storyOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.sync.StorySyncMode
 import com.vinicius741.webnovelarchiver.ui.centerLoading

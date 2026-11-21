@@ -74,6 +74,7 @@ internal fun ScreenHost.screen(
     captureScreenViewState()
     routeMemory.trackedList = null
     routeMemory.retainOnly(navigator.viewMemoryKeys)
+    screenModels.retainOnly(navigator.viewMemoryKeys)
     val savedScrollY = if (scrollable) routeMemory.scrollPositions[screenKey] ?: 0 else 0
     // Destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
     // activity references; without explicit destroy() they leak across navigation.
