@@ -1,0 +1,5 @@
+# Story page
+
+Applies to `feature/details/` (story page tabs, chapter list, Trends). These rules add to `android/AGENTS.md`.
+
+- `feature/details/TrendsScreen.kt` (`showTrends`) is the per-novel metric Trends screen, shown as the story page's Trends tab and also reached from the Overview's score pill and Patreon card. `TrendSeriesModel.kt` extracts all series once per open off the main thread; range and metric-family chips rebuild only the card list, and charts attach one per animation frame with no draw-in animation (MPAndroidChart rasterizes in software, so animating every card dropped frames). Charts are built in `feature/details/TrendChart.kt` via MPAndroidChart's `MPChartLib` Android Views module (JitPack, see `settings.gradle`) with Y axes fitted to the data (not pinned to the full metric domain) and a fixed chart height set by the screen. MPAndroidChart 4 uses Kotlin properties and `IAxisValueFormatter`; use its Views module for this app. The details header also patches a small trend arrow beside the score once the history loads (`DetailsHeader.observeScoreTrend`).
