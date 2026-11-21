@@ -15,14 +15,20 @@ All source consumers share one `NetworkClient` and one `SourceReliabilityCoordin
 - an adaptive minimum gap that increases after rate limits and recovers after sustained success;
 - timed `Retry-After` cooldowns up to 30 minutes;
 - manual-verification circuit state; and
-- a 30-minute sticky browser-transport passage refreshed by each browser-rendered success.
+- a 30-minute sticky browser-transport passage refreshed by each browser-rendered success, which is
+  permanent for a source that declares `browserTransportOnly` (Scribble Hub).
 
 Waiting happens outside the host lock. Downloads, sync, cover fetches, and retries therefore share
 one request stream instead of enforcing independent limits.
 
 ## Cloudflare transport
 
-OkHttp remains the inexpensive first transport. `cf-mitigated: challenge` is authoritative at any
+OkHttp remains the inexpensive first transport, except for a source whose descriptor sets
+`SourceNetworkPolicy.browserTransportOnly`. Scribble Hub challenges OkHttp at the start of every
+session, so its pages never go through OkHttp: the probe spent a request that was always rejected
+and showed the site two different clients on one address.
+
+`cf-mitigated: challenge` is authoritative at any
 HTTP status; Cloudflare headers plus strong challenge DOM markers are the conservative fallback.
 Header-confirmed challenges do not wait for a body preview. The fallback checks script configuration,
 challenge orchestration paths, and the interstitial title. It ignores prose, escaped script examples,
@@ -63,13 +69,56 @@ After a detected challenge:
 5. Later pages go directly through the same Chromium session without first sending the already
    rejected OkHttp TLS/HTTP fingerprint.
 
-If the browser cannot produce a valid page within the timeout, the manual circuit opens — but
-render failures escalate by kind, not uniformly. Only an unsolved challenge, a navigation that
-never committed, or a dead renderer opens the circuit. A settled page that fails the source's
+Render failures escalate by kind, not uniformly. Only a challenge still showing when the time
+runs out, or a dead renderer, opens the manual circuit. A settled page that fails the source's
 content rules is returned to the parser (one job fails with a typed parse error), an origin HTTP
 status such as a removed chapter's 404 flows through the normal per-source retry policy, and a
 transport-level render failure is a retryable error. Previously any of these opened the circuit,
 so a single dead chapter URL could block the whole source.
+
+A render that ends without a page while no challenge was showing is a *stall*
+(`CloudflareRenderOutcome.Stalled`: timed out, stale document persisted, navigation never
+committed, never settled). The solver destroys that WebView, the interceptor renders once more in
+a new one, and a second stall fails only that request as a retryable transport error. A stall
+never opens the circuit. Whether a challenge was showing comes from the last poll that read a
+current, non-empty document; a challenge reloading itself does not count as gone. Through 1.2.1 a
+stall did open the circuit: in the 2026-11-21 phone log a render stopped polling
+after its second poll, timed out, and paused Scribble Hub for 30 minutes, after which the
+verification screen opened the same page in 1.5 seconds with no challenge.
+
+That render stopped polling because each poll was scheduled from the previous poll's
+`evaluateJavascript` answer, and one answer never arrived. Every page-state script now goes through
+`GuardedJavascript`: an answer missing after two seconds is recorded as `render_poll_lost` and
+polling continues. The emulator's WebView 133 did not reproduce the missing answer (about 7,200
+scripts issued across 12 navigations, all answered), so its cause on the phone is not established; the guard
+does not depend on it.
+
+## What the hidden WebView presents
+
+Measured on the emulator (WebView 133) with a loopback server, 2026-11-21:
+
+| | Before | Now, for a `WEBVIEW`-mode source |
+|---|---|---|
+| Viewport | `innerWidth`/`innerHeight` 0×0; an `IntersectionObserver` never reports the page's content visible | the display's size; content visible |
+| `User-Agent` | rewritten to plain Chrome (`Android 10; K`, no `wv`) | the system WebView's own string |
+| `sec-ch-ua` | `"Android WebView"`, contradicting the User-Agent | `"Android WebView"`, matching it |
+| Model and platform-version hints | sent blank | sent with the device's values |
+| `X-Requested-With` | this app's package, contradicting the User-Agent | this app's package, consistent with a WebView |
+| `Accept-Language` on navigation | passed as an extra header, written ahead of `sec-fetch-*` | written by Chromium, last |
+
+The solver lays its detached WebView out at the display's size on creation; this applies to every
+source. The identity rows apply to sources whose descriptor sets
+`userAgentMode = SourceUserAgentMode.WEBVIEW` (Scribble Hub): their WebViews are never assigned a
+User-Agent (`SourceUserAgent.keepsWebViewDefault`), their OkHttp requests send the same unmodified
+string (`SourceUserAgent.forUrl`), and their page navigations carry no `Accept` or
+`Accept-Language` extra headers. Other sources keep the reduced Chrome string. The app does not
+alter client hints or remove `X-Requested-With`; the aim is a client whose signals agree, not one
+that hides what it is.
+
+Whether this lets the hidden WebView pass Scribble Hub's challenge without the verification screen
+has not been tested against the live site. In the phone log the hidden WebView showed the challenge
+for 20 seconds without passing, and the visible screen passed in 8 seconds; the log does not say
+whether that needed a tap. An interactive check still needs the verification screen.
 
 While the circuit is open, the download loop pauses the source's lane instead of draining it:
 in-flight jobs fail as `source_blocked` (the retry flow keys off that category), pending jobs are
@@ -82,7 +131,7 @@ persisted to `source_reliability.json` on every transition and restored at proce
 overnight OS kill resumes with the same access state instead of re-probing the source with the
 already-rejected OkHttp fingerprint.
 
-The WebView-derived User-Agent is frozen on first use so it cannot change mid-session. A network
+The reduced WebView-derived User-Agent is frozen on first use so it cannot change mid-session. A network
 change drops prepared page content while retaining server cooldowns, the rolling request budget, and
 Chromium mode for a fresh browser load.
 

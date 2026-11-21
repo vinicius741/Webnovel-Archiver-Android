@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.source.network
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -26,7 +27,11 @@ import java.util.concurrent.atomic.AtomicReference
  * fall through to [com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity].
  *
  * Polling runs on its own timer, not WebView page callbacks: some device WebView builds omit
- * onPageStarted/onPageFinished for a detached WebView even though the document loads.
+ * onPageStarted/onPageFinished for a detached WebView even though the document loads. Every poll
+ * goes through [GuardedJavascript], so an unanswered script cannot end the polling.
+ *
+ * The WebView is never attached to a window, but it is laid out at the display's size: left
+ * unmeasured it reports a 0×0 viewport, in which nothing on the page is ever visible.
  */
 object CloudflareWebViewSolver {
     private data class BrowserSession(
@@ -50,6 +55,8 @@ object CloudflareWebViewSolver {
         val failure = AtomicReference<CloudflareRenderFailure?>(null)
         // The poll budget races the await timeout; the last observed document state carries the reason either way.
         val lastPollNote = AtomicReference("no poll completed")
+        val lastPollSawChallenge = AtomicBoolean(false)
+        val javascript = GuardedJavascript(mainHandler)
         var contentWaitStartedAt = 0L
         val session = sessions.getOrPut(hostKey(request.url)) { BrowserSession() }
         val renderId = BypassEventLog.nextId("r")
@@ -67,14 +74,8 @@ object CloudflareWebViewSolver {
         }
 
         mainHandler.post {
-            val web =
-                session.webView
-                    ?: WebView(context).also { created ->
-                        WebViewSafety.applyBrowserSettings(created)
-                        session.webView = created
-                    }
-            web.stopLoading()
-            if (request.userAgent.isNotBlank()) web.settings.userAgentString = request.userAgent
+            val userAgent = request.userAgent.takeUnless { SourceUserAgent.keepsWebViewDefault(request.url) }
+            val web = sessionWebView(context, session, userAgent.orEmpty())
 
             fun inspectPage(
                 view: WebView,
@@ -82,11 +83,24 @@ object CloudflareWebViewSolver {
                 pollsRemaining: Int = MAX_DOM_POLLS,
             ) {
                 if (requestClosed.get()) return
-                view.evaluateJavascript(PAGE_STATE_SCRIPT) { json ->
-                    if (requestClosed.get()) return@evaluateJavascript
+                val onLost = {
+                    if (!requestClosed.get()) {
+                        recordLostPoll(renderId, hostKey(request.url), pollsRemaining)
+                        if (pollsRemaining > 0) {
+                            inspectPage(view, view.url ?: effectiveUrl, pollsRemaining - 1)
+                        } else {
+                            finishWith(CloudflareRenderPollPlanning.failureOnTimeout(lastPollSawChallenge.get()))
+                        }
+                    }
+                }
+                javascript.evaluate(view, PAGE_STATE_SCRIPT, onLost) { json ->
+                    if (requestClosed.get()) return@evaluate
                     val state = CloudflarePageStateDecoder.decode(json)
                     val documentUrl = state.documentUrl.ifBlank { effectiveUrl }
                     val isChallenge = SourceAccessBlockDetector.isChallengeHtml(state.html)
+                    lastPollSawChallenge.set(
+                        CloudflareRenderPollPlanning.challengeShowing(lastPollSawChallenge.get(), state, isChallenge),
+                    )
                     lastPollNote.set(
                         "url=${state.documentUrl} readyState=${state.readyState} stale=${state.stale} " +
                             "challenge=$isChallenge htmlLen=${state.html.length}",
@@ -170,26 +184,28 @@ object CloudflareWebViewSolver {
                         }
                     },
                     onFailure = ::finishWith,
-                    onPoll = lastPollNote::set,
+                    onPoll = { note, challenge ->
+                        lastPollNote.set(note)
+                        lastPollSawChallenge.set(challenge)
+                    },
+                    javascript = javascript,
                 ).start()
                 return@post
             }
             // The persistent session WebView still shows the previous request's page; mark it stale
             // before navigating (from the marker's own callback) so a fresh document is never marked.
-            web.evaluateJavascript(STALE_MARKER_SCRIPT) {
-                val navigationIssued =
-                    when (request.method) {
-                        "GET" -> {
-                            web.loadUrl(request.url, request.headers)
-                            true
-                        }
-                        else -> false
+            // Unanswered, the old page may be unmarked and this WebView is not responding: end the
+            // render as a stall now, so the retry starts in a fresh WebView without the full wait.
+            val onMarkerLost = { if (!requestClosed.get()) finishWith(CloudflareRenderFailure.TimedOut) }
+            javascript.evaluate(web, STALE_MARKER_SCRIPT, onMarkerLost) {
+                when {
+                    requestClosed.get() -> Unit
+                    request.method == "GET" -> {
+                        web.loadUrl(request.url, request.headers)
+                        // View.post queues work until attachment on Samsung; this WebView is deliberately detached, so use the main Looper.
+                        mainHandler.post { inspectPage(web, request.url) }
                     }
-                if (navigationIssued) {
-                    // View.post queues work until attachment on Samsung; this WebView is deliberately detached, so use the main Looper.
-                    mainHandler.post { inspectPage(web, request.url) }
-                } else {
-                    finishWith(CloudflareRenderFailure.UnsupportedMethod)
+                    else -> finishWith(CloudflareRenderFailure.UnsupportedMethod)
                 }
             }
         }
@@ -200,11 +216,52 @@ object CloudflareWebViewSolver {
             Thread.currentThread().interrupt()
         }
         requestClosed.set(true)
+        failure.compareAndSet(null, CloudflareRenderPollPlanning.failureOnTimeout(lastPollSawChallenge.get()))
 
-        mainHandler.post {
+        val outcome = completedOutcome(request, renderId, renderedPage, failure, lastPollNote)
+        mainHandler.post { settleSession(session, discard = outcome is CloudflareRenderOutcome.Stalled) }
+        return outcome
+    }
+
+    /** The host's persistent WebView, created on first use, stopped and given [userAgent] unless blank. */
+    private fun sessionWebView(
+        context: Context,
+        session: BrowserSession,
+        userAgent: String,
+    ): WebView {
+        val web =
+            session.webView
+                ?: WebView(context).also { created ->
+                    WebViewSafety.applyBrowserSettings(created)
+                    layOutAtDisplaySize(created)
+                    session.webView = created
+                }
+        web.stopLoading()
+        // Blank for a source that keeps the WebView's own string: the setting stays at its default.
+        if (userAgent.isNotBlank()) web.settings.userAgentString = userAgent
+        return web
+    }
+
+    /** A stalled WebView is discarded: whatever left it unresponsive stays with it, and the retry gets a new one. */
+    private fun settleSession(
+        session: BrowserSession,
+        discard: Boolean,
+    ) {
+        if (discard) {
+            session.webView?.let(WebViewSafety::destroy)
+            session.webView = null
+        } else {
             session.webView?.stopLoading()
         }
-        return completedOutcome(request, renderId, renderedPage, failure, lastPollNote)
+    }
+
+    private fun layOutAtDisplaySize(web: WebView) {
+        val metrics = web.resources.displayMetrics
+        web.measure(
+            View.MeasureSpec.makeMeasureSpec(metrics.widthPixels, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(metrics.heightPixels, View.MeasureSpec.EXACTLY),
+        )
+        web.layout(0, 0, metrics.widthPixels, metrics.heightPixels)
     }
 
     private fun renderClient(
@@ -269,6 +326,7 @@ object CloudflareWebViewSolver {
                 is CloudflareRenderOutcome.PageContentUnexpected -> "page_content_unexpected"
                 is CloudflareRenderOutcome.OriginHttpError -> "origin_http_${outcome.statusCode}"
                 CloudflareRenderOutcome.TransportError -> "transport_error"
+                is CloudflareRenderOutcome.Stalled -> "stalled:${failed.note}"
                 is CloudflareRenderOutcome.NeedsManualVerification -> "needs_manual:${failed.note}"
             }
         BypassEventLog.record(
@@ -315,6 +373,20 @@ object CloudflareWebViewSolver {
             "challenge" to isChallenge,
             "resource" to isRequestedResource,
             "decision" to decision.name.substringBefore("_").lowercase(),
+        )
+    }
+
+    private fun recordLostPoll(
+        renderId: String,
+        host: String,
+        pollsRemaining: Int,
+    ) {
+        BypassEventLog.record(
+            BypassEventCategory.CF,
+            "render_poll_lost",
+            host,
+            "renderId" to renderId,
+            "pollN" to (MAX_DOM_POLLS - pollsRemaining),
         )
     }
 

@@ -34,6 +34,7 @@ class SourceReliabilityCoordinator(
 ) {
     private data class HostState(
         val canonicalHost: String,
+        val browserTransportOnly: Boolean = false,
         var nextAllowedAt: Long = 0L,
         var cooldownUntil: Long = 0L,
         var manualVerificationRequired: Boolean = false,
@@ -220,10 +221,11 @@ class SourceReliabilityCoordinator(
         }
     }
 
+    /** True inside the sticky window, and always for a source that declares `browserTransportOnly`. */
     fun browserTransportActive(host: String): Boolean {
         val state = stateFor(host)
         synchronized(state) {
-            return state.browserTransportUntil > nowMillis()
+            return state.browserTransportOnly || state.browserTransportUntil > nowMillis()
         }
     }
 
@@ -273,7 +275,7 @@ class SourceReliabilityCoordinator(
                     val now = nowMillis()
                     SourceReliabilitySnapshot(
                         host = state.canonicalHost,
-                        browserTransportActive = state.browserTransportUntil > now,
+                        browserTransportActive = state.browserTransportOnly || state.browserTransportUntil > now,
                         manualVerificationRequired = state.manualVerificationRequired,
                         cooldownRemainingMillis =
                             if (state.manualVerificationRequired) {
@@ -290,10 +292,15 @@ class SourceReliabilityCoordinator(
                 }
             }.sortedBy { it.host }
 
-    /** Host aliases share the provider's stable budget — closer to Cloudflare zones than per-subdomain accounting. */
+    /**
+     * Host aliases share the provider's stable budget — closer to Cloudflare zones than per-subdomain
+     * accounting. [host] may also be a provider id (the download loop and the persisted state use
+     * it); it must resolve to the same provider, or the state it creates first would lack the
+     * provider's policy for every later host lookup.
+     */
     private fun stateFor(host: String): HostState {
         val normalizedHost = host.lowercase(Locale.US).removePrefix("www.")
-        val provider = SourceRegistry.providerForHost(normalizedHost)
+        val provider = SourceRegistry.providerForHost(normalizedHost) ?: SourceRegistry.getById(normalizedHost)
         val stateKey = provider?.id ?: normalizedHost
         val canonicalHost =
             provider
@@ -303,7 +310,9 @@ class SourceReliabilityCoordinator(
                 ?.lowercase(Locale.US)
                 ?.removePrefix("www.")
                 ?: normalizedHost
-        return states.getOrPut(stateKey) { HostState(canonicalHost) }
+        return states.getOrPut(stateKey) {
+            HostState(canonicalHost, provider?.descriptor?.networkPolicy?.browserTransportOnly == true)
+        }
     }
 
     private fun effectiveMinimumGap(

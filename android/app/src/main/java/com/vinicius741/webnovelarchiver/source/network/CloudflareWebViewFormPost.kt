@@ -12,7 +12,8 @@ internal class CloudflareWebViewFormPost(
     private val isClosed: () -> Boolean,
     private val onPage: (CloudflareRenderedPage) -> Unit,
     private val onFailure: (CloudflareRenderFailure) -> Unit,
-    private val onPoll: (String) -> Unit,
+    private val onPoll: (note: String, challenge: Boolean) -> Unit,
+    private val javascript: GuardedJavascript,
 ) {
     fun start() {
         val bootstrapUrl = CloudflareFormPostPlanning.bootstrapUrl(request.url)
@@ -20,15 +21,19 @@ internal class CloudflareWebViewFormPost(
             onFailure(CloudflareRenderFailure.UnsupportedMethod)
             return
         }
-        web.evaluateJavascript(BOOTSTRAP_STATE_SCRIPT) { json ->
-            if (isClosed()) return@evaluateJavascript
+        val openBootstrap = {
+            web.loadUrl(bootstrapUrl)
+            mainHandler.post { inspectBootstrap() }
+            Unit
+        }
+        javascript.evaluate(web, BOOTSTRAP_STATE_SCRIPT, onLost = { if (!isClosed()) openBootstrap() }) { json ->
+            if (isClosed()) return@evaluate
             val page = CloudflarePageStateDecoder.decode(json)
             if (CloudflareFormPostPlanning.canReusePage(request.url, page)) {
-                onPoll("formBootstrapReused=true")
+                onPoll("formBootstrapReused=true", false)
                 startFetch()
             } else {
-                web.loadUrl(bootstrapUrl)
-                mainHandler.post { inspectBootstrap() }
+                openBootstrap()
             }
         }
     }
@@ -38,14 +43,21 @@ internal class CloudflareWebViewFormPost(
         readySince: Long = 0L,
     ) {
         if (isClosed()) return
-        web.evaluateJavascript(BOOTSTRAP_STATE_SCRIPT) { json ->
-            if (isClosed()) return@evaluateJavascript
+        val onLost = {
+            when {
+                isClosed() -> Unit
+                pollsRemaining > 0 -> inspectBootstrap(pollsRemaining - 1, readySince)
+                else -> onFailure(CloudflareRenderFailure.NavigationNeverCommitted)
+            }
+        }
+        javascript.evaluate(web, BOOTSTRAP_STATE_SCRIPT, onLost) { json ->
+            if (isClosed()) return@evaluate
             val state = CloudflarePageStateDecoder.decode(json)
             val sameOrigin = CloudflareFormPostPlanning.sameOrigin(request.url, state.documentUrl)
             val challenge = SourceAccessBlockDetector.isChallengeHtml(state.html)
             val ready = sameOrigin && !challenge && state.readyState in setOf("interactive", "complete")
             val readyAt = if (ready) readySince.takeIf { it != 0L } ?: SystemClock.elapsedRealtime() else 0L
-            onPoll("formBootstrapReady=${state.readyState} sameOrigin=$sameOrigin challenge=$challenge")
+            onPoll("formBootstrapReady=${state.readyState} sameOrigin=$sameOrigin challenge=$challenge", challenge)
             if (ready && SystemClock.elapsedRealtime() - readyAt >= BOOTSTRAP_WAIT_MILLIS) {
                 startFetch()
             } else if (pollsRemaining > 0) {
@@ -57,8 +69,10 @@ internal class CloudflareWebViewFormPost(
     }
 
     private fun startFetch() {
-        web.evaluateJavascript(CloudflareFormPostPlanning.fetchScript(request)) { seqJson ->
-            val expectedSeq = seqJson?.trim()?.toIntOrNull() ?: return@evaluateJavascript
+        // Without the sequence number the fetch's result cannot be told from an older one.
+        val onLost = { if (!isClosed()) onFailure(CloudflareRenderFailure.NeverSettled) }
+        javascript.evaluate(web, CloudflareFormPostPlanning.fetchScript(request), onLost) { seqJson ->
+            val expectedSeq = seqJson?.trim()?.toIntOrNull() ?: return@evaluate
             inspectResult(expectedSeq)
         }
     }
@@ -68,8 +82,15 @@ internal class CloudflareWebViewFormPost(
         pollsRemaining: Int = MAX_POLLS,
     ) {
         if (isClosed()) return
-        web.evaluateJavascript(POST_RESULT_SCRIPT) { json ->
-            if (isClosed()) return@evaluateJavascript
+        val onLost = {
+            when {
+                isClosed() -> Unit
+                pollsRemaining > 0 -> inspectResult(expectedSeq, pollsRemaining - 1)
+                else -> onFailure(CloudflareRenderFailure.NeverSettled)
+            }
+        }
+        javascript.evaluate(web, POST_RESULT_SCRIPT, onLost) { json ->
+            if (isClosed()) return@evaluate
             val result = CloudflareFormPostPlanning.decodeResult(json, expectedSeq)
             if (result == null) {
                 if (pollsRemaining > 0) {
@@ -77,9 +98,10 @@ internal class CloudflareWebViewFormPost(
                 } else {
                     onFailure(CloudflareRenderFailure.NeverSettled)
                 }
-                return@evaluateJavascript
+                return@evaluate
             }
-            onPoll("formStatus=${result.status} challenge=${result.mitigated} bodyLen=${result.body.length}")
+            val mitigated = result.mitigated || SourceAccessBlockDetector.isChallengeHtml(result.body)
+            onPoll("formStatus=${result.status} challenge=${result.mitigated} bodyLen=${result.body.length}", mitigated)
             when {
                 result.status == 0 ||
                     !CloudflareFormPostPlanning.sameOrigin(request.url, result.url) ||

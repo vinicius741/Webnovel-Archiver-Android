@@ -31,7 +31,9 @@ object ScribbleHubProvider : SourceProvider {
                     maximumAttempts = 3,
                     retryableStatusCodes = setOf(403, 429),
                     maximumRequestsPerWindow = 12,
+                    browserTransportOnly = true,
                 ),
+            userAgentMode = SourceUserAgentMode.WEBVIEW,
             managesBrowserSession = true,
             cookieSeeds =
                 listOf(

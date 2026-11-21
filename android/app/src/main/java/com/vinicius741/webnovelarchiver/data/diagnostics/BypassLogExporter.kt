@@ -80,10 +80,15 @@ object BypassLogExportPlanning {
             "describe the previous request's document and are never decisive; render_finished " +
             "outcome values: rendered, page_content_unexpected (page loaded but failed content " +
             "rules, so the parser fails that single job), origin_http_<n> (the origin's own " +
-            "status), transport_error (retryable), or needs_manual:<note> where " +
-            "challenge_still_active needs the in-app verify screen and " +
-            "stale_document_persisted/navigation_never_committed mean the WebView navigation " +
-            "never committed. circuit_opened pauses the whole source queue pending one " +
+            "status), transport_error (retryable), stalled:<note> (no challenge was showing and " +
+            "the WebView never delivered the page: timed_out, stale_document_persisted, " +
+            "navigation_never_committed or never_settled; that WebView is discarded, " +
+            "render_retry_after_stall follows with one more render, and a second stall fails only " +
+            "that request), or needs_manual:<note> where challenge_still_active needs the in-app " +
+            "verify screen. render_poll_lost means a page-state script got no answer within two " +
+            "seconds and polling went on without it. A host with browserTransportActive that " +
+            "never logs challenge_detected reads its pages only through the WebView. " +
+            "circuit_opened pauses the whole source queue pending one " +
             "interactive verification (in-flight jobs fail as source_blocked, pending jobs wait " +
             "and resume after access_cleared); rate_limit_recorded shows cooldowns. To diagnose a " +
             "failing source, find its last challenge_detected or render_finished event and read " +

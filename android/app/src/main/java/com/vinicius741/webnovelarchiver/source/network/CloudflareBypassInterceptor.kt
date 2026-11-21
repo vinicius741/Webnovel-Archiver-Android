@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.source.network
 
 import android.content.Context
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import okhttp3.FormBody
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -81,7 +83,8 @@ private class AndroidCloudflarePageRenderer(
 /**
  * Handles a detected Cloudflare challenge with Android WebView's Chromium network stack.
  *
- * The first request still uses OkHttp. If Cloudflare challenges it, the same GET or form POST is
+ * The first request still uses OkHttp, unless the source declares `browserTransportOnly`. If
+ * Cloudflare challenges it, the same GET or form POST is
  * rendered in a detached WebView. A successful rendered DOM is converted into an OkHttp response so
  * the existing source parsers remain unchanged. Crucially, the browser response is not discarded in
  * favor of another OkHttp retry; doing that caused a permanent verification loop when Cloudflare
@@ -92,7 +95,8 @@ private class AndroidCloudflarePageRenderer(
  * returned for the parser to fail as a per-job error, an origin HTTP status (e.g. a removed
  * chapter's 404) is surfaced to the normal retry policy, and a transport-level render failure is a
  * retryable error — only the challenge detections open the circuit, so a single dead chapter
- * URL cannot block the whole source.
+ * URL cannot block the whole source. A render that stalls with no challenge on screen is retried
+ * once in a fresh WebView and then fails that one request as retryable.
  */
 class CloudflareBypassInterceptor internal constructor(
     private val renderer: CloudflarePageRenderer,
@@ -115,6 +119,7 @@ class CloudflareBypassInterceptor internal constructor(
             request
                 .takeIf(::isBrowserPageRequest)
                 ?.let { CloudflareWebViewRequest.from(it, safeWebViewHeaders(it)) }
+                ?.let(::withChromiumNavigationHeaders)
 
         // Once this host has challenged OkHttp, stop presenting the same rejected native TLS/HTTP
         // fingerprint before every chapter. Keep all browser requests serialized through the host
@@ -123,7 +128,7 @@ class CloudflareBypassInterceptor internal constructor(
             val gate = hostGates.getOrPut(hostKey(request)) { HostGate() }
             lockGate(gate)
             try {
-                return respondToRender(request, renderer.render(browserRequest))
+                return respondToRender(request, render(browserRequest))
             } finally {
                 gate.lock.unlock()
             }
@@ -137,10 +142,28 @@ class CloudflareBypassInterceptor internal constructor(
         val gate = hostGates.getOrPut(hostKey(request)) { HostGate() }
         lockGate(gate, response)
         try {
-            return respondToRender(request, renderer.render(webViewRequest), response)
+            return respondToRender(request, render(webViewRequest), response)
         } finally {
             gate.lock.unlock()
         }
+    }
+
+    /** One more attempt, in the fresh WebView the solver creates after a stall, before giving up. */
+    private fun render(request: CloudflareWebViewRequest): CloudflareRenderOutcome {
+        val first = renderer.render(request)
+        if (first !is CloudflareRenderOutcome.Stalled) return first
+        BypassEventLog.record(BypassEventCategory.CF, "render_retry_after_stall", hostKey(request.url))
+        return renderer.render(request)
+    }
+
+    /**
+     * A source in `SourceUserAgentMode.WEBVIEW` navigates with Chromium's own Accept headers. Passed
+     * as extra headers, `Accept-Language` moves ahead of the `sec-fetch-*` block where Chromium
+     * writes it last, and it can disagree with `navigator.languages`. Fetch requests keep theirs.
+     */
+    private fun withChromiumNavigationHeaders(request: CloudflareWebViewRequest): CloudflareWebViewRequest {
+        if (request.usesBrowserFetch || !SourceUserAgent.keepsWebViewDefault(request.url)) return request
+        return request.copy(headers = request.headers.filterKeys { it.lowercase(Locale.US) !in CHROMIUM_NAVIGATION_HEADERS })
     }
 
     /** Converts a render outcome into the response the caller sees; may open the circuit. */
@@ -165,6 +188,10 @@ class CloudflareBypassInterceptor internal constructor(
             CloudflareRenderOutcome.TransportError -> {
                 challengedResponse?.close()
                 throw IOException("Browser render failed at the transport level for ${request.url.host}")
+            }
+            is CloudflareRenderOutcome.Stalled -> {
+                challengedResponse?.close()
+                throw IOException("Browser render stalled (${outcome.failure.note}) for ${request.url.host}")
             }
             is CloudflareRenderOutcome.NeedsManualVerification -> {
                 reliability.requireManualVerification(request.url.host)
@@ -236,8 +263,12 @@ class CloudflareBypassInterceptor internal constructor(
                     }
             )
 
-    private fun hostKey(request: Request): String =
-        request.url.host
+    private fun hostKey(request: Request): String = hostKey(request.url.toString())
+
+    private fun hostKey(url: String): String =
+        runCatching { java.net.URI(url).host }
+            .getOrNull()
+            .orEmpty()
             .lowercase(Locale.US)
             .removePrefix("www.")
 
@@ -263,6 +294,7 @@ class CloudflareBypassInterceptor internal constructor(
         internal const val BROWSER_FINAL_URL_HEADER = "X-WNA-Browser-Final-Url"
         const val BODY_PEEK_BYTES = 64_000L
         val HTML_CONTENT_TYPE = "text/html; charset=utf-8".toMediaType()
+        private val CHROMIUM_NAVIGATION_HEADERS = setOf("accept", "accept-language")
         val UNSAFE_HEADER_NAMES =
             setOf(
                 "content-length",

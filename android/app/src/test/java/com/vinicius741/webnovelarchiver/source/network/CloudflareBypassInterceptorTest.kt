@@ -13,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.IOException
+import java.net.UnknownHostException
 
 class CloudflareBypassInterceptorTest {
     private lateinit var server: MockWebServer
@@ -236,6 +237,116 @@ class CloudflareBypassInterceptorTest {
     }
 
     @Test
+    fun stalledRenderIsRetriedOnceAndItsPageReturned() {
+        server.enqueue(cloudflareChallenge())
+        val reliability = SourceReliabilityCoordinator()
+        var renders = 0
+        val client =
+            clientWithRenderer(reliability) { request ->
+                renders += 1
+                if (renders == 1) {
+                    CloudflareRenderOutcome.Stalled(CloudflareRenderFailure.TimedOut)
+                } else {
+                    CloudflareRenderOutcome.Rendered(CloudflareRenderedPage("<html><body>second try</body></html>", request.url))
+                }
+            }
+
+        client.newCall(Request.Builder().url(server.url("/chapter/27")).build()).execute().use { response ->
+            assertEquals(200, response.code)
+            assertTrue(
+                response.body
+                    ?.string()
+                    .orEmpty()
+                    .contains("second try"),
+            )
+        }
+
+        assertEquals(2, renders)
+        assertFalse(reliability.isManualVerificationRequired(server.hostName))
+    }
+
+    @Test
+    fun renderThatStallsTwiceFailsThatRequestWithoutOpeningTheCircuit() {
+        server.enqueue(cloudflareChallenge())
+        val reliability = SourceReliabilityCoordinator()
+        var renders = 0
+        val client =
+            clientWithRenderer(reliability) {
+                renders += 1
+                CloudflareRenderOutcome.Stalled(CloudflareRenderFailure.TimedOut)
+            }
+
+        val error =
+            runCatching {
+                client.newCall(Request.Builder().url(server.url("/chapter/27")).build()).execute()
+            }.exceptionOrNull()
+
+        assertTrue(error is IOException)
+        assertFalse(error is SourceAccessBlockedException)
+        assertEquals(2, renders)
+        assertFalse(reliability.isManualVerificationRequired(server.hostName))
+    }
+
+    @Test
+    fun browserOnlySourceIsNeverProbedWithOkHttp() {
+        val reliability = SourceReliabilityCoordinator()
+        var rendered: CloudflareWebViewRequest? = null
+        val client =
+            offlineClientWithRenderer(reliability) { request ->
+                rendered = request
+                CloudflareRenderOutcome.Rendered(CloudflareRenderedPage("<html><body>chapter</body></html>", request.url))
+            }
+
+        client.newCall(NetworkRequests.pageRequest(SCRIBBLE_HUB_CHAPTER)).execute().use { response ->
+            assertEquals("1", response.header(CloudflareBypassInterceptor.BROWSER_RENDERED_HEADER))
+        }
+
+        assertEquals(SCRIBBLE_HUB_CHAPTER, rendered?.url)
+        assertFalse(reliability.isManualVerificationRequired("www.scribblehub.com"))
+    }
+
+    @Test
+    fun webViewIdentitySourceLeavesNavigationHeadersToChromium() {
+        var rendered: CloudflareWebViewRequest? = null
+        val client =
+            offlineClientWithRenderer(SourceReliabilityCoordinator()) { request ->
+                rendered = request
+                CloudflareRenderOutcome.Rendered(CloudflareRenderedPage("<html><body>chapter</body></html>", request.url))
+            }
+        val request =
+            NetworkRequests
+                .pageRequest(SCRIBBLE_HUB_CHAPTER)
+                .newBuilder()
+                .header("Referer", "https://www.scribblehub.com/")
+                .build()
+
+        client.newCall(request).execute().close()
+
+        assertEquals(mapOf("Referer" to "https://www.scribblehub.com/"), rendered?.headers)
+    }
+
+    @Test
+    fun webViewIdentitySourceKeepsItsFetchHeaders() {
+        var rendered: CloudflareWebViewRequest? = null
+        val client =
+            offlineClientWithRenderer(SourceReliabilityCoordinator()) { request ->
+                rendered = request
+                CloudflareRenderOutcome.Rendered(CloudflareRenderedPage("<li>chapter</li>0", request.url))
+            }
+        val request =
+            NetworkRequests.formRequest(
+                "https://www.scribblehub.com/wp-admin/admin-ajax.php",
+                mapOf("action" to "wi_getreleases_pagination", "pagenum" to 2),
+            )
+
+        client.newCall(request).execute().close()
+
+        assertTrue(rendered?.usesBrowserFetch == true)
+        assertEquals(NetworkRequests.FORM_ACCEPT, rendered?.headers?.get("Accept"))
+        assertEquals("XMLHttpRequest", rendered?.headers?.get("X-Requested-With"))
+    }
+
+    @Test
     fun normalResponseNeverStartsBrowserRenderer() {
         server.enqueue(MockResponse().setBody("normal"))
         var rendererCalled = false
@@ -387,10 +498,34 @@ class CloudflareBypassInterceptorTest {
             .addInterceptor(CloudflareBypassInterceptor(CloudflarePageRenderer(render)))
             .build()
 
+    private fun clientWithRenderer(
+        reliability: SourceReliabilityCoordinator,
+        render: (CloudflareWebViewRequest) -> CloudflareRenderOutcome,
+    ): OkHttpClient =
+        OkHttpClient
+            .Builder()
+            .addInterceptor(CloudflareBypassInterceptor(CloudflarePageRenderer(render), reliability))
+            .build()
+
+    /** For real source hosts: a request that reaches OkHttp fails at once instead of going out. */
+    private fun offlineClientWithRenderer(
+        reliability: SourceReliabilityCoordinator,
+        render: (CloudflareWebViewRequest) -> CloudflareRenderOutcome,
+    ): OkHttpClient =
+        OkHttpClient
+            .Builder()
+            .dns { host -> throw UnknownHostException("$host must not be resolved in this test") }
+            .addInterceptor(CloudflareBypassInterceptor(CloudflarePageRenderer(render), reliability))
+            .build()
+
     private fun cloudflareChallenge(): MockResponse =
         MockResponse()
             .setResponseCode(403)
             .setHeader("cf-mitigated", "challenge")
             .setHeader("server", "cloudflare")
             .setBody("<html><head><title>Just a moment...</title></head></html>")
+
+    private companion object {
+        const val SCRIBBLE_HUB_CHAPTER = "https://www.scribblehub.com/read/1055612-example/chapter/1205124/"
+    }
 }

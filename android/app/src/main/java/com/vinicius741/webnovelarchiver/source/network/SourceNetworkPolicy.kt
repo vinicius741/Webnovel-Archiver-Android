@@ -15,6 +15,12 @@ data class SourceNetworkPolicy(
     val maximumAdaptiveGapMillis: Long = 30_000L,
     val requestWindowMillis: Long = 60_000L,
     val maximumRequestsPerWindow: Int = Int.MAX_VALUE,
+    /**
+     * Pages never go through OkHttp, only the persistent WebView session. For a source whose
+     * Cloudflare rules challenge OkHttp every time: probing with it first spends a request that is
+     * always rejected and shows the site two different clients on one address.
+     */
+    val browserTransportOnly: Boolean = false,
 )
 
 fun interface NetworkPolicyResolver {

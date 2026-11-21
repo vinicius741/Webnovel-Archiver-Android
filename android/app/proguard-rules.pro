@@ -39,6 +39,12 @@
     <init>(...);
     <fields>;
 }
+# Written into the headers of the shared activity and source-access logs. Unkept, its fields were
+# exported as a..i, which made the per-source counters unreadable in the 1.2.1 logs.
+-keep class com.vinicius741.webnovelarchiver.source.network.SourceReliabilitySnapshot {
+    <init>(...);
+    <fields>;
+}
 
 # Generated narration (queue.json, recipe.json, index.json) and the narration server's /v1/info are
 # Gson models too. Unkept in 1.0.18/1.0.19, R8 renamed their fields to a, b, c… and dropped the

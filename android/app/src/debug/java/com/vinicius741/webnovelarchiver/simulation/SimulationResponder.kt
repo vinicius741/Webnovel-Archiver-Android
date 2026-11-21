@@ -353,6 +353,15 @@ internal class SimulationResponder(
         if (request.url !in chapterUrls || request.method != "GET") deny()
         val operation = "browser-${digest(request.url)}"
         journal.event("browser_render", operation)
+        // A browser-only source (Scribble Hub, the rate-limit scenario's story) never reaches source().
+        val rateLimited =
+            config.scenario.faults["source"] == "429" && request.url ==
+                stories
+                    .first()
+                    .chapters
+                    .first()
+                    .url
+        if (rateLimited && journal.nextAttempt("$operation-429") == 1) return CloudflareRenderOutcome.OriginHttpError(429, "3")
         val host = request.url.toHttpUrl().host
         val fault = config.scenario.faults["cloudflare"]
         if (!journal.verified(host)) {

@@ -163,4 +163,41 @@ class SourceReliabilityCoordinatorTest {
         assertTrue(restored.browserTransportActive("scribblehub.com"))
         assertEquals(persisted.challengeCount, restored.snapshots().single().challengeCount)
     }
+
+    @Test
+    fun browserOnlySourceUsesTheBrowserBeforeAnyChallengeAndAfterASessionReset() {
+        val coordinator = SourceReliabilityCoordinator()
+
+        assertTrue(coordinator.browserTransportActive("www.scribblehub.com"))
+        assertFalse(coordinator.browserTransportActive("www.royalroad.com"))
+
+        coordinator.clearAccessBlock("scribblehub.com", keepBrowserTransport = false)
+        assertTrue(coordinator.browserTransportActive("scribblehub.com"))
+        assertTrue(coordinator.snapshots().first { it.host == "scribblehub.com" }.browserTransportActive)
+    }
+
+    @Test
+    fun browserOnlySourceStaysBrowserOnlyWhenItsProviderIdIsLookedUpFirst() {
+        // The download loop asks about "scribble_hub" before the first request names a host.
+        val coordinator = SourceReliabilityCoordinator()
+        assertFalse(coordinator.isManualVerificationRequired("scribble_hub"))
+
+        assertTrue(coordinator.browserTransportActive("www.scribblehub.com"))
+        assertEquals("scribblehub.com", coordinator.snapshots().single().host)
+    }
+
+    @Test
+    fun browserOnlySourceStaysBrowserOnlyAfterRestoringAnExpiredWindow() {
+        var now = 1_000L
+        val previous = SourceReliabilityCoordinator(nowMillis = { now })
+        previous.recordChallengeDetected("www.scribblehub.com")
+        val persisted = previous.persistableStates().single()
+
+        now += 31L * 60L * 1_000L
+        val restored = SourceReliabilityCoordinator(nowMillis = { now })
+        restored.restore(listOf(persisted))
+
+        assertEquals("scribble_hub", persisted.key)
+        assertTrue(restored.browserTransportActive("www.scribblehub.com"))
+    }
 }

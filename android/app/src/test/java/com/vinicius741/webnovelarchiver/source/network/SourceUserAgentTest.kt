@@ -97,4 +97,30 @@ class SourceUserAgentTest {
         // Cookie bind: if these ever differ, cf_clearance is rejected.
         assertEquals(okHttp, webView)
     }
+
+    @Test
+    fun webViewModeSourceGetsTheSystemStringUnchangedEvenAfterAnEarlyFallbackRead() {
+        val before = SourceUserAgent.webView
+        val system =
+            "Mozilla/5.0 (Linux; Android 16; SM-F966B Build/BP2A.250605.031; wv) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Version/4.0 Chrome/142.0.7444.102 Mobile Safari/537.36"
+        try {
+            // An early consumer freezes the reduced string; the WebView's own must still arrive.
+            val reducedBefore = SourceUserAgent.resolved
+            SourceUserAgent.acceptSystemUserAgent(system)
+
+            assertEquals(system, SourceUserAgent.forUrl("https://www.scribblehub.com/series/1/example/"))
+            assertEquals(reducedBefore, SourceUserAgent.forUrl("https://www.royalroad.com/fiction/1/example"))
+        } finally {
+            SourceUserAgent.acceptSystemUserAgent(before)
+        }
+    }
+
+    @Test
+    fun onlyWebViewModeSourcesKeepTheWebViewDefault() {
+        assertTrue(SourceUserAgent.keepsWebViewDefault("https://www.scribblehub.com/read/1-x/chapter/2/"))
+        assertTrue(!SourceUserAgent.keepsWebViewDefault("https://www.royalroad.com/fiction/1/example"))
+        assertTrue(!SourceUserAgent.keepsWebViewDefault("https://www.fanfiction.net/s/1/1/title"))
+        assertTrue(!SourceUserAgent.keepsWebViewDefault("https://www.patreon.com/api/posts"))
+    }
 }

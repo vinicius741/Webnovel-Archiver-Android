@@ -164,8 +164,11 @@ class CloudflareSolveActivity : AppCompatActivity() {
         val web =
             WebView(this).apply {
                 WebViewSafety.applyBrowserSettings(this)
-                val ua = SourceUserAgent.forUrl(verificationUrl)
-                if (ua.isNotBlank()) settings.userAgentString = ua
+                // A source that keeps the WebView's own string leaves the setting at its default.
+                if (!SourceUserAgent.keepsWebViewDefault(verificationUrl)) {
+                    val ua = SourceUserAgent.forUrl(verificationUrl)
+                    if (ua.isNotBlank()) settings.userAgentString = ua
+                }
                 webViewClient =
                     object : WebViewClient() {
                         override fun onPageFinished(

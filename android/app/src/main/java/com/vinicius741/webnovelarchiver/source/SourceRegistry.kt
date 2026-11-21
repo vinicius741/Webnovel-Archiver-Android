@@ -17,6 +17,14 @@ enum class SourceUrlKind {
 enum class SourceUserAgentMode {
     DEFAULT,
     DESKTOP,
+
+    /**
+     * The system WebView's own User-Agent, unchanged, and page navigations that carry only the
+     * headers Chromium writes itself. For a source that is always read through the WebView: the
+     * rewritten [DEFAULT] string claims plain Chrome while the WebView's client hints and
+     * `X-Requested-With` header still say WebView, a contradiction a bot check can see.
+     */
+    WEBVIEW,
 }
 
 data class SourceCapabilities(

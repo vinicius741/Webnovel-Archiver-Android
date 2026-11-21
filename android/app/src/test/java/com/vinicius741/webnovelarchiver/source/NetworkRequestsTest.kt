@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.source
 
 import com.vinicius741.webnovelarchiver.source.network.NetworkRequests
+import com.vinicius741.webnovelarchiver.source.network.SourceUserAgent
 import okio.Buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -35,7 +36,8 @@ class NetworkRequestsTest {
         request.body?.writeTo(buffer)
 
         assertEquals("POST", request.method)
-        assertEquals(NetworkRequests.USER_AGENT, request.header("User-Agent"))
+        // Scribble Hub is a WebView-mode source; its string differs from USER_AGENT on a device.
+        assertEquals(SourceUserAgent.forUrl("https://www.scribblehub.com/"), request.header("User-Agent"))
         assertEquals(NetworkRequests.FORM_ACCEPT, request.header("Accept"))
         assertEquals("en-US,en;q=0.9", request.header("Accept-Language"))
         assertEquals(NetworkRequests.FORM_CONTENT_TYPE, request.header("Content-Type"))

@@ -28,8 +28,12 @@ override val descriptor =
 - `displayName` is user-facing and may change without invalidating persisted settings.
 - `hosts` must list every exact story/chapter host. The registry parses the URI host; it never accepts
   supported URLs embedded in another host's path or query.
-- Put concurrency, partial-sync, retry/pacing, desktop-user-agent, cookie seeding, protected browser
+- Put concurrency, partial-sync, retry/pacing, user-agent mode, cookie seeding, protected browser
   session, rendered-page validation, and featured-metric choices in the descriptor.
+- A source whose Cloudflare rules challenge OkHttp on every session sets
+  `networkPolicy.browserTransportOnly` and `userAgentMode = SourceUserAgentMode.WEBVIEW`, so its
+  pages are read only through the WebView under the WebView's own identity (see
+  `docs/cloudflare/source-reliability-implementation.md`).
 
 ## 2. Implement URL and parsing behavior
 

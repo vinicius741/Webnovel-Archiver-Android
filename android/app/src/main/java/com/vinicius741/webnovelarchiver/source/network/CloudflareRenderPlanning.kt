@@ -65,6 +65,25 @@ internal object CloudflareRenderPollPlanning {
                 CloudflareRenderFailure.PageContentUnexpected(CloudflareRenderedPage(state.html, documentUrl))
             else -> CloudflareRenderFailure.NeverSettled
         }
+
+    /**
+     * Whether a challenge is on screen as far as the polls can tell. A stale document is the
+     * previous request's page and an empty one is a navigation in flight (a challenge reloading
+     * itself): neither says the challenge is gone, so they keep the previous answer.
+     */
+    fun challengeShowing(
+        previously: Boolean,
+        state: CloudflarePageState,
+        isChallenge: Boolean,
+    ): Boolean = if (state.stale || state.html.isBlank()) previously else isChallenge
+
+    /**
+     * The render ran out of time without a decision. Only a challenge the last answered poll still
+     * showed means Cloudflare is waiting for a human; otherwise the WebView simply never delivered
+     * the page (a lost poll answer, a hung navigation), which a fresh WebView can retry.
+     */
+    fun failureOnTimeout(lastPollSawChallenge: Boolean): CloudflareRenderFailure =
+        if (lastPollSawChallenge) CloudflareRenderFailure.ChallengeActive else CloudflareRenderFailure.TimedOut
 }
 
 internal data class CloudflarePageState(
@@ -144,6 +163,15 @@ internal sealed interface CloudflareRenderOutcome {
 
     data object TransportError : CloudflareRenderOutcome
 
+    /**
+     * The WebView never produced the page and no challenge was showing, so nothing says Cloudflare
+     * wants a human. The solver discards that WebView; the caller retries once in a fresh one and
+     * then fails the single request as retryable.
+     */
+    data class Stalled(
+        val failure: CloudflareRenderFailure,
+    ) : CloudflareRenderOutcome
+
     data class NeedsManualVerification(
         val failure: CloudflareRenderFailure,
     ) : CloudflareRenderOutcome
@@ -152,19 +180,23 @@ internal sealed interface CloudflareRenderOutcome {
 internal object CloudflareRenderOutcomePlanning {
     fun outcome(failure: CloudflareRenderFailure?): CloudflareRenderOutcome =
         when (failure) {
-            null -> CloudflareRenderOutcome.NeedsManualVerification(CloudflareRenderFailure.TimedOut)
+            null -> CloudflareRenderOutcome.Stalled(CloudflareRenderFailure.TimedOut)
             is CloudflareRenderFailure.PageContentUnexpected ->
                 CloudflareRenderOutcome.PageContentUnexpected(failure.page)
             is CloudflareRenderFailure.MainFrameHttpError ->
                 CloudflareRenderOutcome.OriginHttpError(failure.statusCode, failure.retryAfter)
             CloudflareRenderFailure.MainFrameTransportError -> CloudflareRenderOutcome.TransportError
-            CloudflareRenderFailure.ChallengeActive,
+            // The navigation never reached a readable page, with no challenge on screen: a stuck
+            // WebView, not a block. Opening the circuit here once paused a whole source for half
+            // an hour over a page that then opened in under two seconds.
             CloudflareRenderFailure.StaleDocumentPersisted,
             CloudflareRenderFailure.NavigationNeverCommitted,
             CloudflareRenderFailure.NeverSettled,
+            CloudflareRenderFailure.TimedOut,
+            -> CloudflareRenderOutcome.Stalled(failure)
+            CloudflareRenderFailure.ChallengeActive,
             CloudflareRenderFailure.RenderProcessGone,
             CloudflareRenderFailure.UnsupportedMethod,
-            CloudflareRenderFailure.TimedOut,
             -> CloudflareRenderOutcome.NeedsManualVerification(failure)
         }
 }
