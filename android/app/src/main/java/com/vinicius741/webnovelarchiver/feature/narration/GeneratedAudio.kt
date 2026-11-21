@@ -17,39 +17,22 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 
-/** Generated packs by story: those of chapters in the library, and the detached rest. */
-internal class GeneratedAudio(
-    val attached: Map<String, List<NarrationPack>>,
-    val detached: Map<String, List<NarrationPack>>,
-)
-
-/** Splits the packs once per hub build: the split reads every pack's story, and two sections use it. */
-internal fun ScreenHost.generatedAudio(): GeneratedAudio {
-    val detached = narration.detachedPacks()
-    val detachedKeys = detached.values.flatten().mapTo(HashSet()) { it.storyId to it.chapterId }
-    val attached =
-        narration.store
-            .allPacks()
-            .filter { (it.storyId to it.chapterId) !in detachedKeys }
-            .groupBy { it.storyId }
-    return GeneratedAudio(attached, detached)
-}
-
 /**
  * The Listen hub's Generated section: every story with generated audio (chapters, length, size,
  * voices), how much storage the audio uses, and audio whose story has left the library.
  */
 internal fun LinearLayout.generatedSection(
     host: ScreenHost,
-    audio: GeneratedAudio,
+    model: ListenScreenModel,
+    content: ListenContent,
     compression: CompressionStatusView,
 ) {
-    val attached = audio.attached
-    val detached = audio.detached
-    val used = host.narration.store.totalBytes()
-    val free = host.narration.freeBytes()
-    listenSectionLabel("Generated audio", "${NarrationPlanning.formatBytes(used)} · ${NarrationPlanning.formatBytes(free)} free")
-    compression.bind(host.narration.compression.value, used)
+    val attached = content.audio.attached
+    val detached = content.audio.detached
+    listenSectionLabel(
+        "Generated audio",
+        "${NarrationPlanning.formatBytes(content.usedBytes)} · ${NarrationPlanning.formatBytes(content.freeBytes)} free",
+    )
     addView(
         compression.view,
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -63,7 +46,7 @@ internal fun LinearLayout.generatedSection(
         attached.entries
             .sortedByDescending { entry -> entry.value.maxOf { it.index.generatedAt } }
             .forEach { (storyId, storyPacks) ->
-                val story = host.repository.story(storyId)
+                val story = content.audioStories[storyId]
                 val cover = story?.let { host.coverImage(it, COVER_WIDTH_DP, COVER_HEIGHT_DP, tapToOpen = false) }
                 cover?.layoutParams = LinearLayout.LayoutParams(context.dp(COVER_WIDTH_DP), context.dp(COVER_HEIGHT_DP))
                 cover?.isClickable = false
@@ -80,7 +63,7 @@ internal fun LinearLayout.generatedSection(
             }
         addView(list)
     }
-    if (detached.isNotEmpty()) detachedRow(host, detached)
+    if (detached.isNotEmpty()) detachedRow(host, model, detached)
 }
 
 /**
@@ -89,6 +72,7 @@ internal fun LinearLayout.generatedSection(
  */
 private fun LinearLayout.detachedRow(
     host: ScreenHost,
+    model: ListenScreenModel,
     detached: Map<String, List<NarrationPack>>,
 ) {
     val packs = detached.values.flatten()
@@ -102,11 +86,7 @@ private fun LinearLayout.detachedRow(
             leadIcon = R.drawable.wna_delete,
             leadTint = ThemeManager.colors.error,
         ) {
-            host.confirm("Delete this audio ($bytes)?", confirmLabel = "Delete") {
-                host.narrationAction("Could not delete the audio") {
-                    detached.forEach { (storyId, storyPacks) -> deleteAudio(storyId, storyPacks.map { it.chapterId }) }
-                }
-            }
+            host.confirm("Delete this audio ($bytes)?", confirmLabel = "Delete") { model.deleteDetachedAudio() }
         },
     )
     addView(

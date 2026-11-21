@@ -19,7 +19,8 @@ import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.text
 
 // Generate on: the chips that choose where Kokoro chapters generate (this phone or the user's
-// computers), shown in the Listening settings with the computers' rows and in the Listen queue.
+// computers), shown in the Listening settings with the computers' rows and in the Listen queue
+// (which renders them from its own model).
 
 /** The Listening settings' Generate on card, followed by the computers' rows. */
 internal fun LinearLayout.generateOnSection(
@@ -41,7 +42,7 @@ internal fun LinearLayout.generateOnSection(
     val card =
         makeCard(context).apply {
             if (document.servers.isNotEmpty()) {
-                generateOnChips(host, document)
+                generateOnChips(document) { host.chooseGenerateOn(choice, it) }
                 spacer(Space.SM + 2)
             }
             text(
@@ -58,32 +59,21 @@ internal fun LinearLayout.generateOnSection(
     return rows
 }
 
-/** The Generate on chips: "This phone" and each computer; a tap saves the choice and the screen rebuilds. */
-private fun LinearLayout.generateOnChips(
-    host: ScreenHost,
+/**
+ * The Generate on chips: "This phone" and each computer. [onChoose] gets the tapped computer's id
+ * (null for "This phone"); saving the choice rebuilds the screen.
+ */
+internal fun LinearLayout.generateOnChips(
     document: NarrationQueueDocument,
+    onChoose: (serverId: String?) -> Unit,
 ) {
     val choice = document.generateOnChoice
     flow(spacing = Space.SM) {
-        chip("This phone", selected = choice.phoneChosen) { host.chooseGenerateOn(choice, null) }
+        chip("This phone", selected = choice.phoneChosen) { onChoose(null) }
         document.servers.forEach { server ->
-            chip(server.name, selected = server.id in choice.serverIds) { host.chooseGenerateOn(choice, server.id) }
+            chip(server.name, selected = server.id in choice.serverIds) { onChoose(server.id) }
         }
     }
-}
-
-/**
- * The Listen queue's Generate on row, so where chapters generate can change without leaving the
- * queue. Shown only when there is a computer to choose and the current voice can generate on one.
- */
-internal fun LinearLayout.queueGenerateOnSection(
-    host: ScreenHost,
-    document: NarrationQueueDocument,
-) {
-    if (document.servers.isEmpty()) return
-    if (KokoroVoices.model(host.narration.currentVoice().engine) == null) return
-    listenSectionLabel("Generate on")
-    generateOnChips(host, document)
 }
 
 /** Saves what a tap on a Generate on chip chooses ([serverId] null is "This phone"). */

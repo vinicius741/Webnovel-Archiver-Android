@@ -38,13 +38,15 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
  */
 internal fun LinearLayout.queueStoryCard(
     host: ScreenHost,
-    group: QueueGroup,
-    isFirst: Boolean,
+    model: ListenScreenModel,
+    queueCard: ListenQueueCard,
     runningJobId: String?,
     runningRow: RunningJobRow,
 ): View {
     val colors = ThemeManager.colors
-    val story = host.repository.story(group.storyId)
+    val group = queueCard.group
+    val isFirst = queueCard.isFirst
+    val story = queueCard.story
     val queued = group.jobs.size - group.failed
     val card =
         makeCard(context).apply {
@@ -68,7 +70,7 @@ internal fun LinearLayout.queueStoryCard(
         }
     val more =
         context.iconButton(R.drawable.wna_more_vert, "Story queue options", colors.onSurfaceVariant) {
-            host.showStoryQueueMenu(group, isFirst)
+            showStoryQueueMenu(host, model, queueCard)
         }
     card.addView(
         makeListRow(
@@ -78,10 +80,10 @@ internal fun LinearLayout.queueStoryCard(
             leadIcon = R.drawable.wna_headphones,
             lead = cover,
             trailing = more,
-        ) { if (story != null) host.showStoryChapters(group.storyId) else host.showStoryQueueMenu(group, isFirst) },
+        ) { if (story != null) host.showStoryChapters(group.storyId) else showStoryQueueMenu(host, model, queueCard) },
     )
     group.jobs.take(MAX_ROWS_PER_STORY).forEach { job ->
-        card.addView(jobRow(host, job, isRunning = job.id == runningJobId, runningRow))
+        card.addView(jobRow(host, model, job, queueCard, isRunning = job.id == runningJobId, runningRow))
     }
     if (group.jobs.size > MAX_ROWS_PER_STORY) {
         card.addView(
@@ -92,9 +94,7 @@ internal fun LinearLayout.queueStoryCard(
     }
     if (!isFirst && queued > 0) {
         card.addView(
-            makeButton(context, "Move to front", Btn.TEXT, R.drawable.wna_up) {
-                host.narrationAction("Could not reorder the queue") { moveStoryToTop(group.storyId) }
-            },
+            makeButton(context, "Move to front", Btn.TEXT, R.drawable.wna_up) { model.moveStoryToTop(group.storyId) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.END
                 marginEnd = context.dp(Space.SM)
@@ -106,11 +106,14 @@ internal fun LinearLayout.queueStoryCard(
 
 private fun LinearLayout.jobRow(
     host: ScreenHost,
+    model: ListenScreenModel,
     job: NarrationJob,
+    queueCard: ListenQueueCard,
     isRunning: Boolean,
     runningRow: RunningJobRow,
 ): View {
     val colors = ThemeManager.colors
+    val chapterTitle = queueCard.chapterTitles[job.id].orEmpty()
     val failed = job.state == NarrationJobState.FAILED
     val (icon, iconTint, iconFill) =
         when {
@@ -145,7 +148,7 @@ private fun LinearLayout.jobRow(
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(
-                makeText(context, host.narration.chapterTitle(job.storyId, job.chapterId), Type.BODY_MEDIUM, colors.onSurface).apply {
+                makeText(context, chapterTitle, Type.BODY_MEDIUM, colors.onSurface).apply {
                     maxLines = 2
                     ellipsize = TextUtils.TruncateAt.END
                 },
@@ -159,7 +162,7 @@ private fun LinearLayout.jobRow(
                 R.drawable.wna_refresh,
                 "Retry",
                 colors.onSurfaceVariant,
-            ) { host.narrationAction("Could not retry") { retry(job.id) } }
+            ) { model.retry(listOf(job.id)) }
         } else {
             context.iconButton(
                 R.drawable.wna_close,
@@ -169,10 +172,10 @@ private fun LinearLayout.jobRow(
                 // This stops generation mid-chapter, so a stray tap must not do it (the menu asked too).
                 if (isRunning) {
                     host.confirm("Stop generating this chapter and remove it from the queue?", confirmLabel = "Stop") {
-                        host.narrationAction("Could not remove") { remove(setOf(job.id)) }
+                        model.remove(setOf(job.id))
                     }
                 } else {
-                    host.narrationAction("Could not remove") { remove(setOf(job.id)) }
+                    model.remove(setOf(job.id))
                 }
             }
         }
@@ -188,7 +191,7 @@ private fun LinearLayout.jobRow(
         isClickable = true
         isFocusable = true
         background = selectableRipple(colors.onSurface)
-        setOnClickListener { host.showJobMenu(job, isRunning) }
+        setOnClickListener { showJobMenu(host, model, job, queueCard, isRunning) }
         addView(
             ImageView(context).apply {
                 setImageDrawable(context.tintedIcon(icon, iconTint))
@@ -203,56 +206,56 @@ private fun LinearLayout.jobRow(
     }
 }
 
-private fun ScreenHost.showStoryQueueMenu(
-    group: QueueGroup,
-    isFirst: Boolean,
+private fun showStoryQueueMenu(
+    host: ScreenHost,
+    model: ListenScreenModel,
+    queueCard: ListenQueueCard,
 ) {
+    val group = queueCard.group
     val items = mutableListOf<OptionsDialogItem>()
-    if (!isFirst) {
-        items +=
-            OptionsDialogItem.Option(
-                "Move to front",
-            ) { narrationAction("Could not reorder the queue") { moveStoryToTop(group.storyId) } }
+    if (!queueCard.isFirst) {
+        items += OptionsDialogItem.Option("Move to front") { model.moveStoryToTop(group.storyId) }
     }
     if (group.failed > 0) {
         items +=
             OptionsDialogItem.Option("Retry failed (${group.failed})") {
-                narrationAction("Could not retry") {
-                    group.jobs.filter { it.state == NarrationJobState.FAILED }.forEach { retry(it.id) }
-                }
+                model.retry(group.jobs.filter { it.state == NarrationJobState.FAILED }.map { it.id })
             }
     }
-    if (repository.story(group.storyId) != null) {
-        items += OptionsDialogItem.Option("Open in the story") { showStoryChapters(group.storyId) }
+    if (queueCard.story != null) {
+        items += OptionsDialogItem.Option("Open in the story") { host.showStoryChapters(group.storyId) }
     }
     items += OptionsDialogItem.Divider
     items +=
         OptionsDialogItem.Option("Remove this story from the queue (${group.jobs.size})", destructive = true) {
-            narrationAction("Could not remove") { remove(group.jobs.map { it.id }.toSet()) }
+            model.remove(group.jobs.map { it.id }.toSet())
         }
-    showStyledOptionsDialog(repository.story(group.storyId)?.title ?: "Story", items)
+    host.showStyledOptionsDialog(queueCard.story?.title ?: "Story", items)
 }
 
-private fun ScreenHost.showJobMenu(
+private fun showJobMenu(
+    host: ScreenHost,
+    model: ListenScreenModel,
     job: NarrationJob,
+    queueCard: ListenQueueCard,
     isRunning: Boolean,
 ) {
     val items = mutableListOf<OptionsDialogItem>()
     if (!isRunning) {
-        items += OptionsDialogItem.Option("Move to front") { narrationAction("Could not move the chapter") { moveToTop(job.id) } }
+        items += OptionsDialogItem.Option("Move to front") { model.moveToTop(job.id) }
     }
     if (job.state == NarrationJobState.FAILED) {
-        items += OptionsDialogItem.Option("Retry") { narrationAction("Could not retry") { retry(job.id) } }
+        items += OptionsDialogItem.Option("Retry") { model.retry(listOf(job.id)) }
     }
-    if (repository.story(job.storyId) != null) {
-        items += OptionsDialogItem.Option("Open in the story") { showStoryChapters(job.storyId, job.chapterId) }
+    if (queueCard.story != null) {
+        items += OptionsDialogItem.Option("Open in the story") { host.showStoryChapters(job.storyId, job.chapterId) }
     }
     items += OptionsDialogItem.Divider
     items +=
         OptionsDialogItem.Option(if (isRunning) "Stop and remove from queue" else "Remove from queue", destructive = true) {
-            narrationAction("Could not remove") { remove(setOf(job.id)) }
+            model.remove(setOf(job.id))
         }
-    showStyledOptionsDialog(narration.chapterTitle(job.storyId, job.chapterId), items)
+    host.showStyledOptionsDialog(queueCard.chapterTitles[job.id].orEmpty(), items)
 }
 
 private const val MAX_ROWS_PER_STORY = 5

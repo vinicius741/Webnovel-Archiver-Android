@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.narration
 
+import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
@@ -11,7 +12,6 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -21,22 +21,20 @@ import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.launch
 
 // The generation banner on the narration screens (v3 copper card). It always says what is being
 // generated, in which story, how far along and how fast, whichever screen the user came from, and
-// updates in place on every sentence instead of rebuilding the screen. While nothing is queued it
-// turns into a calm "Nothing is generating" card (or hides, on the story screen).
+// is bound in place on every sentence instead of rebuilding the screen. While nothing is queued it
+// turns into a calm "Nothing is generating" card, or hides ([hideWhenIdle]).
 
 internal class NarrationLiveStatus(
-    host: ScreenHost,
-    /** Hide the banner while nothing is queued (the story screen) instead of saying so. */
+    private val context: Context,
+    /** Hide the banner while nothing is queued instead of saying so. */
     private val hideWhenIdle: Boolean,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
     private val onOpen: ((GenerationBanner) -> Unit)?,
 ) {
-    private val context = host.app
     private val colors = ThemeManager.colors
     private var current: GenerationBanner? = null
     private val stateIcon = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_INSIDE }
@@ -65,13 +63,9 @@ internal class NarrationLiveStatus(
             indeterminateTintList = ColorStateList.valueOf(colors.secondary)
         }
     private val pauseButton =
-        makeButton(context, "Pause", Btn.SURFACE, R.drawable.wna_pause) {
-            host.narrationAction("Could not pause") { pause() }
-        }.apply { contentDescription = "Pause generation" }
+        makeButton(context, "Pause", Btn.SURFACE, R.drawable.wna_pause) { onPause() }.apply { contentDescription = "Pause generation" }
     private val resumeButton =
-        makeButton(context, "Resume", Btn.FILLED, R.drawable.wna_play) {
-            host.narrationAction("Could not resume") { resume() }
-        }.apply { contentDescription = "Resume generation" }
+        makeButton(context, "Resume", Btn.FILLED, R.drawable.wna_play) { onResume() }.apply { contentDescription = "Resume generation" }
 
     val view: LinearLayout =
         LinearLayout(context).apply {
@@ -193,20 +187,6 @@ internal class NarrationLiveStatus(
 
     private fun quietBackground() =
         strokeBg(colors.elevation1, context.dp(ThemeManager.shapes.cardRadius).toFloat(), colors.line, context.dp(1).coerceAtLeast(1))
-
-    /** Keeps the banner current until [scope] ends (the screen's observer). */
-    fun observe(
-        host: ScreenHost,
-        scope: CoroutineScope,
-    ) {
-        val narration = host.narration
-        bind(NarrationScreenPlanning.banner(narration.progress.value, narration.queueState.value, narration.generationRunning.value))
-        scope.launch {
-            combine(narration.progress, narration.queueState, narration.generationRunning) { progress, queue, running ->
-                NarrationScreenPlanning.banner(progress, queue, running)
-            }.collect(::bind)
-        }
-    }
 
     private fun TextView.setTextOrHide(value: CharSequence?) {
         text = value ?: ""

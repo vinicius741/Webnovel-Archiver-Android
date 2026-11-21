@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.player
 
+import android.content.Context
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -7,8 +8,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -22,10 +21,11 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 // Now Playing's middle: the "Current sentence" card, the big play button and the transport row.
 
-internal fun ScreenHost.nowReadingCard(
+internal fun Context.nowReadingCard(
     caption: TextView,
     onClick: () -> Unit,
 ): View {
+    val app = this
     val colors = ThemeManager.colors
     val radius = dp(CAPTION_RADIUS_DP).toFloat()
     return LinearLayout(app).apply {
@@ -73,7 +73,8 @@ internal fun ScreenHost.nowReadingCard(
     }
 }
 
-internal fun ScreenHost.playButton(): ImageView {
+internal fun Context.playButton(onClick: () -> Unit): ImageView {
+    val app = this
     val colors = ThemeManager.colors
     val size = dp(PLAY_SIZE_DP)
     val radius = dp(PLAY_RADIUS_DP).toFloat()
@@ -87,21 +88,25 @@ internal fun ScreenHost.playButton(): ImageView {
                 radius,
                 colors.onPrimary,
             )
-        setOnClickListener { TtsForegroundService.command(app, TtsForegroundService.ACTION_PLAY_PAUSE) }
+        setOnClickListener { onClick() }
     }
 }
 
-internal fun ScreenHost.transportRow(playPause: ImageView): LinearLayout {
+internal fun Context.transportRow(
+    playPause: ImageView,
+    model: PlayerScreenModel,
+): LinearLayout {
+    val app = this
     val colors = ThemeManager.colors
 
     fun transport(
         desc: String,
         icon: Int,
-        action: String,
+        action: () -> Unit,
         badge: String? = null,
     ): View {
         val size = dp(TRANSPORT_SIZE_DP)
-        val button = app.iconButton(icon, desc, colors.onSurface) { TtsForegroundService.command(app, action) }
+        val button = app.iconButton(icon, desc, colors.onSurface) { action() }
         if (badge != null) {
             // Upscale the ring so the seconds label sits inside it instead of over the stroke.
             button.scaleType = ImageView.ScaleType.FIT_CENTER
@@ -137,15 +142,15 @@ internal fun ScreenHost.transportRow(playPause: ImageView): LinearLayout {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(Spacing.SM + 2), 0, dp(Spacing.MD + 2))
-        addView(transport("Previous chapter", R.drawable.wna_skip_prev, TtsForegroundService.ACTION_PREVIOUS_CHAPTER))
+        addView(transport("Previous chapter", R.drawable.wna_skip_prev, model::previousChapter))
         addView(gap())
-        addView(transport("Back 15 seconds", R.drawable.wna_seek_back_ring, TtsForegroundService.ACTION_SKIP_BACK, "15"))
+        addView(transport("Back 15 seconds", R.drawable.wna_seek_back_ring, model::skipBack, "15"))
         addView(gap())
         addView(playPause)
         addView(gap())
-        addView(transport("Forward 30 seconds", R.drawable.wna_seek_forward_ring, TtsForegroundService.ACTION_SKIP_FORWARD, "30"))
+        addView(transport("Forward 30 seconds", R.drawable.wna_seek_forward_ring, model::skipForward, "30"))
         addView(gap())
-        addView(transport("Next chapter", R.drawable.wna_skip_next, TtsForegroundService.ACTION_NEXT_CHAPTER))
+        addView(transport("Next chapter", R.drawable.wna_skip_next, model::nextChapter))
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
     }
 }

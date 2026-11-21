@@ -30,7 +30,7 @@ import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
 import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
+import com.vinicius741.webnovelarchiver.feature.player.TtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
@@ -231,7 +231,9 @@ class MainActivity :
                         )
                     ttsEngine = container.ttsEngine
                     ttsEngine.addErrorListener(audioNotGeneratedListener)
-                    attachTtsMiniPlayer(shell.miniSlot)
+                    val miniPlayer = TtsMiniPlayer(this@MainActivity)
+                    onScreenBuilt = miniPlayer::onRouteRendered
+                    miniPlayer.attach(shell.miniSlot)
                     attachAiJobChip(root)
                     attachAiJobBridges()
                     container.awaitRepositoryReady()
