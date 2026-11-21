@@ -35,6 +35,9 @@ abstract class ScreenModel(
 class ScreenModelStore {
     private val models = mutableMapOf<String, ScreenModel>()
 
+    /** State saved before a process death, waiting for the first model of its key ([restore]). */
+    private val restoredStates = mutableMapOf<String, Any>()
+
     /** The model for [key], created by [create] on first use. A model of another type is replaced. */
     @Suppress("UNCHECKED_CAST")
     fun <T : ScreenModel> get(
@@ -61,16 +64,45 @@ class ScreenModelStore {
 
     inline fun <reified T : ScreenModel> find(key: String): T? = find(key, T::class.java)
 
-    /** Drops every model whose key is no longer in the history. */
+    /** Drops every model (and restored state) whose key is no longer in the history. */
     fun retainOnly(keys: Set<String>) {
         val dropped = models.keys - keys
         dropped.forEach { key -> models.remove(key)?.clear() }
+        restoredStates.keys.retainAll(keys)
     }
 
     fun clear() {
         models.values.forEach(ScreenModel::clear)
         models.clear()
+        restoredStates.clear()
     }
+
+    /**
+     * Keeps [state], read back from the activity's saved state after a process death, until [key]'s
+     * model is created: its `create` takes it with [takeRestored].
+     */
+    fun restore(
+        key: String,
+        state: Any,
+    ) {
+        restoredStates[key] = state
+    }
+
+    /** The restored state of [key] not taken by a model yet, without taking it (to save it again). */
+    fun <T : Any> peekRestored(
+        key: String,
+        type: Class<T>,
+    ): T? = restoredStates[key]?.takeIf(type::isInstance)?.let(type::cast)
+
+    /** Takes the restored state of [key] (null when none), so only the first model starts from it. */
+    fun <T : Any> takeRestored(
+        key: String,
+        type: Class<T>,
+    ): T? = peekRestored(key, type).also { restoredStates.remove(key) }
+
+    inline fun <reified T : Any> takeRestored(key: String): T? = takeRestored(key, T::class.java)
+
+    inline fun <reified T : Any> peekRestored(key: String): T? = peekRestored(key, T::class.java)
 
     internal val size: Int get() = models.size
 }

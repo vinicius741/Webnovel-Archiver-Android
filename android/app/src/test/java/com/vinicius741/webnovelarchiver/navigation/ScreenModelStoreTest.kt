@@ -73,4 +73,25 @@ class ScreenModelStoreTest {
         assertTrue(a.cleared && b.cleared)
         assertEquals(0, store.size)
     }
+
+    @Test
+    fun restoredStateWaitsForTheFirstModelAndIsTakenOnce() {
+        store.restore("library", "saved")
+
+        assertEquals("saved", store.peekRestored<String>("library"))
+        assertEquals(null, store.peekRestored<Int>("library"))
+        assertEquals("saved", store.takeRestored<String>("library"))
+        assertEquals(null, store.takeRestored<String>("library"))
+    }
+
+    @Test
+    fun restoredStateOfAKeyLeavingTheHistoryIsDropped() {
+        store.restore("library", "kept")
+        store.restore("details:s1", "dropped")
+
+        store.retainOnly(setOf("library"))
+
+        assertEquals("kept", store.peekRestored<String>("library"))
+        assertEquals(null, store.peekRestored<String>("details:s1"))
+    }
 }
