@@ -133,7 +133,16 @@ private fun ScreenHost.buildNowPlaying(
                 orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
             }
-        story?.let { body.addView(playerArt(it, wide)) }
+        story?.let {
+            // On a phone the cover takes whatever height the controls leave, so the screen fits without scrolling.
+            val artParams =
+                if (wide) {
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                } else {
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+                }
+            body.addView(playerArt(it, wide), artParams)
+        }
         val controls = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
         views = buildPlayerControls(controls, state, story, wide)
         body.addView(
@@ -203,23 +212,60 @@ private fun ScreenHost.playerArt(
     wide: Boolean,
 ): View {
     val config = app.resources.configuration
-    val widthDp =
-        when {
-            wide -> WIDE_COVER_DP
-            config.screenHeightDp < SHORT_SCREEN_DP -> minOf(config.screenWidthDp * 42 / 100, SHORT_COVER_DP)
-            else -> minOf(config.screenWidthDp * 56 / 100, COVER_MAX_DP)
-        }
+    val widthDp = if (wide) WIDE_COVER_DP else minOf(config.screenWidthDp * 56 / 100, COVER_MAX_DP)
     val cover =
         coverImage(story, widthDp, widthDp * 3 / 2, tapToOpen = false).apply {
             contentDescription = "Open ${story.title}"
             setOnClickListener { showDetails(story.id) }
             elevation = dp(Spacing.LG).toFloat()
         }
-    return FrameLayout(app).apply {
+    if (wide) {
+        return FrameLayout(app).apply {
+            setPadding(0, 0, dp(WIDE_GAP_DP), 0)
+            clipToPadding = false
+            addView(cover, FrameLayout.LayoutParams(dp(widthDp), dp(widthDp * 3 / 2), Gravity.CENTER))
+        }
+    }
+    return FitCoverFrame(app, maxWidthPx = dp(widthDp), minWidthPx = dp(minOf(widthDp, COVER_MIN_DP))).apply {
         setPadding(0, dp(Spacing.XS), 0, dp(Spacing.LG + 2))
-        if (wide) setPadding(0, 0, dp(WIDE_GAP_DP), 0)
         clipToPadding = false
         addView(cover, FrameLayout.LayoutParams(dp(widthDp), dp(widthDp * 3 / 2), Gravity.CENTER))
+    }
+}
+
+/**
+ * Holds the 2:3 cover at the largest size that fits the height it is given, between [minWidthPx]
+ * and [maxWidthPx]. Asked to wrap its content, it reports the smallest size, so the controls below
+ * are measured first and the cover grows into the space they leave.
+ */
+private class FitCoverFrame(
+    context: android.content.Context,
+    private val maxWidthPx: Int,
+    private val minWidthPx: Int,
+) : FrameLayout(context) {
+    override fun onMeasure(
+        widthMeasureSpec: Int,
+        heightMeasureSpec: Int,
+    ) {
+        val verticalPadding = paddingTop + paddingBottom
+        val widthLimit =
+            if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED) {
+                maxWidthPx
+            } else {
+                MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight
+            }
+        val exactHeight = MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY
+        val heightLimit = if (exactHeight) MeasureSpec.getSize(heightMeasureSpec) - verticalPadding else 0
+        val coverWidth = minOf(maxWidthPx, widthLimit, heightLimit * 2 / 3).coerceAtLeast(minWidthPx)
+        val coverHeight = coverWidth * 3 / 2
+        getChildAt(0)?.let { child ->
+            child.measure(
+                MeasureSpec.makeMeasureSpec(coverWidth, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(coverHeight, MeasureSpec.EXACTLY),
+            )
+        }
+        val height = if (exactHeight) MeasureSpec.getSize(heightMeasureSpec) else coverHeight + verticalPadding
+        setMeasuredDimension(resolveSize(coverWidth + paddingLeft + paddingRight, widthMeasureSpec), height)
     }
 }
 
@@ -374,8 +420,7 @@ private const val WIDE_BODY_MAX_DP = 860
 private const val WIDE_COVER_DP = 300
 private const val WIDE_GAP_DP = 48
 private const val COVER_MAX_DP = 230
-private const val SHORT_COVER_DP = 170
-private const val SHORT_SCREEN_DP = 760
+private const val COVER_MIN_DP = 120
 private const val HEADER_HEIGHT_DP = 64
 private const val CHAPTER_TITLE_SP = 21f
 private const val CAPTION_LINES = 3

@@ -44,7 +44,7 @@ internal class PlayerChip(
             isClickable = true
             isFocusable = true
             minimumHeight = context.dp(CHIP_HEIGHT_DP)
-            setPadding(context.dp(Spacing.MD), 0, context.dp(Spacing.MD + 2), 0)
+            setPadding(context.dp(Spacing.SM + 2), 0, context.dp(Spacing.MD), 0)
             addView(icon, LinearLayout.LayoutParams(context.dp(ICON_DP), context.dp(ICON_DP)).apply { marginEnd = context.dp(6) })
             addView(text)
             setOnClickListener { onClick() }
