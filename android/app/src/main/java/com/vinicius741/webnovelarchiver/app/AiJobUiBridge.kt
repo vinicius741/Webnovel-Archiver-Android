@@ -12,7 +12,6 @@ import com.vinicius741.webnovelarchiver.feature.ai.patchCharacterProgress
 import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
-import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
 import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
@@ -93,7 +92,6 @@ private fun MainActivity.attachCoverJobBridge() {
                 val next = operations.updateAi(job.storyId, StoryOperationKind.AI_COVER, job.message, startIfIdle = true)
                 if (next != null) {
                     if (promptChanged || renderedMessages[job.storyId] != job.message) {
-                        detailsAiOperationSlot?.let { renderStoryOperationProgress(it, next) }
                         updateAiControlsProgress(next, structuralChange = promptChanged)
                     }
                 }
@@ -111,7 +109,6 @@ private fun MainActivity.attachCoverJobBridge() {
 /** Clears this kind's progress slot and refreshes the visible surface so nothing stays stale. */
 private fun MainActivity.clearOperationSlot(kind: StoryOperationKind) {
     val cleared = operations.clearAi(kind) ?: return
-    detailsAiOperationSlot = null
     // The event collector may re-render before or after this clearing; refresh the visible
     // surface so a finished job never leaves a stale progress slot behind.
     if (frameIsAiControls(cleared.storyId)) showAiControls(cleared.storyId) else rerenderDetailsIfVisible(cleared.storyId)

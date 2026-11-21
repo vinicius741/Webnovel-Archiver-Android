@@ -10,12 +10,8 @@ import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
-import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
-import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
@@ -48,27 +44,27 @@ import kotlinx.coroutines.launch
 
 /**
  * Controls the Chapters tab header; [clearSearch] backs the screen's Back intercept, and [refresh]
- * takes a download event's story so the rows, chip counts and shown count stay current together.
+ * takes the page state after a download event so the rows, chip counts and shown count stay
+ * current together.
  */
 internal class ChaptersTab(
     val list: RecyclerView,
     val hasQuery: () -> Boolean,
     val clearSearch: () -> Unit,
-    val refresh: (Story, Map<String, DownloadJobStatus>, Set<String>) -> Unit,
+    val refresh: (StoryPageUiState) -> Unit,
 )
 
 @Suppress("LongMethod") // One linear tab build; its helpers are the chips and the tools row.
 internal fun ScreenHost.buildChaptersTab(
     container: LinearLayout,
+    model: StoryPageScreenModel,
     initial: Story,
+    state: StoryPageUiState,
     memoryKey: String,
 ): ChaptersTab {
     var story = initial
     var query = routeMemory.queries[memoryKey].orEmpty()
     var filter = chapterFilterFor(story.id)
-    val jobs = repository.queue().filter { it.storyId == story.id }
-    val statuses = DownloadDetailsPlanning.chapterJobStatuses(jobs)
-    val waiting = waitingChapterIds(jobs, app.appContainer.downloadPacer.snapshots.value.values, app.appContainer.time.nowMillis())
     var audio = chapterAudioLabels(story)
     val list =
         RecyclerView(app).apply {
@@ -128,7 +124,7 @@ internal fun ScreenHost.buildChaptersTab(
 
     fun pick(mode: String) {
         filter = mode
-        rememberChapterFilter(story.id, mode)
+        rememberChapterFilter(model, mode)
         render()
     }
 
@@ -152,15 +148,11 @@ internal fun ScreenHost.buildChaptersTab(
         ChapterListAdapter(
             this,
             story,
-            onToggleBookmark = { chapter ->
-                scope.launch {
-                    story = repository.toggleBookmark(story.id, chapter.id) ?: return@launch
-                    render()
-                }
-            },
+            // The saved story comes back through the page state, like a download event.
+            onToggleBookmark = { chapter -> model.toggleBookmark(chapter.id) },
             onLongPress = { chapter -> showChapterActions(story, chapter) },
         )
-    adapter.show(story, query, filter, statuses, waiting, audio)
+    adapter.show(story, query, filter, state.chapterStatuses, state.waitingChapterIds, audio)
     renderHeader()
     search.doAfterTextChanged {
         query = it?.toString().orEmpty()
@@ -192,10 +184,10 @@ internal fun ScreenHost.buildChaptersTab(
             (app.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(search, 0)
         }
     }
-    return ChaptersTab(list, { query.isNotEmpty() }, { search.setText("") }) { latest, latestStatuses, latestWaiting ->
-        story = latest
-        audio = chapterAudioLabels(latest)
-        adapter.show(latest, query, filter, latestStatuses, latestWaiting, audio)
+    return ChaptersTab(list, { query.isNotEmpty() }, { search.setText("") }) { latest ->
+        story = latest.story ?: return@ChaptersTab
+        audio = chapterAudioLabels(story)
+        adapter.show(story, query, filter, latest.chapterStatuses, latest.waitingChapterIds, audio)
         renderHeader()
     }
 }
@@ -265,16 +257,16 @@ private fun ScreenHost.chapterFilterFor(storyId: String): String =
     StoryTabMemory.chapterFilters[storyId] ?: repository.chapterFilterSettings.get().filterMode
 
 /** Saves a filter the settings file knows; "Not downloaded" and "Audio" are remembered only for this run. */
-private fun ScreenHost.rememberChapterFilter(
-    storyId: String,
+private fun rememberChapterFilter(
+    model: StoryPageScreenModel,
     mode: String,
 ) {
     if (mode == NOT_DOWNLOADED_FILTER || mode == AUDIO_FILTER) {
-        StoryTabMemory.chapterFilters[storyId] = mode
+        StoryTabMemory.chapterFilters[model.storyId] = mode
         return
     }
-    StoryTabMemory.chapterFilters.remove(storyId)
-    scope.launch { repository.chapterFilterSettings.save(ChapterFilterSettings(mode)) }
+    StoryTabMemory.chapterFilters.remove(model.storyId)
+    model.saveChapterFilter(mode)
 }
 
 /** Calls [onChange] on the main thread whenever the generation queue or the published audio changes, while [list] is attached. */

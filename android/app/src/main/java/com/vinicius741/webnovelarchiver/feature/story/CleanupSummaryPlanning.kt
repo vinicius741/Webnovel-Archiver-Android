@@ -1,14 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.story
 
-/** Tallies from one "Apply text cleanup" run over a story's downloaded chapters. */
-internal data class CleanupRunStats(
-    val totalChapters: Int,
-    val processedChapters: Int,
-    val failedChapters: Int,
-    val changedChapters: Int,
-    val sentencesRemoved: Int,
-    val regexMatchesRemoved: Int,
-)
+import com.vinicius741.webnovelarchiver.operations.CleanupRunStats
 
 internal data class CleanupSummary(
     val title: String,

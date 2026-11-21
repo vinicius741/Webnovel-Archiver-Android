@@ -5,7 +5,6 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Choreographer
-import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -97,8 +96,6 @@ class MainActivity :
     override var activeStory: Story? = null
     override val operations = StoryOperations()
     override val screenModels = ScreenModelStore()
-    override var detailsOperationSlot: ViewGroup? = null
-    override var detailsAiOperationSlot: ViewGroup? = null
     override val navigator = AppNavigator()
     override val routeMemory: RouteViewMemory = RouteViewMemory()
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()

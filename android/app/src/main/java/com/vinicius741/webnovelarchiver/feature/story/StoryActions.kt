@@ -7,20 +7,19 @@ import com.vinicius741.webnovelarchiver.download.DownloadForegroundService
 import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
 import com.vinicius741.webnovelarchiver.feature.details.returnToStory
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
-import com.vinicius741.webnovelarchiver.feature.details.showStoryScreen
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.updates.isSyncingFromUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.storyOperation
 import com.vinicius741.webnovelarchiver.operations.ManualStorySync
-import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.sync.StorySyncMode
 import com.vinicius741.webnovelarchiver.ui.centerLoading
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -138,31 +137,18 @@ internal fun ScreenHost.syncStory(
         toast("This novel is syncing from Updates. Try again when it finishes.")
         return
     }
-    // Ensure Details is showing so the inline spinner is visible (Sync can be triggered from the
-    // Library dialog, where activeStory may differ or be null).
-    if (activeStory?.id != story.id) showDetails(story.id)
-    setStoryOperation(story.id, StoryOperationKind.SYNC, "Starting...")
-    scope.launch {
+    // Undispatched, so the operation slot is taken before this returns and a second tap is refused.
+    scope.launch(start = CoroutineStart.UNDISPATCHED) {
         try {
-            val (synced, downloadPlan) =
-                ManualStorySync(repository, syncEngine).run(
-                    story.sourceUrl,
-                    story.tabId,
-                    mode,
-                    story.sourceId,
-                ) { msg ->
-                    app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
-                }
-            clearStoryOperation(synced.id, StoryOperationKind.SYNC, rerender = false)
-            showStoryScreen(synced.id)
+            val (synced, downloadPlan) = storyWork.sync(story, mode)
+            showStoryPage(synced.id)
             handleManualSyncDownloads(synced, downloadPlan)
         } catch (error: Throwable) {
             // Never swallow cancellation.
             if (error is CancellationException) throw error
             Timber.w(error, "In-place sync failed for %s", story.id)
-            clearStoryOperation(story.id, StoryOperationKind.SYNC, rerender = false)
             if (error is SourceAccessBlockedException) {
-                showStoryScreen(story.id)
+                showStoryPage(story.id)
                 showSourceAccessBlockedDialog(story.sourceUrl) {
                     syncStory(story, mode)
                 }
@@ -170,7 +156,9 @@ internal fun ScreenHost.syncStory(
             }
             toast(error.message ?: "Sync failed")
             // Stay on the story (not the Library) so the user sees the result in context.
-            showStoryScreen(story.id)
+            showStoryPage(story.id)
         }
     }
+    // Sync can start from the Library dialog or Trends; show the story so the inline progress is visible.
+    if (activeStory?.id != story.id) showDetails(story.id)
 }

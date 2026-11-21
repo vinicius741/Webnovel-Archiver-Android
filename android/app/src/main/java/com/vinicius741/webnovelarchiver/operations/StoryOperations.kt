@@ -56,6 +56,21 @@ class StoryOperations {
         contentState.value = StoryOperationState(storyId, kind, message, progress)
     }
 
+    /**
+     * Advances the content operation only while it is still [storyId]'s [kind], so a progress
+     * message that arrives late, from any thread, cannot bring back a finished operation.
+     */
+    fun updateContent(
+        storyId: String,
+        kind: StoryOperationKind,
+        message: String,
+        progress: Float? = null,
+    ) {
+        contentState.update { current ->
+            if (current?.storyId == storyId && current.kind == kind) StoryOperationState(storyId, kind, message, progress) else current
+        }
+    }
+
     /** Ends the content operation if it is still this story's [kind]; returns whether it did. */
     fun clearContent(
         storyId: String,

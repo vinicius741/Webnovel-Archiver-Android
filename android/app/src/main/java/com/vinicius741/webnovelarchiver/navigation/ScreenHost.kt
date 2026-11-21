@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.navigation
 
-import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
@@ -115,18 +114,6 @@ interface ScreenHost {
     /** One [ScreenModel] per history entry; see android/AGENTS.md, "Screen architecture". */
     val screenModels: ScreenModelStore
 
-    /**
-     * Direct reference to the Details in-flight operation progress slot (sync / cleanup / EPUB).
-     * Captured at [com.vinicius741.webnovelarchiver.feature.details.showDetails] render time so
-     * subsequent [StoryOperations.content] ticks can patch the message/bar in place instead of rebuilding
-     * the whole Details tree (same pattern as the download banner slot). May be null when no
-     * operation is active, or when Details is not on screen. Cleared/reassigned on each Details
-     * render.
-     */
-    var detailsOperationSlot: ViewGroup?
-
-    /** Details progress slot for [StoryOperations.ai], patched in place like [detailsOperationSlot]. */
-    var detailsAiOperationSlot: ViewGroup?
     val navigator: AppNavigator
 
     /** Per-history-entry scroll, list, and search memory, keyed by [AppRoute.stableKey] (see [RouteViewMemory]). */

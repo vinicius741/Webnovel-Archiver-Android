@@ -18,8 +18,6 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.story.StoryTab
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.aiOperation
-import com.vinicius741.webnovelarchiver.navigation.storyOperation
 import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.source.PatreonSession
@@ -46,13 +44,14 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
  * and a short details list.
  */
 
-/** Builds the About part into [container]. */
+/** Builds the About part into [container]; returns the running AI description's progress slot, if any. */
 internal fun ScreenHost.addDetailsAbout(
     container: LinearLayout,
     story: Story,
     twoPane: Boolean,
-) {
-    val isBusy = storyOperation?.storyId == story.id
+    state: StoryPageUiState,
+): LinearLayout? {
+    val isBusy = state.isBusy
     addStatCards(container, story, twoPane)
     addWarningsAndUpdated(container, story)
     if (!story.effectivePatreonUrl.isNullOrBlank()) {
@@ -77,10 +76,10 @@ internal fun ScreenHost.addDetailsAbout(
     } else if (StoryActionGuards.canModifyStory(story)) {
         container.addView(buildNoPatreonCard(story, isBusy))
     }
-    val aiOperation = aiOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_DESCRIPTION }
-    addDescription(container, story, aiOperation)
+    val aiSlot = addDescription(container, story, state.ai?.takeIf { it.kind == StoryOperationKind.AI_DESCRIPTION })
     addTags(container, story)
     addDetailsList(container, story)
+    return aiSlot
 }
 
 /** Invites adding the author's Patreon, which tracks members and early access. */
@@ -137,9 +136,9 @@ private fun ScreenHost.addDescription(
     container: LinearLayout,
     story: Story,
     operation: StoryOperationState?,
-) {
+): LinearLayout? {
     val description = AiDescriptionPlanning.activeDescription(story)
-    if (description == null && operation == null) return
+    if (description == null && operation == null) return null
     val colors = ThemeManager.colors
     val header =
         LinearLayout(app).apply {
@@ -165,12 +164,7 @@ private fun ScreenHost.addDescription(
         },
     )
     description?.let { addDescriptionText(container, story, it) }
-    if (operation != null) {
-        makeStoryOperationSlot(app, operation).also {
-            detailsAiOperationSlot = it
-            container.addView(it)
-        }
-    }
+    return operation?.let { makeStoryOperationSlot(app, it) }?.also(container::addView)
 }
 
 private fun ScreenHost.addTags(

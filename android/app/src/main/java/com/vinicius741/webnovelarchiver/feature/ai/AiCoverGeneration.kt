@@ -89,7 +89,6 @@ private fun ScreenHost.startAiCoverJob(
     aiControlsScreenState.clearChipHistory(story.id, AiControlsTab.COVER)
     // Optimistic set for the first re-render; the activity bridge syncs the slot on every emission.
     operations.setAi(StoryOperationState(story.id, StoryOperationKind.AI_COVER, initialMessage))
-    detailsAiOperationSlot = null
     showAiControls(story.id)
     AiJobForegroundService.start(app, "Generating AI cover...")
 }

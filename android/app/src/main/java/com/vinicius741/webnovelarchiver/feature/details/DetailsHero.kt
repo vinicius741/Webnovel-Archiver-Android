@@ -27,9 +27,8 @@ import com.vinicius741.webnovelarchiver.feature.downloads.storySourceCheck
 import com.vinicius741.webnovelarchiver.feature.story.StoryTab
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.aiOperation
-import com.vinicius741.webnovelarchiver.navigation.storyOperation
 import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.BlurredBackdropView
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.ChapterCoverageBar
@@ -55,23 +54,27 @@ import java.util.Locale
  * screen it stays in its own pane beside every tab.
  */
 
-/** The hero and the slots live download events patch in place. */
+/** The hero and the slots the page's renderer patches in place from its state. */
 internal class StoryHero(
     val view: View,
     val coverage: CoverageCard?,
     val bannerSlot: LinearLayout,
     val ctaSlot: LinearLayout,
+    /** The running sync / cleanup / EPUB's progress, when one ran at build time. */
+    val operationSlot: LinearLayout?,
+    /** The running AI cover's progress, when one ran at build time. */
+    val aiSlot: LinearLayout?,
 )
 
 internal fun ScreenHost.buildStoryHero(
     story: Story,
     tab: StoryTab,
     twoPane: Boolean,
+    state: StoryPageUiState,
 ): StoryHero {
-    val operation = storyOperation?.takeIf { it.storyId == story.id }
-    val isBusy = operation != null
-    val jobs = repository.queue().filter { it.storyId == story.id }
-    val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobs)
+    val operation = state.content
+    val isBusy = state.isBusy
+    val summary = state.download
     val start = dp(if (twoPane) Spacing.LG + 4 else Spacing.LG)
     val column =
         LinearLayout(app).apply {
@@ -80,17 +83,11 @@ internal fun ScreenHost.buildStoryHero(
         }
     column.addView(buildHeroTop(story))
     if (StoryActionGuards.canSync(story)) column.addView(buildForecastBanner(story, operation?.kind == StoryOperationKind.SYNC, isBusy))
-    addHeroNotices(column, story, tab)
-    if (operation != null && operation.kind != StoryOperationKind.AI_COVER && operation.kind != StoryOperationKind.AI_DESCRIPTION) {
-        // Stable slot: progress ticks patch in place instead of rebuilding the page.
-        makeStoryOperationSlot(app, operation).also {
-            detailsOperationSlot = it
-            column.addView(it)
-        }
-    }
+    val aiSlot = addHeroNotices(column, story, tab, state.ai)
+    // Stable slot: progress ticks patch in place instead of rebuilding the page.
+    val operationSlot = operation?.let { makeStoryOperationSlot(app, it) }?.also(column::addView)
     val bannerSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
-    // Seeded with the pacing now: the live observer repaints the banner only when the pacing changes.
-    renderHeroDownloadBanner(bannerSlot, story, summary, currentPacingStatus(story.id))
+    renderHeroDownloadBanner(bannerSlot, story, summary, state.pacing)
     column.addView(bannerSlot)
     val ctaSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     renderDetailsCta(ctaSlot, story, summary, isBusy)
@@ -108,27 +105,24 @@ internal fun ScreenHost.buildStoryHero(
             addView(backdrop, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(BACKDROP_HEIGHT_DP)))
             addView(column, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
-    return StoryHero(root, coverage, bannerSlot, ctaSlot)
+    return StoryHero(root, coverage, bannerSlot, ctaSlot, operationSlot, aiSlot)
 }
 
-/** Source-health and removed-chapter notices, and the waiting AI cover. */
+/** Source-health and removed-chapter notices, and the waiting AI cover; returns the AI cover's progress slot. */
 private fun ScreenHost.addHeroNotices(
     column: LinearLayout,
     story: Story,
     tab: StoryTab,
-) {
+    aiOperation: StoryOperationState?,
+): LinearLayout? {
     if (story.isArchived != true && story.sourceSyncState.availability != SourceAvailability.available) {
         column.addView(buildSourceAvailabilityNotice(story))
     }
     val hiddenThrough = repository.getDisplayPreferences().removedChaptersNoticeHiddenThrough?.get(story.id)
     if (RemovedChapterPlanning.showsRemovedNotice(story, hiddenThrough)) column.addView(buildRemovedChaptersNotice(story))
-    if (tab == StoryTab.AI) return
-    val aiOperation = aiOperation?.takeIf { it.storyId == story.id }
+    if (tab == StoryTab.AI) return null
     if (aiOperation?.kind == StoryOperationKind.AI_COVER) {
-        makeStoryOperationSlot(app, aiOperation).also {
-            detailsAiOperationSlot = it
-            column.addView(it)
-        }
+        return makeStoryOperationSlot(app, aiOperation).also(column::addView)
     } else if (story.id in repository.aiCoverUnseen.value || aiControlsScreenState.coverDrafts[story.id] != null) {
         // A finished background cover waits for a decision; lead straight to it.
         column.addView(
@@ -138,6 +132,7 @@ private fun ScreenHost.addHeroNotices(
             }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(Spacing.SM) },
         )
     }
+    return null
 }
 
 /**

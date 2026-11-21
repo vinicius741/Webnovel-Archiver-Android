@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.story
 
+import com.vinicius741.webnovelarchiver.operations.CleanupRunStats
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

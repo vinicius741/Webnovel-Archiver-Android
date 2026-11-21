@@ -7,17 +7,15 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesCopy
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning
 import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
-import com.vinicius741.webnovelarchiver.operations.ManualStorySync
-import com.vinicius741.webnovelarchiver.operations.SyncDownloadAction
-import com.vinicius741.webnovelarchiver.operations.SyncDownloadPlan
-import com.vinicius741.webnovelarchiver.feature.story.clearStoryOperation
 import com.vinicius741.webnovelarchiver.feature.story.handleManualSyncDownloads
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
-import com.vinicius741.webnovelarchiver.feature.story.setStoryOperation
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.storyOperation
+import com.vinicius741.webnovelarchiver.operations.ManualStorySync
 import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
+import com.vinicius741.webnovelarchiver.operations.SyncDownloadAction
+import com.vinicius741.webnovelarchiver.operations.SyncDownloadPlan
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.sync.StorySyncMode
 import com.vinicius741.webnovelarchiver.ui.toast
@@ -263,7 +261,7 @@ private suspend fun ScreenHost.syncForUpdates(
     val state = updatesState
     state.syncing[story.id] = STARTING
     val ownsSlot = !inBatch && storyOperation == null
-    if (ownsSlot) setStoryOperation(story.id, StoryOperationKind.SYNC, STARTING)
+    if (ownsSlot) operations.setContent(story.id, StoryOperationKind.SYNC, STARTING)
     state.changed()
     try {
         val (synced, plan) =
@@ -276,7 +274,7 @@ private suspend fun ScreenHost.syncForUpdates(
                     if (story.id !in state.syncing) return@runOnUiThread
                     state.syncing[story.id] = message
                     state.onStatus?.invoke(story.id, message)
-                    if (ownsSlot && storyOperation?.storyId == story.id) setStoryOperation(story.id, StoryOperationKind.SYNC, message)
+                    if (ownsSlot) operations.updateContent(story.id, StoryOperationKind.SYNC, message)
                 }
             }
         onPlan(synced, plan)
@@ -291,7 +289,7 @@ private suspend fun ScreenHost.syncForUpdates(
         }
     } finally {
         state.syncing.remove(story.id)
-        if (ownsSlot) clearStoryOperation(story.id, StoryOperationKind.SYNC)
+        if (ownsSlot) operations.clearContent(story.id, StoryOperationKind.SYNC)
         state.changed()
     }
 }
