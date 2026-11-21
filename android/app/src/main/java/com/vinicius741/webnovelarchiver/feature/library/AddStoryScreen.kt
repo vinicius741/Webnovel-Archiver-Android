@@ -10,7 +10,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.feature.browser.showBrowser
 import com.vinicius741.webnovelarchiver.feature.browser.sourcePickerRows
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
@@ -21,6 +20,7 @@ import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.clipboardText
 import com.vinicius741.webnovelarchiver.ui.disableButton
 import com.vinicius741.webnovelarchiver.ui.dp
@@ -39,19 +39,12 @@ import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 
+/**
+ * Add story: paste a URL (or browse a source) and fetch it into the chosen tab. The fetch stays on
+ * this screen (the button flips to "Fetching...", a spinner and the status line appear). Built from
+ * [AddStoryScreenModel]'s state; a new status or tab pick rebuilds the form, typing does not.
+ */
 internal fun ScreenHost.showAddStory() {
-    val tabs = repository.tabs.get().sortedBy { it.order }
-    // URL text + fetch status live in ScreenHost state so they survive status-driven re-renders;
-    // the flow stays on this screen (button flips to "Fetching...", spinner + status line appear).
-    // A fresh open (from another route, no fetch running) clears any leftover URL draft and tab pick;
-    // re-renders on this route (status ticks, the tab picker, a fold) keep them.
-    if (addStoryStatus == null && navigator.current != AppRoute.AddStory) {
-        addStoryUrlText = ""
-        libraryExtras.addStoryTabChosen = false
-    }
-    if (!libraryExtras.addStoryTabChosen) libraryExtras.addStoryTabId = defaultAddStoryTab(tabs)
-    val status = addStoryStatus
-    val fetching = status != null
     screen(
         route = AppRoute.AddStory,
         title = "Add story",
@@ -59,42 +52,41 @@ internal fun ScreenHost.showAddStory() {
         scrollable = true,
     ) {
         rerender = { showAddStory() }
+        val model =
+            screenModels.get(AppRoute.AddStory.stableKey) {
+                AddStoryScreenModel({ repository.tabs.get() }, { repository.getDisplayPreferences().libraryTabId })
+            }
+        val state = model.refresh()
         addView(addStoryHero())
         addView(fieldLabel("Story URL"))
-        val urlField = addStoryUrlField(fetching)
+        val urlField = addStoryUrlField(state, model::setUrl)
         addView(urlField.first)
         val url = urlField.second
-        if (tabs.isNotEmpty()) {
+        if (state.tabs.isNotEmpty()) {
             addView(fieldLabel("Save to tab").apply { setPadding(paddingLeft, dp(Space.LG), paddingRight, paddingBottom) })
-            addView(tabPickerField(tabs, enabled = !fetching))
+            addView(tabPickerField(state, model::chooseTab))
         }
         val fetchButton =
-            fullButton(if (fetching) "Fetching..." else "Fetch story", Btn.FILLED, R.drawable.wna_download) {
-                // syncStory's first onStatus re-renders with the button disabled.
+            fullButton(if (state.fetching) "Fetching..." else "Fetch story", Btn.FILLED, R.drawable.wna_download) {
+                // syncStory's first onStatus rebuilds the form with the button disabled.
                 syncStory(
                     url.text.toString(),
-                    libraryExtras.addStoryTabId,
-                    onStatus = { msg ->
-                        addStoryStatus = msg
-                        showAddStory()
-                    },
+                    state.tabId,
+                    onStatus = model::fetchStatus,
                     onDone = { story ->
-                        addStoryStatus = null
-                        addStoryUrlText = null
                         // The finished form gives way to the story it added: Back from it goes to the Library.
                         if (navigator.current == AppRoute.AddStory) navigator.replace(AppRoute.Details(story.id))
                         showDetails(story.id)
                     },
                     onError = { error ->
-                        addStoryStatus = null
+                        model.fetchFailed()
                         toast(error.message ?: "Sync failed")
-                        showAddStory()
                     },
                 )
             }
-        if (fetching) disableButton(fetchButton)
+        if (state.fetching) disableButton(fetchButton)
         // Spinner + live sync status rendered inline where the user tapped.
-        status?.let { addView(addStoryProgress(it)) }
+        state.status?.let { addView(addStoryProgress(it)) }
         // Each row opens a Custom Tab at the source's baseUrl (sign in, browse, in-tab Import).
         section("Or browse a source")
         addView(
@@ -105,29 +97,12 @@ internal fun ScreenHost.showAddStory() {
                 }
             },
         )
+        bindWhileAttached(scope, model.state) { next ->
+            val rebuild = next.status != state.status || next.tabId != state.tabId || next.tabs != state.tabs
+            if (rebuild && navigator.current == AppRoute.AddStory) showAddStory()
+        }
     }
 }
-
-/** New stories go to the Library's current tab when it is a real tab, else the first tab. */
-private fun ScreenHost.defaultAddStoryTab(tabs: List<Tab>): String? {
-    val current = repository.getDisplayPreferences().libraryTabId
-    return tabs.firstOrNull { it.id == current }?.id ?: tabs.firstOrNull()?.id
-}
-
-/** Fetch status shared across re-renders: null = idle; non-null renders the inline spinner and
- *  blocks the Fetch button. */
-internal var ScreenHost.addStoryStatus: String?
-    get() = addStoryScreenState.status
-    set(value) {
-        addStoryScreenState.status = value
-    }
-
-/** URL field text persisted across status-driven re-renders. */
-internal var ScreenHost.addStoryUrlText: String?
-    get() = addStoryScreenState.urlText
-    set(value) {
-        addStoryScreenState.urlText = value
-    }
 
 private fun ScreenHost.addStoryHero(): View {
     val colors = ThemeManager.colors
@@ -172,11 +147,15 @@ private fun ScreenHost.fieldLabel(label: String) =
     }
 
 /** The URL field: link icon, the input, and Paste. Returns the field row and its input. */
-private fun ScreenHost.addStoryUrlField(fetching: Boolean): Pair<View, EditText> {
+private fun ScreenHost.addStoryUrlField(
+    state: AddStoryUiState,
+    onChange: (String) -> Unit,
+): Pair<View, EditText> {
     val colors = ThemeManager.colors
+    val fetching = state.fetching
     val input =
         EditText(app).apply {
-            setText(addStoryUrlText.orEmpty())
+            setText(state.url)
             hint = "https://www.royalroad.com/fiction/…"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine()
@@ -188,8 +167,8 @@ private fun ScreenHost.addStoryUrlField(fetching: Boolean): Pair<View, EditText>
             contentDescription = "Story URL"
             isEnabled = !fetching
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) textCursorDrawable?.setTint(colors.primary)
-            // Mirror typing into state so a re-render restores the exact text, not a blank field.
-            doAfterTextChanged { addStoryUrlText = it?.toString().orEmpty() }
+            // Mirror typing into the model so a rebuild restores the exact text, not a blank field.
+            doAfterTextChanged { onChange(it?.toString().orEmpty()) }
         }
     val paste =
         makeButton(app, "Paste", Btn.TEXT, R.drawable.wna_paste) {
@@ -216,12 +195,13 @@ private fun ScreenHost.addStoryUrlField(fetching: Boolean): Pair<View, EditText>
 
 /** "Save to tab": a field that opens a sheet of tabs. */
 private fun ScreenHost.tabPickerField(
-    tabs: List<Tab>,
-    enabled: Boolean,
+    state: AddStoryUiState,
+    onPick: (String?) -> Unit,
 ): View {
     val colors = ThemeManager.colors
-    val options = listOf<Pair<String?, String>>(null to "Unassigned") + tabs.map { it.id to it.name }
-    val current = options.firstOrNull { it.first == libraryExtras.addStoryTabId }?.second ?: "Unassigned"
+    val enabled = !state.fetching
+    val options = listOf<Pair<String?, String>>(null to "Unassigned") + state.tabs.map { it.id to it.name }
+    val current = options.firstOrNull { it.first == state.tabId }?.second ?: "Unassigned"
     val row = fieldShell(R.drawable.wna_label)
     row.addView(
         makeText(app, current, Type.BODY_LARGE, colors.onSurface).apply {
@@ -245,13 +225,7 @@ private fun ScreenHost.tabPickerField(
     row.setOnClickListener {
         showStyledOptionsDialog(
             "Save to tab",
-            options.map { (id, name) ->
-                name to {
-                    libraryExtras.addStoryTabId = id
-                    libraryExtras.addStoryTabChosen = true
-                    showAddStory()
-                }
-            },
+            options.map { (id, name) -> name to { onPick(id) } },
         )
     }
     return row

@@ -13,7 +13,6 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonEarningsPlanning
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
-import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.ChapterCoverageBar
 import com.vinicius741.webnovelarchiver.ui.Spacing
@@ -36,43 +35,51 @@ private data class LibraryProgressTag(
     val storyId: String,
 )
 
-/** null = normal browsing; non-null = multi-select mode with this story's checked state. */
-internal fun ScreenHost.librarySelectionState(story: Story): Boolean? =
-    if (libraryScreenState.selectedStoryIds.isEmpty()) null else story.id in libraryScreenState.selectedStoryIds
+/** What a Library card shows and does: its selection state (read when it binds) and where its taps go. */
+internal class LibraryCardEvents(
+    /** null while browsing; in selection mode, whether the story is selected. */
+    val selectionOf: (storyId: String) -> Boolean?,
+    val onOpen: (storyId: String) -> Unit,
+    val onStartSelection: (storyId: String) -> Unit,
+    val onToggle: (storyId: String) -> Unit,
+    val onAddStory: () -> Unit,
+)
 
 /** Binds a v3 list card: cover, title, author, source/status/score, Patreon, tags, and chapter coverage. */
 internal fun ScreenHost.bindLibraryStoryCard(
     card: LinearLayout,
     story: Story,
+    events: LibraryCardEvents,
 ) {
     card.removeAllViews()
-    val selected = librarySelectionState(story)
+    val selected = events.selectionOf(story.id)
     val content = buildStoryCard(story, selected)
     card.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-    wireLibraryStoryContent(card, story, selected)
+    wireLibraryStoryContent(card, story, selected, events)
     applyListCardSelection(card, selected)
 }
 
 /** Tap (open/toggle) and long-press (select/toggle) on one story's card or tile. */
-internal fun ScreenHost.wireLibraryStoryContent(
+internal fun wireLibraryStoryContent(
     card: View,
     story: Story,
     selected: Boolean?,
+    events: LibraryCardEvents,
 ) {
     card.foreground = selectableRipple(ThemeManager.colors.onSurface)
     card.isClickable = true
     card.isFocusable = true
     if (selected == null) {
-        card.setOnClickListener { showDetails(story.id) }
+        card.setOnClickListener { events.onOpen(story.id) }
         card.setOnLongClickListener {
-            startLibrarySelection(story.id)
+            events.onStartSelection(story.id)
             true
         }
     } else {
-        // Toggling refreshes this story's cards on every page (see refreshStoryCards), not just this one.
-        card.setOnClickListener { toggleLibrarySelection(story.id) }
+        // The model's new selection rebinds this story's cards on every page, not just this one.
+        card.setOnClickListener { events.onToggle(story.id) }
         card.setOnLongClickListener {
-            toggleLibrarySelection(story.id)
+            events.onToggle(story.id)
             true
         }
     }

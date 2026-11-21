@@ -19,19 +19,6 @@ import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 
-/**
- * Transient UI state for the Add Story screen. Kept on [ScreenHost] so it survives the in-place
- * re-renders the screen performs while a fetch is in flight. `status` is `null` when idle; a non-null value means a fetch is running.
- *
- * A mutable holder rather than two `var`s on the interface because the Add Story screen reads and
- * writes both fields together and Kotlin `var` interface properties backed by `MainActivity` fields
- * are clearer bundled into one owner.
- */
-class AddStoryScreenState {
-    var status: String? = null
-    var urlText: String? = null
-}
-
 enum class BackupExportKind {
     FULL,
 }
@@ -59,25 +46,6 @@ class BackupExportState {
             progressSlot = null
         }
     }
-}
-
-/**
- * Library view memory so returning to the Library (back navigation, config re-render, process
- * restore) reopens it where the user left it: the active search query, selected tag chips, and
- * each tab's scroll offset (keyed by [com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection.memoryKey]).
- * Tab choice and sort re-enter through DisplayPreferences and are not duplicated here.
- */
-class LibraryScreenState {
-    var query: String = ""
-    var selectedTags: Set<String> = emptySet()
-    var filtersExpanded: Boolean = false
-
-    /** Library multi-select. Non-empty means selection mode is active; it is not saved across process death. */
-    var selectedStoryIds: Set<String> = emptySet()
-
-    /** Rebinds every rendered card of one story (it shows on its tab's page and on All), or all for null. Set per render. */
-    var refreshStoryCards: (String?) -> Unit = {}
-    val tabScrollPositions: MutableMap<String, Int> = mutableMapOf()
 }
 
 /**
@@ -131,16 +99,7 @@ interface ScreenHost {
         navigator.back()?.let(::renderRoute)
     }
 
-    /**
-     * Transient state for the Add Story screen's inline fetch flow (status line + URL draft). See
-     * [AddStoryScreenState]; lives here so it survives the screen's status-driven re-renders.
-     */
-    val addStoryScreenState: AddStoryScreenState
-
     val backupExportState: BackupExportState
-
-    /** Library view memory (query/tags/per-tab scroll) surviving navigation; see [LibraryScreenState]. */
-    val libraryScreenState: LibraryScreenState
 
     val cleanupScreenState: CleanupScreenState
 

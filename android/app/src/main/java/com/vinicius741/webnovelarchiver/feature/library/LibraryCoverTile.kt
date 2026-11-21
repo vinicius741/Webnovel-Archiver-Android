@@ -37,9 +37,10 @@ internal fun makeLibraryCoverTile(context: Context): LinearLayout =
 internal fun ScreenHost.bindLibraryCoverTile(
     tile: LinearLayout,
     story: Story,
+    events: LibraryCardEvents,
 ) {
     tile.removeAllViews()
-    val selected = librarySelectionState(story)
+    val selected = events.selectionOf(story.id)
     val frame = CoverAspectFrame(app)
     frame.addView(
         coverImage(story, COVER_SOURCE_WIDTH_DP, COVER_SOURCE_WIDTH_DP * 3 / 2, tapToOpen = false).apply {
@@ -80,7 +81,7 @@ internal fun ScreenHost.bindLibraryCoverTile(
             setPadding(dp(2), dp(2), dp(2), 0)
         },
     )
-    wireLibraryStoryContent(tile, story, selected)
+    wireLibraryStoryContent(tile, story, selected, events)
 }
 
 /** A small icon on a dark disc at the cover's top-end corner. */

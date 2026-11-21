@@ -23,6 +23,8 @@ internal class LibraryPagesAdapter(
     private var stories: List<Story>,
     private val pageTabs: List<String?>,
     private val grid: LibraryGridSpec,
+    private val events: LibraryCardEvents,
+    private val scroll: LibraryTabScroll,
 ) : RecyclerView.Adapter<LibraryPagesAdapter.PageViewHolder>() {
     private data class FilterSnapshot(
         val text: String,
@@ -76,7 +78,7 @@ internal class LibraryPagesAdapter(
         val tabId = pageTabs[position]
         val snap = filterSnapshot
         holder.storyAdapter =
-            LibraryStoryAdapter(host, grid, tabId, stories).also { adapter ->
+            LibraryStoryAdapter(host, grid, tabId, stories, events).also { adapter ->
                 adapter.updateFilter(snap.text, snap.tags, snap.sortOption, snap.sortAscending)
                 adapter.attachTo(holder.list)
             }
@@ -84,8 +86,8 @@ internal class LibraryPagesAdapter(
         // Per-tab scroll memory: capture continuously from the bound page, then restore the saved
         // offset once it lays out. A recycled far-away page rebound later also regains its position.
         val scrollKey = LibraryTabSelection.memoryKey(tabId)
-        holder.list.trackScrollInto(host.libraryScreenState.tabScrollPositions, scrollKey)
-        holder.list.restoreScrollOnce(host.libraryScreenState.tabScrollPositions[scrollKey] ?: 0)
+        holder.list.trackScroll { offset -> scroll.remember(scrollKey, offset) }
+        holder.list.restoreScrollOnce(scroll.offset(scrollKey))
     }
 
     override fun onViewRecycled(holder: PageViewHolder) {
@@ -127,4 +129,14 @@ internal class LibraryPagesAdapter(
     ) : RecyclerView.ViewHolder(root) {
         var storyAdapter: LibraryStoryAdapter? = null
     }
+}
+
+/** Where each tab's scroll offset is kept, by [LibraryTabSelection.memoryKey]. */
+internal interface LibraryTabScroll {
+    fun remember(
+        tabKey: String,
+        offset: Int,
+    )
+
+    fun offset(tabKey: String): Int
 }

@@ -142,14 +142,14 @@ class ArchitectureRulesTest {
 
     @Test
     fun oldScreenPatternOnlyShrinks() {
-        assertRatchet("`fun ScreenHost.` extensions", count(".", Regex("""\bfun\s+ScreenHost\.""")), baseline = 386)
+        assertRatchet("`fun ScreenHost.` extensions", count(".", Regex("""\bfun\s+ScreenHost\.""")), baseline = 365)
         assertRatchet("`appContainer` lookups in feature/", count("feature", Regex("""\bappContainer\b""")), baseline = 69)
         val hostProperties =
             File(root, "navigation/ScreenHost.kt")
                 .readLines()
                 .dropWhile { !it.startsWith("interface ScreenHost") }
                 .count { Regex("""^\s{4}(val|var)\s""").containsMatchIn(it) }
-        assertRatchet("ScreenHost properties", hostProperties, baseline = 27)
+        assertRatchet("ScreenHost properties", hostProperties, baseline = 25)
     }
 
     @Test

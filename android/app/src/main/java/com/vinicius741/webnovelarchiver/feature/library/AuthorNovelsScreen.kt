@@ -6,7 +6,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.domain.story.AuthorPlanning
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -25,17 +24,25 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 
 /** Other library novels by the author of [storyId], opened by tapping the author on Details. */
 internal fun ScreenHost.showAuthorNovels(storyId: String) {
-    val story = repository.story(storyId) ?: return showLibrary()
+    val route = AppRoute.AuthorNovels(storyId)
+    // Looked up before screen() because a missing story opens the Library instead; screen()
+    // navigates to this route before it prunes the store, so the model is kept.
+    val model =
+        screenModels.get(route.stableKey) {
+            AuthorNovelsScreenModel(storyId, library = { repository.downloadState.value.library })
+        }
+    val state = model.refresh()
+    val story = state.story ?: return showLibrary()
     rerender = { showAuthorNovels(storyId) }
-    val others = AuthorPlanning.otherNovels(story, repository.library())
-    val author = story.author.trim().ifEmpty { "Unknown author" }
+    val others = state.others
+    val author = state.author
     val subtitle =
         when (others.size) {
             0 -> "No other novels in your library"
             1 -> "1 other novel in your library"
             else -> "${others.size} other novels in your library"
         }
-    screen(route = AppRoute.AuthorNovels(story.id), title = author, subtitle = subtitle, scrollable = true) {
+    screen(route = route, title = author, subtitle = subtitle, scrollable = true) {
         addView(authorHero(story, author, others.size + 1))
         section("You came from")
         addView(browseCard(story))

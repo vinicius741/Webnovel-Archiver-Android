@@ -36,11 +36,9 @@ import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
-import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackupExportState
-import com.vinicius741.webnovelarchiver.navigation.LibraryScreenState
 import com.vinicius741.webnovelarchiver.navigation.RouteViewMemory
 import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -97,9 +95,7 @@ class MainActivity :
     override val screenModels = ScreenModelStore()
     override val navigator = AppNavigator()
     override val routeMemory: RouteViewMemory = RouteViewMemory()
-    override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
     override val backupExportState: BackupExportState = BackupExportState()
-    override val libraryScreenState: LibraryScreenState = LibraryScreenState()
     override val cleanupScreenState: CleanupScreenState = CleanupScreenState()
     override val updatesSyncState: UpdatesSyncState = UpdatesSyncState()
     override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
@@ -397,7 +393,7 @@ class MainActivity :
         captureScreenViewState()
         outState.putStringArrayList(STATE_ROUTE_STACK, ArrayList(navigator.encodedStack()))
         routeMemory.save(outState)
-        LibraryScreenStatePersistence.save(libraryScreenState, outState)
+        LibraryScreenStatePersistence.save(screenModels, outState)
         cleanupScreenState.save(outState)
         super.onSaveInstanceState(outState)
     }
@@ -407,7 +403,7 @@ class MainActivity :
     private fun restoreNavigationState(state: Bundle?): Boolean {
         state ?: return false
         // Library view memory restores even when the route stack can't: the root Library screen uses it too.
-        LibraryScreenStatePersistence.restore(libraryScreenState, state)
+        LibraryScreenStatePersistence.restore(screenModels, state)
         cleanupScreenState.restore(state)
         val stack = state.getStringArrayList(STATE_ROUTE_STACK) ?: return false
         if (!navigator.restore(stack)) return false

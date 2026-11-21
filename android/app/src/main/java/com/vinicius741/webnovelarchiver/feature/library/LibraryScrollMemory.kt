@@ -3,11 +3,8 @@ package com.vinicius741.webnovelarchiver.feature.library
 import android.view.ViewTreeObserver
 import androidx.recyclerview.widget.RecyclerView
 
-/** Stores a tab's vertical offset even when ViewPager2 recycles the page view. */
-internal fun RecyclerView.trackScrollInto(
-    positions: MutableMap<String, Int>,
-    key: String,
-) {
+/** Reports a tab's vertical offset as it scrolls, so it is kept even when ViewPager2 recycles the page view. */
+internal fun RecyclerView.trackScroll(onScrolled: (offset: Int) -> Unit) {
     clearOnScrollListeners()
     addOnScrollListener(
         object : RecyclerView.OnScrollListener() {
@@ -16,7 +13,7 @@ internal fun RecyclerView.trackScrollInto(
                 dx: Int,
                 dy: Int,
             ) {
-                positions[key] = recyclerView.computeVerticalScrollOffset()
+                onScrolled(recyclerView.computeVerticalScrollOffset())
             }
         },
     )
