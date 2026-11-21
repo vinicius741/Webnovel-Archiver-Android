@@ -177,7 +177,11 @@ Rules for screens:
     `AiDescriptionJobCoordinator`. The story page's `refreshPage` hook is gone (it observes
     `coverToReview`). Not done: the Characters list and portraits could not be exercised on the
     emulator (the simulator's chapters yield no character names).
-- [ ] Listen / Narration
+- [x] Listen / Narration
+  - Done as `ListenScreenModel` + `ListenRenderer` and `PlayerScreenModel` + `PlayerRenderer`, with the
+    shared `PlaybackControls` port; `playIfGenerated` / `playChapter` / `continueListening` run in
+    `operations/ListenStarts`, and the mini player is an activity-owned `TtsMiniPlayer`. Not done: a
+    story-level "Move to front" with two stories queued was not exercised on the emulator (unit-tested).
 - [ ] Reader chrome (the WebView and read-along controller stay as they are; only screen state moves)
 - [ ] Library
 - [ ] Downloads queue
@@ -236,3 +240,4 @@ The draft got these wrong. They are fixed above and recorded here so future audi
 |---|---|---|---|---|---|
 | 2026-11-21 | Phase 2 pilot: story page | `d749494`..`94a17d7` | 84,404 | 438 | Story page on `StoryPageScreenModel`; `detailsOperationSlot`/`detailsAiOperationSlot` and `DetailsBindings` removed; `appContainer` in `feature/` 93 → 84, ScreenHost properties 30 → 28. Pilot lines: details + story + operations 7,917 → 8,117 production, 876 → 1,421 test. Fixed the app-bar ⋮ menu acting on a story read at render time (cleanup counted chapters from before a download). Gate decision pending. |
 | 2026-11-21 | Phase 3: AI Controls | `7b257e9` (+ docs) | 85,067 | 408 | AI tab on `AiControlsScreenModel`; `AiControlsScreenState`, `AiControlsBinding`, the bridge's redraws, `refreshStoryHero` and the `Scaffold` coupling removed; `appContainer` in `feature/` 84 → 69, ScreenHost properties 28 → 27. Group lines (`feature/ai` + bridge + description jobs): 4,244 → 4,875 production, 169 → 722 test. Fixed: a description draft now survives activity recreation (process-wide job and holder). Changed lifetime: the open sub-tab and character page reset when the story leaves the history. |
+| 2026-11-21 | Phase 3: Listen and the player | `6c79492`..`a4b8414` (+ docs) | 85,916 | 394 | Listen on `ListenScreenModel` (rebuilds only on `ListenBuildKey` changes, patches banner, running row, top card and compression in place), Now Playing on `PlayerScreenModel`, listen starts in `operations/ListenStarts`, mini player as an activity-owned `TtsMiniPlayer`. Removed the Listen and player `screenObserver` loops, `NarrationScreenPlanning.changesSince`, the process-wide `pendingPlay` and `lastContinue` globals and `NarrationLiveStatus.observe`. ScreenHost extensions 408 → 394; `appContainer` in `feature/` 69 and ScreenHost properties 27 unchanged. Group lines (`feature/narration` + `feature/player` + `ListenStarts`): 3,668 → 4,510 production, 150 → 1,110 test. No state or stale-view bugs found; queue changes now run in the model's scope as `NonCancellable`, so one confirmed just before leaving Listen still finishes, as it did in the activity scope. |

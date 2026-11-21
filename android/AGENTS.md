@@ -33,7 +33,8 @@ Before editing a package listed here, read its `AGENTS.md`. Paths are under
   five destinations (Library, Updates, Listen = `AppRoute.Narration`, Downloads = `AppRoute.Queue`,
   Settings) and decides which routes hide the navigation or the mini player.
 - `operations/`: app-level work that several screens start and observe: `StoryOperations` (typed
-  progress flows for sync, cleanup, EPUB and AI jobs) and `StoryWork`, which runs sync, cleanup and EPUB.
+  progress flows for sync, cleanup, EPUB and AI jobs), `StoryWork`, which runs sync, cleanup and EPUB, and
+  `ListenStarts`, which every "listen" request goes through.
 - `feature/<flow>/`: screens grouped by user flow. See "Screen architecture" below. The UI follows the
   v3 design (`docs/architecture/ui-v3-design.md`).
 - `domain/`: models and pure rules. `data/`: repository, JSON storage, backup, diagnostics.
