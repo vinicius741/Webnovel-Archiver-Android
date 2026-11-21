@@ -19,6 +19,7 @@ import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
+import com.vinicius741.webnovelarchiver.navigation.storyOperation
 import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import kotlinx.coroutines.runBlocking
