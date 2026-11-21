@@ -6,7 +6,8 @@
 //!   pronunciation, sentence splitting and voices are exactly the normal path's. What it returns as
 //!   "audio" is the trunk's inputs, one [Chunk] per model run.
 //! - `trunk.onnx` runs in OpenVINO at [Options::precision]: bf16 on x86-64 with AVX-512 BF16, f16 on
-//!   Apple silicon.
+//!   Apple silicon. The split writes it differently for each (OpenVINO's ARM plugin needs its
+//!   upsamplers, normalizations and largest convolutions rewritten; see `split_kokoro.py`).
 //! - `tail.onnx` (the last convolution and the inverse STFT) runs in OpenVINO at full precision.
 //!
 //! Then pauses are shortened as sherpa-onnx does it ([scale_silence]), which the front model skips.
@@ -34,10 +35,6 @@ const TRUNK_OUT: &CStr = c"/decoder/generator/Add_8_output_0";
 const SILENCE_SCALE: f32 = 0.2;
 /// Threads for the front model in ONNX Runtime; it is a tenth of the work.
 const FRONT_THREADS: usize = 2;
-/// Most OpenVINO streams (groups of threads, each running one sentence's trunk). Measured on a
-/// Ryzen Z1 Extreme with 8 threads: two streams give 10.9x with four sentences in flight against
-/// 10.1x for one, but 6.4x against 8.4x with a single sentence, and hold 0.4 GB more. Four are slower.
-const MAX_STREAMS: usize = 2;
 /// Memory a fresh load needs before its first sentence, with one stream (see `engine.rs`): about
 /// 0.7 GB more than the normal path, for the second runtime and its copy of the trunk.
 pub const LOAD_COST: u64 = 1600 * 1024 * 1024;
@@ -49,15 +46,24 @@ pub struct Options {
     pub library: PathBuf,
     /// The trunk's precision: "bf16" or "f16".
     pub precision: &'static str,
-    /// OpenVINO streams for the next load; see [MAX_STREAMS].
+    /// OpenVINO streams for the next load; see [layout].
     pub streams: usize,
 }
 
-/// The reduced precision this processor computes quickly, if it has one.
-fn precision() -> Option<&'static str> {
+/// The reduced precision this processor computes quickly, if it has one, and the most OpenVINO
+/// streams (groups of threads, each running one sentence's trunk) worth giving it. Both machines
+/// measured have 8 performance cores, and on both two streams win with several sentences in flight:
+/// - x86-64 with AVX-512 BF16 (Ryzen Z1 Extreme): 11.0x at four slots against 10.1x for one stream,
+///   but 6.5x against 8.4x with a single sentence, and 0.7 GB more. Four streams are slower.
+/// - Apple silicon, ARMv8.2 half precision (M1 Pro): 10.5x at four slots against 9.0x for one
+///   stream and 9.5-10.1x for four; with a single sentence 5.1x, 6.7x and 3.2x.
+fn layout() -> Option<(&'static str, usize)> {
     #[cfg(target_arch = "x86_64")]
     if std::is_x86_feature_detected!("avx512bf16") {
-        return Some("bf16");
+        return Some(("bf16", 2));
+    }
+    if cfg!(all(target_arch = "aarch64", target_os = "macos")) {
+        return Some(("f16", 2));
     }
     None
 }
@@ -65,15 +71,17 @@ fn precision() -> Option<&'static str> {
 impl Options {
     /// The fast path's settings for the Kokoro v1.0 in [model_dir], or why it does not apply here.
     pub fn detect(library: &Path, model_dir: &Path, slots: usize) -> Result<Options, String> {
-        let precision = precision().ok_or("this processor has no fast reduced precision")?;
+        let (precision, streams) = layout().ok_or("this processor has no fast reduced precision")?;
         if !openvino::installed(library) {
             return Err(format!("OpenVINO is not installed in {}", library.display()));
         }
+        // "FORMAT precision size", written last by split_kokoro.py: the trunk differs per precision.
         let stamp = std::fs::read_to_string(model_dir.join("fast").join("format")).unwrap_or_default();
-        if stamp.split_whitespace().next() != Some(FORMAT) {
-            return Err(format!("the split model is not in {}", model_dir.join("fast").display()));
+        let mut stamp = stamp.split_whitespace();
+        if (stamp.next(), stamp.next()) != (Some(FORMAT), Some(precision)) {
+            return Err(format!("the model split for {precision} is not in {}", model_dir.join("fast").display()));
         }
-        Ok(Options { library: library.to_path_buf(), precision, streams: MAX_STREAMS }.for_slots(slots))
+        Ok(Options { library: library.to_path_buf(), precision, streams }.for_slots(slots))
     }
 
     /// These settings for a model about to serve [slots] sentences at once: a model loading while
@@ -128,7 +136,13 @@ impl Fast {
             trunk.run()?;
             tail.set_input_tensor(TRUNK_OUT, &trunk.output()?)?;
             tail.run()?;
-            scale_silence(tail.output()?.floats()?, SILENCE_SCALE, sample_rate, &mut samples);
+            let audio = tail.output()?;
+            let audio = audio.floats()?;
+            // Reduced precision gone wrong shows as NaN, which would be written as silence.
+            if !audio.iter().all(|sample| sample.is_finite()) {
+                return Err("The fast path produced invalid audio; start the server with --no-fast".to_string());
+            }
+            scale_silence(audio, SILENCE_SCALE, sample_rate, &mut samples);
         }
         // A pair that failed is dropped above by `?`: its state is unknown.
         self.idle.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push((trunk, tail));

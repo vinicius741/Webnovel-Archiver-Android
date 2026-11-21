@@ -173,14 +173,15 @@ sherpa_model "$MODEL" "330 MB"
 sherpa_model "$MODEL_V1" "350 MB"
 
 # --- Kokoro v1.0's fast path (optional) -------------------------------------------------------------
-# Where the processor has a fast reduced precision (src/fast.rs: AVX-512 BF16 on x86-64), the server
-# runs Kokoro v1.0's generator through OpenVINO, about a third faster. That needs OpenVINO's
-# libraries in lib/openvino and the model cut in three (split_kokoro.py) in the model's fast/ folder,
-# about 420 MB together. Both come from Python packages, installed with uv into a temporary folder
-# (uv itself too, when the machine has none). If a step fails, the server keeps the normal path.
+# Where the processor has a fast reduced precision (src/fast.rs: bf16 with AVX-512 BF16 on x86-64,
+# f16 on Apple silicon), the server runs Kokoro v1.0's generator through OpenVINO, 30 to 45%
+# faster. That needs OpenVINO's libraries in lib/openvino and the model cut in three
+# (split_kokoro.py) in the model's fast/ folder, about 420 MB together. Both come from Python
+# packages, installed with uv into a temporary folder (uv itself too, when the machine has none).
+# If a step fails, the server keeps the normal path.
 fast_path() {
   local model="$DATA/models/$MODEL_V1" libs="$DATA/lib/openvino" stamp uv site link
-  stamp="$(sed -n 's/^FORMAT = "\(.*\)"$/\1/p' "$HERE/split_kokoro.py") $(wc -c < "$model/model.onnx" | tr -d ' ')"
+  stamp="$(sed -n 's/^FORMAT = "\(.*\)"$/\1/p' "$HERE/split_kokoro.py") $FAST_PATH $(wc -c < "$model/model.onnx" | tr -d ' ')"
   if [ "$(cat "$libs/VERSION" 2>/dev/null)" = "$OPENVINO_VERSION" ] && [ "$(cat "$model/fast/format" 2>/dev/null)" = "$stamp" ]; then
     return 0
   fi
@@ -209,14 +210,16 @@ fast_path() {
   (cd "$libs.new" && ln -sf "$(ls libopenvino_c.* | head -1)" "$link") || return 1
   rm -rf "$libs"
   mv "$libs.new" "$libs" || return 1
-  "$FAST_WORK/venv/bin/python" "$HERE/split_kokoro.py" "$model/model.onnx" "$model/fast" || return 1
+  "$FAST_WORK/venv/bin/python" "$HERE/split_kokoro.py" "$model/model.onnx" "$model/fast" "$FAST_PATH" || return 1
   echo "$OPENVINO_VERSION" > "$libs/VERSION"
 }
-FAST_PATH=0
+# The precision the trunk is split for, as fast::layout picks it; empty where there is no fast path.
+FAST_PATH=""
 case "$OS-$(uname -m)" in
-  linux-x86_64) if grep -qw avx512_bf16 /proc/cpuinfo 2>/dev/null; then FAST_PATH=1; fi ;;
+  linux-x86_64) if grep -qw avx512_bf16 /proc/cpuinfo 2>/dev/null; then FAST_PATH=bf16; fi ;;
+  mac-arm64) FAST_PATH=f16 ;;
 esac
-if [ "$FAST_PATH" = 1 ] && ! fast_path; then
+if [ -n "$FAST_PATH" ] && ! fast_path; then
   echo "Could not set up Kokoro v1.0's fast path; the server runs it the normal way. Run this script again to retry."
 fi
 

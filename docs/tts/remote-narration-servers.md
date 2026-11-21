@@ -35,8 +35,8 @@ model is loaded an engine does not learn its memory costs, since the process's m
 Measured on Bazzite: about 11 MB before any model loads; after Phonon and Kokoro v1.0 were used and
 unloaded, about 80 MB (Phonon's runtime keeps its thread pool for the life of the process).
 `--bench --model NAME` measures one model; on Bazzite, four slots: Kokoro v1.0 7.7x (1.0 GB peak),
-Phonon 20.4x (0.75 GB). Since 2026-11-21 Kokoro v1.0 takes a fast path there, 11.0x (see
-[Kokoro v1.0's fast path](#kokoro-v10s-fast-path-2026-11-21)). Apps before 3.0 send no `model` and
+Phonon 20.4x (0.75 GB). Since 2026-11-21 Kokoro v1.0 takes a fast path on both computers, 11.0x there and 10.6x on the Mac
+(see [Kokoro v1.0's fast path](#kokoro-v10s-fast-path-2026-11-21)). Apps before 3.0 send no `model` and
 keep getting `kokoro-en-v0_19`. See `built-in-models.md` for the app side.
 
 ## The server (`scripts/narration-server/`)
@@ -51,7 +51,7 @@ library as the phone's. The Python server ran the PyPI build 1.12.26.
 | `src/engine.rs` | **One shared model** and its generation slots: load on first use, recycle, unload when idle or short of memory. One engine per installed model. |
 | `src/models.rs`, `src/phonon.rs` | The models the server knows, how each is checked, loaded and addressed (Kokoro by speaker number, Phonon by voice name); Phonon through the `ptts` crate. |
 | `src/fast.rs`, `src/openvino.rs` | Kokoro v1.0's fast path: the generator's trunk through OpenVINO at reduced precision, the rest as before; and the OpenVINO C API it needs, opened at run time so a server without it starts as before. |
-| `split_kokoro.py` | Cuts the Kokoro v1.0 export into the fast path's three models. `setup.sh` runs it. |
+| `split_kokoro.py` | Cuts the Kokoro v1.0 export into the fast path's three models, written for the precision they will run in (`bf16` or `f16`). `setup.sh` runs it. |
 | `src/memory.rs` | Memory probes (Linux: `/proc/meminfo`, PSI, cgroup v2 limits; macOS: `host_statistics64`, the kernel's memory-pressure level, own footprint) and the pure `decide` policy. |
 | `src/http.rs` | HTTP/1.1 with keep-alive, one thread per connection, bounded reads. |
 | `setup.sh` | Installs into one folder per user: Rust (rustup) when missing, the sherpa-onnx 1.12.21 shared libraries (`lib/`), the built server (`bin/narration-server`), the models (each downloaded once; re-running adds missing ones, Phonon's files at pinned revisions), a token and, where the processor allows it, the fast path's OpenVINO libraries (`lib/openvino`) and split model. `--service` adds a launchd agent (macOS) or a systemd user unit (Linux). `--uninstall` removes the service. Re-running it upgrades a Python install in place and keeps the token; without `--service` it leaves the Python files alone while a service still runs them. |
@@ -153,7 +153,7 @@ any benchmark and when generation feels slow.
 processor can compute in float32, and every thread and slot layout lands at about the same speed,
 because the 30 W limit is what binds (see the table above). The gain comes from precision. Zen 4
 has AVX-512 BF16: 16-bit floats computed at twice the rate of float32. The fast path uses it for the
-one part where it is safe:
+one part where it is safe (the Mac's variant, at f16, is described [below](#apple-silicon-f16)):
 
 | Part | What it is | Where it runs |
 |---|---|---|
@@ -206,12 +206,53 @@ load cost starts at 1.6 GB instead of 0.9 GB and is learned from there. After an
 server holds about 100 MB, 36 MB of it private; the rest is OpenVINO's library pages, which the
 system can reclaim.
 
-It applies on x86-64 with AVX-512 BF16 (`fast::precision`), when `lib/openvino` and the model's
-`fast/` folder exist. `setup.sh` installs both there (about 420 MB): it makes a temporary Python
-environment with uv (fetching a private uv when the machine has none), takes OpenVINO's libraries
-from its package, and runs `split_kokoro.py`. If any of it is missing or fails to load, the server
-logs why and speaks through sherpa-onnx alone as before; `--no-fast` turns it off. At start the log
-reads `kokoro-multi-lang-v1_0: fast path on (OpenVINO, bf16 generator)`.
+It applies on x86-64 with AVX-512 BF16 and on Apple silicon (`fast::layout`), when `lib/openvino`
+and the model's `fast/` folder, split for that precision, exist. `setup.sh` installs both there
+(about 420 MB): it makes a temporary Python environment with uv (fetching a private uv when the
+machine has none), takes OpenVINO's libraries from its package, and runs `split_kokoro.py`. If any
+of it is missing or fails to load, the server logs why and speaks through sherpa-onnx alone as
+before; `--no-fast` turns it off. At start the log reads
+`kokoro-multi-lang-v1_0: fast path on (OpenVINO, bf16 generator)`. A sentence whose audio comes out
+with a NaN in it fails instead of being written as silence.
+
+#### Apple silicon (f16)
+
+The M1 Pro has no bf16, but it computes half-precision floats (f16) natively, and OpenVINO's ARM
+plugin runs the trunk 44% faster that way (17.4x against 11.9-12.3x, trunk alone, all cores). Out of
+the box its audio was wrong, so `split_kokoro.py MODEL OUT f16` writes the trunk and tail
+differently there. Each rewrite computes the same function (the rewritten models match the originals
+to 130 dB in float32):
+
+| What OpenVINO 2026.4.1's ARM plugin does | Rewrite |
+|---|---|
+| Computes `ConvTranspose1d` with the kernel reversed in time, at any precision (1.3-4.2 dB against float32). | Each becomes an ordinary `Conv` over the output phases plus a depth-to-space reshape (`polyphase`), in the tail's inverse STFT too. |
+| Does not compile the inverse STFT's subtraction of two such `Conv`s. | The second kernel is negated and the subtraction becomes an addition (`add_negated`). |
+| Its float16 `InstanceNormalization` computes the variance as mean(x²) − mean(x)², which cancels and gives NaN. | Written out as `d = x − mean(x)`, `d / sqrt(mean(d²) + eps)` (`explicit_norms`), which OpenVINO keeps in float32 because `eps` (1e-5) is below float16's range. |
+| Its float16 convolution adds its products up in float16 too, about 28 dB per convolution (34-36 dB for the trunk). | A `Conv` summing more than 704 products is split into partial `Conv`s over groups of input channels (`split_convolutions`): 41-42 dB for 8% of the speed. 352 gives 2 dB more for another 17%. |
+
+The polynomial for Snake's `sin²` is not used there: the true `Sin` is as fast on ARM. ONNX Runtime's
+own float16 convolution was tried and does not run on macOS (it silently computes in float32).
+
+Fidelity: against the same float32 reference and sentences, the f16 trunk reaches 41.0 dB (worst
+sentence) and 42.3 dB (mean), loudness 0.9993-1.0001; the bf16 trunk the owner approved by ear
+reaches 37.1 and 38.2 dB there. Through the real server on 12 sentences: fast against normal PESQ
+4.55 and LSD 2.57 dB, a second normal run against the first 4.55 and 2.54 dB, loudness 0.9996.
+
+Speed, `--bench 2` on the M1 Pro (8 threads); the normal and default rows are from the installed
+server, one after the other, measured twice:
+
+| Layout | 1 slot | 2 slots | 4 slots | Peak memory |
+|---|---|---|---|---|
+| Normal path (`--no-fast`) | 5.56x | 7.14-7.17x | 8.21-8.23x | 0.8-1.2 GB |
+| Fast, 1 OpenVINO stream | 6.74x | 8.61x | 9.04x | 0.9-1.0 GB |
+| Fast, 2 streams (default) | 5.08x | 8.78-8.83x | **10.5-10.7x** | 1.3-1.4 GB |
+| Fast, 4 streams | 3.2x | 5.8-5.9x | 9.5-10.1x | 2.1-2.3 GB |
+
+Four slots gain 28-30% and two gain 23%. Four streams looked best for the trunk alone but lose once
+the front model shares the cores. A single sentence on a model loaded with two streams is 9% slower
+than the normal path (it gets half the threads); the app keeps several in flight, and a model that
+loads while memory allows one slot takes one stream. After an idle unload the server holds 36-60 MB
+there.
 
 Leads not taken: the two upsamplers still run in float32 (a tenth of the trunk's time); the
 decoder blocks before the trunk and the text encoder could move too; a hand-written runtime might
@@ -368,6 +409,10 @@ port 8790 open for LAN access.
   bit; 24 unit tests (silence shortening against sherpa-onnx's rules, chunk parsing); the fidelity and
   speed figures in [Kokoro v1.0's fast path](#kokoro-v10s-fast-path-2026-11-21); the owner's blind
   test; after an idle unload the server went from 1049 MB to 105 MB.
+- Fast path (2026-11-21, MacBook Pro M1 Pro): installed with `setup.sh --service` on a machine
+  without uv (it fetched its own); the first split's tail did not compile in OpenVINO and the server
+  fell back to the normal path by itself, which is how the subtraction above was found; then the
+  figures in [Apple silicon (f16)](#apple-silicon-f16), with no invalid audio in either log.
 - Rust server (2026-11-12, Bazzite): unit tests for the memory policy, the PCM conversion and the token
   check; output identical across runs. Squeezed with a memory hog during a five-in-flight load test, it
   dropped to one slot below the reserve, reloaded to shrink (932 → 489 MB), and returned to four slots
