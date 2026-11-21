@@ -8,7 +8,6 @@ import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedD
 import com.vinicius741.webnovelarchiver.feature.details.returnToStory
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.updates.isSyncingFromUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.storyOperation
@@ -133,7 +132,7 @@ internal fun ScreenHost.syncStory(
         return
     }
     // Updates syncs one novel at a time outside this slot; the engine has no per-story lock.
-    if (isSyncingFromUpdates(story.id)) {
+    if (operations.isSyncingFromUpdates(story.id)) {
         toast("This novel is syncing from Updates. Try again when it finishes.")
         return
     }

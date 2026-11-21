@@ -64,6 +64,8 @@ class StoryWork(
     private val cleanupFiles: CleanupFiles,
     private val epub: EpubGenerator,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** The sync a "Sync all" item runs: like [manualSync] but without the Patreon refresh. */
+    private val batchSync: ManualStorySync = manualSync,
 ) {
     /** Syncs an existing story in place and plans the downloads of what it found. */
     suspend fun sync(
@@ -75,6 +77,35 @@ class StoryWork(
                 operations.updateContent(story.id, StoryOperationKind.SYNC, message)
             }
         }
+
+    /**
+     * Syncs [story] from Updates, listed in [StoryOperations.updatesSyncs] with its progress until it
+     * ends. A row sync ([inBatch] false) also holds the content slot when it is free, so the story
+     * page shows it; a "Sync all" item never takes the slot and skips the Patreon refresh. The
+     * caller checks that the story is not already syncing.
+     */
+    suspend fun syncFromUpdates(
+        story: Story,
+        inBatch: Boolean,
+    ): ManualStorySyncResult {
+        operations.startUpdatesSync(story.id, STARTING)
+        val ownsSlot = !inBatch && operations.content.value == null
+        if (ownsSlot) operations.setContent(story.id, StoryOperationKind.SYNC, STARTING)
+        try {
+            return (if (inBatch) batchSync else manualSync).run(
+                story.sourceUrl,
+                story.tabId,
+                StorySyncMode.Default,
+                story.sourceId,
+            ) { message ->
+                operations.updateUpdatesSync(story.id, message)
+                if (ownsSlot) operations.updateContent(story.id, StoryOperationKind.SYNC, message)
+            }
+        } finally {
+            operations.endUpdatesSync(story.id)
+            if (ownsSlot) operations.clearContent(story.id, StoryOperationKind.SYNC)
+        }
+    }
 
     /**
      * Applies the cleanup rules to [downloaded]. A failing chapter is counted and skipped; a story
@@ -183,6 +214,7 @@ class StoryWork(
                 epub = { story, chapters, config, originals, progress ->
                     epubEngine.generate(story, chapters, config, originals, progress).size
                 },
+                batchSync = ManualStorySync(repository, syncEngine, refreshPatreonStats = false),
             )
     }
 }

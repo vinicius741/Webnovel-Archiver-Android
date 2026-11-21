@@ -7,7 +7,6 @@ import com.vinicius741.webnovelarchiver.epub.EpubConfigPlanning
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.details.storyTabShowing
-import com.vinicius741.webnovelarchiver.feature.updates.isSyncingFromUpdates
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.storyOperation
 import com.vinicius741.webnovelarchiver.operations.StoryWork
@@ -20,7 +19,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 internal fun ScreenHost.applyCleanup(story: Story) {
-    if (storyOperation != null || isSyncingFromUpdates(story.id)) {
+    if (storyOperation != null || operations.isSyncingFromUpdates(story.id)) {
         toast("Please wait for the current operation to finish")
         return
     }
@@ -106,7 +105,7 @@ internal fun ScreenHost.generateEpub(
     config: EpubConfig = EpubConfigPlanning.resolve(story, repository.settings.get().maxChaptersPerEpub),
     originalChapterNumbers: List<Int>? = null,
 ) {
-    if (storyOperation != null || isSyncingFromUpdates(story.id)) {
+    if (storyOperation != null || operations.isSyncingFromUpdates(story.id)) {
         toast("Please wait for the current operation to finish")
         return
     }

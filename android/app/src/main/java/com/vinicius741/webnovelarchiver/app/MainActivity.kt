@@ -34,7 +34,8 @@ import com.vinicius741.webnovelarchiver.feature.player.TtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
-import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
+import com.vinicius741.webnovelarchiver.feature.updates.HostUpdatesSyncHost
+import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncs
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -97,7 +98,7 @@ class MainActivity :
     override val routeMemory: RouteViewMemory = RouteViewMemory()
     override val backupExportState: BackupExportState = BackupExportState()
     override val cleanupScreenState: CleanupScreenState = CleanupScreenState()
-    override val updatesSyncState: UpdatesSyncState = UpdatesSyncState()
+    override val updatesSyncs: UpdatesSyncs by lazy { UpdatesSyncs(HostUpdatesSyncHost(this), operations, scope) }
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
     override var rerender: (() -> Unit)? = null
@@ -438,7 +439,7 @@ class MainActivity :
         // Updates overview is planned in the background when the library changes. The Updates
         // screen reuses that plan, so opening it skips the forecast.
         scope.launch {
-            val cache = updatesSyncState.overviewCache
+            val cache = updatesSyncs.overviewCache
             repository.downloadState.collectLatest { snapshot ->
                 val now = System.currentTimeMillis()
                 // A fresh plan is shown again, not skipped: a plan interrupted by a newer snapshot

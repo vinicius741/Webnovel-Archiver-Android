@@ -34,6 +34,9 @@ internal class UpdatesOverviewCache {
         now: Long,
     ): Overview? = planned?.takeIf { isFresh(it.library, it.plannedAt, library, now) }?.overview
 
+    /** The overview last planned for exactly these stories, however old, or null; safe to call from any thread. */
+    fun latest(library: List<Story>): Overview? = planned?.takeIf { sameStories(it.library, library) }?.overview
+
     /** Plans the overview for [library] at [now] and keeps it; safe to call from any thread. */
     fun plan(
         library: List<Story>,

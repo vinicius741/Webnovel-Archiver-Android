@@ -10,7 +10,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
-import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
+import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncs
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.operations.StoryOperations
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
@@ -103,8 +103,8 @@ interface ScreenHost {
 
     val cleanupScreenState: CleanupScreenState
 
-    /** Updates sync progress ("Sync all" batch, per-novel syncs, filter); outlives the screen's re-renders. */
-    val updatesSyncState: UpdatesSyncState
+    /** The Updates syncs (a row's sync, "Sync all") and the forecast cache, which outlive the Updates screen. */
+    val updatesSyncs: UpdatesSyncs
 
     /**
      * What system Back does on the current screen, set by [com.vinicius741.webnovelarchiver.ui.screen]

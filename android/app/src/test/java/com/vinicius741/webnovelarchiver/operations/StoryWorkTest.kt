@@ -198,4 +198,51 @@ class StoryWorkTest {
             return storyExists
         }
     }
+
+    @Test
+    fun aRowSyncFromUpdatesIsListedAndHoldsTheFreeSlot() =
+        runBlocking {
+            val sync =
+                ManualStorySync({ _, _ -> story }) { _, _, _, progress ->
+                    progress("Fetching chapters")
+                    seen += operations.content.value
+                    assertEquals(mapOf("s1" to "Fetching chapters"), operations.updatesSyncs.value)
+                    story
+                }
+
+            work(sync = sync).syncFromUpdates(story, inBatch = false)
+
+            assertEquals(listOf("Fetching chapters"), seen.map { it?.message })
+            assertTrue(operations.updatesSyncs.value.isEmpty())
+            assertNull(operations.content.value)
+        }
+
+    @Test
+    fun aSyncAllItemSkipsTheSlotAndUsesTheQuietSync() =
+        runBlocking {
+            val loud = ManualStorySync({ _, _ -> story }) { _, _, _, _ -> error("the batch must not refresh Patreon") }
+            val quiet =
+                ManualStorySync({ _, _ -> story }) { _, _, _, progress ->
+                    progress("Fetching chapters")
+                    seen += operations.content.value
+                    assertTrue(operations.isSyncingFromUpdates("s1"))
+                    story
+                }
+            val work = StoryWork(operations, loud, FakeFiles(), { _, _, _, _, _ -> 0 }, io = Dispatchers.Unconfined, batchSync = quiet)
+
+            work.syncFromUpdates(story, inBatch = true)
+
+            assertEquals(listOf<StoryOperationState?>(null), seen)
+            assertTrue(operations.updatesSyncs.value.isEmpty())
+        }
+
+    @Test
+    fun aRowSyncLeavesAnotherStorysSlotAlone() =
+        runBlocking {
+            operations.setContent("other", StoryOperationKind.EPUB, "Preparing...")
+
+            work().syncFromUpdates(story, inBatch = false)
+
+            assertEquals("other", operations.content.value?.storyId)
+        }
 }

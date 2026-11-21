@@ -25,26 +25,65 @@ data class StoryOperationState(
  * of fields on the activity. Screens observe [content] and [ai] and redraw themselves; nothing here
  * knows about Views.
  *
- * Two independent slots:
+ * Two independent slots, and the Updates syncs:
  * - [content]: sync, cleanup or EPUB. These read or rewrite the same story files, so at most one
  *   runs, and it gates the story page's content actions.
  * - [ai]: an AI cover or description job. AI jobs only produce drafts, so they never block content
  *   work; only AI starts gate on this slot.
+ * - [updatesSyncs]: novels syncing from Updates (a row or "Sync all"). A row sync also holds
+ *   [content] when it is free, so the story page shows it; a "Sync all" item does not (it would
+ *   block every novel's content actions for the whole run), so content actions check this too.
  *
  * One instance lives with the activity, the same lifetime the operations' coroutines have.
  */
 class StoryOperations {
     private val contentState = MutableStateFlow<StoryOperationState?>(null)
     private val aiState = MutableStateFlow<StoryOperationState?>(null)
+    private val updatesState = MutableStateFlow<Map<String, String>>(emptyMap())
 
     val content: StateFlow<StoryOperationState?> = contentState.asStateFlow()
     val ai: StateFlow<StoryOperationState?> = aiState.asStateFlow()
+
+    /** Story id to the sync's latest status line, while Updates syncs that novel. */
+    val updatesSyncs: StateFlow<Map<String, String>> = updatesState.asStateFlow()
 
     /** The running content operation on [storyId], if any. */
     fun contentFor(storyId: String): StoryOperationState? = content.value?.takeIf { it.storyId == storyId }
 
     /** The running AI job on [storyId], if any. */
     fun aiFor(storyId: String): StoryOperationState? = ai.value?.takeIf { it.storyId == storyId }
+
+    /** True while Updates syncs [storyId]; another sync or content work on it must wait. */
+    fun isSyncingFromUpdates(storyId: String): Boolean = storyId in updatesSyncs.value
+
+    /** Lists [storyId] as syncing from Updates; false when it already is. */
+    fun startUpdatesSync(
+        storyId: String,
+        message: String,
+    ): Boolean {
+        var started = false
+        updatesState.update { current ->
+            if (storyId in current) {
+                current
+            } else {
+                started = true
+                current + (storyId to message)
+            }
+        }
+        return started
+    }
+
+    /** Advances an Updates sync's status line, only while it is still listed (any thread). */
+    fun updateUpdatesSync(
+        storyId: String,
+        message: String,
+    ) {
+        updatesState.update { current -> if (storyId in current) current + (storyId to message) else current }
+    }
+
+    fun endUpdatesSync(storyId: String) {
+        updatesState.update { it - storyId }
+    }
 
     /** Starts or advances the content operation. The latest call replaces the previous state. */
     fun setContent(
