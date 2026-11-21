@@ -58,7 +58,9 @@ internal object ReaderReadAlongScript {
                 // Centre the sentence; one taller than most of the screen starts near the top instead.
                 var delta = box.bottom - box.top > height * 0.7 ? box.top - height * 0.15 : (box.top + box.bottom - height) / 2;
                 if (Math.abs(delta) < 4) return;
-                window.scrollBy({ top: delta, behavior: scroll === SCROLL_INSTANT ? 'auto' : 'smooth' });
+                var target = Math.max(0, window.scrollY + delta);
+                var instant = scroll === SCROLL_INSTANT || Math.abs(delta) > height * 2;
+                window.scrollTo({ top: target, behavior: instant ? 'auto' : 'smooth' });
             }
             reader.render = function(sentence, scroll) {
                 try {

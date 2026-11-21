@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.feature.reader
 
 import android.annotation.SuppressLint
 import android.os.SystemClock
+import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -50,8 +51,15 @@ internal class ReaderReadAlong(
     private var fingerDownAt: Long? = null
 
     @Volatile
+    private var followSettleUntil: Long = 0L
+
+    @Volatile
     private var listener: Job? = null
     private var healPending = false
+    private var stoppingFling = false
+    private var followToken = 0
+    private var pendingFollowScroll: Runnable? = null
+    private var pendingFollowVerify: Runnable? = null
     private var missingChapterLogged: String? = null
 
     init {
@@ -63,6 +71,7 @@ internal class ReaderReadAlong(
 
                 override fun onViewDetachedFromWindow(view: View) {
                     fingerDownAt = null
+                    cancelPendingFollow()
                     stopListening()
                 }
             },
@@ -70,13 +79,64 @@ internal class ReaderReadAlong(
     }
 
     /**
-     * The pill: return to the spoken sentence. The pill is usually tapped right after the page was
-     * flung away, and a fling still running keeps moving the page after the scroll back lands (the
-     * page's scroll does not stop it), so it is stopped first, the way a finger on the page would.
+     * The pill: return to the spoken sentence.
+     *
+     * Stopping a WebView fling sends synthetic touch events through Chromium's input pipeline,
+     * which processes them asynchronously on the compositor thread. Starting a programmatic scroll
+     * in the same tick races with that touch and with trailing fling frames, which can cancel the
+     * smooth scroll and leave the page where it was. Stop the fling first (hidden from drag
+     * tracking), flip to following immediately so the pill hides, let the stop-fling events drain,
+     * then scroll and verify that the sentence landed on screen.
      */
     fun follow() {
-        page.stopFling()
-        apply(ReadAlongPlanning.afterFollow(state))
+        cancelPendingFollow()
+        fingerDownAt = null
+        stoppingFling = true
+        try {
+            page.stopFling()
+        } finally {
+            stoppingFling = false
+        }
+        val token = ++followToken
+        followSettleUntil = SystemClock.uptimeMillis() + FOLLOW_SCROLL_DELAY_MS
+        apply(ReadAlongPlanning.afterFollow(state), allowScroll = false)
+        scheduleFollowScroll(token)
+    }
+
+    private fun scheduleFollowScroll(token: Int) {
+        val scroll =
+            Runnable {
+                pendingFollowScroll = null
+                followSettleUntil = 0L
+                if (canRunFollow(token)) {
+                    page.evaluateJavascript(ReaderReadAlongScript.renderCall(state.sentence, ReadAlongScroll.SMOOTH), null)
+                }
+            }
+        val verify =
+            Runnable {
+                pendingFollowVerify = null
+                if (canRunFollow(token)) {
+                    page.evaluateJavascript(ReaderReadAlongScript.renderCall(state.sentence, ReadAlongScroll.IF_OFF_SCREEN), null)
+                }
+            }
+        pendingFollowScroll = scroll
+        pendingFollowVerify = verify
+        page.postDelayed(scroll, FOLLOW_SCROLL_DELAY_MS)
+        page.postDelayed(verify, FOLLOW_VERIFY_DELAY_MS)
+    }
+
+    private fun canRunFollow(token: Int): Boolean {
+        if (token != followToken || !page.isAttachedToWindow) return false
+        return state.following && !fingerIsDown() && state.sentence >= 0
+    }
+
+    private fun cancelPendingFollow() {
+        followToken++
+        followSettleUntil = 0L
+        pendingFollowScroll?.let(page::removeCallbacks)
+        pendingFollowVerify?.let(page::removeCallbacks)
+        pendingFollowScroll = null
+        pendingFollowVerify = null
     }
 
     private fun startListening() {
@@ -91,6 +151,7 @@ internal class ReaderReadAlong(
     }
 
     private fun stopListening() {
+        cancelPendingFollow()
         val stopped = listener ?: return
         stopped.cancel()
         listener = null
@@ -136,7 +197,7 @@ internal class ReaderReadAlong(
         if (next == before) return
         state = next
         if (before.following != next.following) log("read_along_following", "following" to next.following)
-        val scroll = if (!allowScroll || fingerIsDown()) ReadAlongScroll.NONE else ReadAlongPlanning.scroll(before, next)
+        val scroll = if (!allowScroll || scrollDeferred()) ReadAlongScroll.NONE else ReadAlongPlanning.scroll(before, next)
         if (before.sentence != next.sentence || scroll != ReadAlongScroll.NONE) {
             page.evaluateJavascript(ReaderReadAlongScript.renderCall(next.sentence, scroll), null)
         }
@@ -166,6 +227,9 @@ internal class ReaderReadAlong(
     /** A finger is on the page. A down whose up never arrived stops counting after a while. */
     private fun fingerIsDown(): Boolean = fingerDownAt?.let { SystemClock.uptimeMillis() - it < FINGER_STALE_MS } == true
 
+    /** True while a finger is down or while a follow tap's stop-fling touch is still draining. */
+    private fun scrollDeferred(): Boolean = fingerIsDown() || SystemClock.uptimeMillis() < followSettleUntil
+
     /**
      * Dragging the page past Android's touch slop (the distance at which the page itself starts
      * scrolling), or scrolling it with a wheel, stops following. While a finger is down the page is
@@ -177,6 +241,7 @@ internal class ReaderReadAlong(
         var downY = 0f
         var dragged = false
         page.setOnTouchListener { _, event ->
+            if (stoppingFling) return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     fingerDownAt = SystemClock.uptimeMillis()
@@ -186,6 +251,7 @@ internal class ReaderReadAlong(
                 MotionEvent.ACTION_MOVE ->
                     if (!dragged && abs(event.y - downY) > slop) {
                         dragged = true
+                        cancelPendingFollow()
                         apply(ReadAlongPlanning.afterDrag(state))
                     }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> fingerDownAt = null
@@ -193,7 +259,10 @@ internal class ReaderReadAlong(
             false
         }
         page.setOnGenericMotionListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_SCROLL) apply(ReadAlongPlanning.afterDrag(state))
+            if (event.actionMasked == MotionEvent.ACTION_SCROLL) {
+                cancelPendingFollow()
+                apply(ReadAlongPlanning.afterDrag(state))
+            }
             false
         }
     }
@@ -210,7 +279,7 @@ internal class ReaderReadAlong(
             val current = state
             val latest = ReadAlongPlanning.afterPlayback(current, host.ttsEngine.playbackState.value, storyId, chapterId)
             if (latest.sentence != current.sentence || listener?.isActive != true) page.post { scheduleHeal() }
-            return ReadAlongPlanning.pageState(latest, fingerIsDown())
+            return ReadAlongPlanning.pageState(latest, scrollDeferred())
         }
 
         @JavascriptInterface
@@ -255,14 +324,54 @@ internal class ReaderReadAlong(
     private companion object {
         const val HEAL_DELAY_MS = 500L
         const val FINGER_STALE_MS = 10_000L
+        const val FOLLOW_SCROLL_DELAY_MS = 50L
+        const val FOLLOW_VERIFY_DELAY_MS = 350L
     }
 }
 
-/** A touch that lands and is cancelled: the page stops a running fling without seeing a tap or a drag. */
+/**
+ * Stops a running fling on this WebView without looking like a tap or a drag to the page.
+ *
+ * `flingScroll(0, 0)` aborts Android's OverScroller; the touchscreen `ACTION_DOWN` + `ACTION_CANCEL`
+ * pair tells Chromium's compositor FlingController to cancel a touch fling.
+ */
 private fun WebView.stopFling() {
+    flingScroll(0, 0)
     val now = SystemClock.uptimeMillis()
+    val properties =
+        arrayOf(
+            MotionEvent.PointerProperties().apply {
+                id = 0
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            },
+        )
+    val coords =
+        arrayOf(
+            MotionEvent.PointerCoords().apply {
+                x = width / 2f
+                y = height / 2f
+                pressure = 1f
+                size = 1f
+            },
+        )
     for (action in intArrayOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_CANCEL)) {
-        val event = MotionEvent.obtain(now, now, action, width / 2f, height / 2f, 0)
+        val event =
+            MotionEvent.obtain(
+                now,
+                now,
+                action,
+                1,
+                properties,
+                coords,
+                0,
+                0,
+                1f,
+                1f,
+                0,
+                0,
+                InputDevice.SOURCE_TOUCHSCREEN,
+                0,
+            )
         dispatchTouchEvent(event)
         event.recycle()
     }

@@ -43,6 +43,7 @@ class ReadAlongPlanningTest {
     fun aDragStopsFollowingOnlyWhileASentenceIsHighlighted() {
         assertFalse(ReadAlongPlanning.afterDrag(ReadAlongState(snapshot(chunk = 3))).following)
         assertTrue(ReadAlongPlanning.afterDrag(ReadAlongState()).following)
+        assertTrue(ReadAlongPlanning.afterDrag(ReadAlongState(snapshot(chunk = 3, olderText = true))).following)
     }
 
     @Test
@@ -68,6 +69,7 @@ class ReadAlongPlanningTest {
     fun thePillShowsOnlyWhileAudioPlaysUnfollowed() {
         assertTrue(ReadAlongState(snapshot(chunk = 1), following = false).showsPill)
         assertFalse(ReadAlongState(snapshot(chunk = 1, playing = false), following = false).showsPill)
+        assertFalse(ReadAlongState(snapshot(chunk = 1, olderText = true), following = false).showsPill)
         assertFalse(ReadAlongState(snapshot(chunk = 1), following = true).showsPill)
         assertFalse(ReadAlongState(null, following = false).showsPill)
     }
@@ -117,6 +119,7 @@ class ReadAlongPlanningTest {
     private fun snapshot(
         chunk: Int = 0,
         playing: Boolean = true,
+        olderText: Boolean = false,
         story: String = STORY,
         chapter: String = CHAPTER,
     ) = TtsPlaybackSnapshot(
@@ -127,6 +130,7 @@ class ReadAlongPlanningTest {
         totalChunks = 20,
         isPlaying = playing,
         isPaused = !playing,
+        olderText = olderText,
     )
 
     private companion object {

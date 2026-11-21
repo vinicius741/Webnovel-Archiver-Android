@@ -32,8 +32,8 @@ internal data class ReadAlongState(
     /** The docked player replaces chapter navigation while this chapter is read aloud. */
     val showsPlayer: Boolean get() = snapshot != null
 
-    /** "Back to current sentence": only while audio plays and the page is not following it. */
-    val showsPill: Boolean get() = !following && snapshot?.isPaused == false
+    /** "Back to current sentence": only while audio plays, a sentence is highlighted, and the page is not following it. */
+    val showsPill: Boolean get() = !following && sentence != NO_SENTENCE && snapshot?.isPaused == false
 
     companion object {
         const val NO_SENTENCE = -1
@@ -54,7 +54,8 @@ internal object ReadAlongPlanning {
     }
 
     /** With nothing highlighted there is nothing to stop following. */
-    fun afterDrag(state: ReadAlongState): ReadAlongState = if (state.snapshot == null) state else state.copy(following = false)
+    fun afterDrag(state: ReadAlongState): ReadAlongState =
+        if (state.sentence == ReadAlongState.NO_SENTENCE) state else state.copy(following = false)
 
     fun afterFollow(state: ReadAlongState): ReadAlongState = state.copy(following = true)
 

@@ -174,5 +174,6 @@ class ReaderContentRendererTest {
             "window.WnaReader&&WnaReader.render(7,1);",
             ReaderReadAlongScript.renderCall(7, ReadAlongScroll.SMOOTH),
         )
+        assertTrue(ReaderReadAlongScript.script.contains("window.scrollTo("))
     }
 }
