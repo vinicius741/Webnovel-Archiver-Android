@@ -4,166 +4,157 @@ import android.content.res.ColorStateList
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.BackupFileEntry
-import com.vinicius741.webnovelarchiver.data.repository.deleteBackupFile
-import com.vinicius741.webnovelarchiver.data.repository.listBackupFiles
 import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
 import com.vinicius741.webnovelarchiver.feature.story.share
-import com.vinicius741.webnovelarchiver.navigation.AppRoute
-import com.vinicius741.webnovelarchiver.navigation.BackupExportKind
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.button
-import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
-import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.launch
+import java.io.File
 
 /*
- * Full-backup loop for Data & Backup: the export job owner, the live progress card, and the
- * persistent Backup Files list that makes completed backups reachable without the share sheet.
+ * Data & backup's export pieces: the app side of [BackupExports], the live progress card, and the
+ * persistent Backup files list that makes completed backups reachable without the share sheet.
  */
 
-internal fun ScreenHost.startFullBackupExport() {
-    val state = backupExportState
-    if (state.activeKind != null) return
-    // The job is assigned before the flag: reconcile() would clear a flag whose job is not yet live.
-    state.activeJob =
-        scope.launch {
-            try {
-                val backup =
-                    runCatching { repository.exportFullBackup { message -> updateBackupProgress(message) } }
-                        .getOrElse { error ->
-                            toast(error.message ?: "Backup failed")
-                            return@launch
-                        }
-                showStyledOptionsDialog(
-                    "Backup saved · ${BackupFilePlanning.sizeLabel(backup.length())}",
-                    listOf(
-                        "Share backup file" to { share(backup) },
-                        "Done" to {},
-                    ),
-                )
-            } finally {
-                state.activeKind = null
-                state.progressMessage = null
-                state.progressSlot = null
-                if (navigator.current == AppRoute.DataBackup && !app.isDestroyed) showDataBackup()
-            }
-        }
-    state.activeKind = BackupExportKind.FULL
-    if (navigator.current == AppRoute.DataBackup) showDataBackup()
-}
+/** The export runs the repository's full backup; its outcome is shown on whatever screen is open. */
+internal class HostBackupExportHost(
+    private val host: ScreenHost,
+) : BackupExportHost {
+    override suspend fun export(onProgress: (String) -> Unit): File = host.repository.exportFullBackup(onProgress)
 
-/** Posts a progress tick onto the UI thread and patches the visible card without a re-render. */
-private fun ScreenHost.updateBackupProgress(message: String) {
-    app.runOnUiThread {
-        backupExportState.progressMessage = message
-        backupExportState.progressSlot?.text = message
-    }
-}
-
-internal fun ScreenHost.addFullBackupProgressCard(container: LinearLayout) {
-    val state = backupExportState
-    if (state.activeKind != BackupExportKind.FULL) return
-    val colors = ThemeManager.colors
-    container.tintedCard(colors.primary) {
-        iconColumnRow(R.drawable.wna_archive, colors.primary).apply {
-            addView(makeText(context, "Creating full backup…", Type.TITLE_SMALL, colors.onSurface))
-            state.progressSlot =
-                makeText(context, state.progressMessage ?: "Preparing…", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
-                    setPadding(0, dp(2), 0, 0)
-                }
-            addView(state.progressSlot)
-        }
-        addView(
-            ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
-                isIndeterminate = true
-                indeterminateTintList = ColorStateList.valueOf(colors.primary)
-            },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin =
-                    dp(Space.SM)
-            },
+    override fun showSaved(file: File) {
+        if (host.app.isDestroyed) return
+        host.showStyledOptionsDialog(
+            "Backup saved · ${BackupFilePlanning.sizeLabel(file.length())}",
+            listOf(
+                "Share backup file" to { host.share(file) },
+                "Done" to {},
+            ),
         )
     }
+
+    override fun showFailed(message: String) = host.toast(message)
 }
 
-internal fun ScreenHost.addBackupFilesSection(container: LinearLayout) {
-    val colors = ThemeManager.colors
-    container.section("Backup files")
-    val filesContainer =
-        LinearLayout(container.context).apply {
-            orientation = LinearLayout.VERTICAL
-            text("Loading backup files…", Type.BODY_SMALL, colors.onSurfaceVariant)
-        }
-    container.addView(filesContainer)
-    scope.launch {
-        val result = runCatching { repository.listBackupFiles() }
-        if (navigator.current != AppRoute.DataBackup || app.isDestroyed || !filesContainer.isAttachedToWindow) return@launch
-        filesContainer.removeAllViews()
-        result
-            .onSuccess { files -> renderBackupFiles(filesContainer, files) }
-            .onFailure {
-                filesContainer.text("Backup files could not be loaded.", Type.BODY_SMALL, colors.onSurfaceVariant)
-            }
-    }
-}
-
-private fun ScreenHost.renderBackupFiles(
+/** The "Creating full backup…" card, shown while an export runs; a new progress line patches its text. */
+internal class FullBackupProgressCard(
     container: LinearLayout,
-    files: List<BackupFileEntry>,
 ) {
-    val colors = ThemeManager.colors
-    if (files.isEmpty()) {
-        container.settingsNote("Backups you create are kept here, in the app's private storage.")
-        return
+    private val slot = LinearLayout(container.context).apply { orientation = LinearLayout.VERTICAL }
+    private var message: TextView? = null
+
+    init {
+        container.addView(slot, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
-    container.settingsGroup {
-        files.forEach { entry ->
-            val file = entry.file
-            val actions =
-                LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    addView(
-                        makeRowIconButton(
-                            context,
-                            R.drawable.wna_share,
-                            "Share ${BackupFilePlanning.artifactLabel(file.name)}",
-                        ) { share(file) },
-                    )
-                    addView(
-                        makeRowIconButton(context, R.drawable.wna_delete, "Delete ${BackupFilePlanning.artifactLabel(file.name)}") {
-                            confirm("Delete this backup file? This cannot be undone.", confirmLabel = "Delete") {
-                                scope.launch {
-                                    if (repository.deleteBackupFile(file)) showDataBackup() else toast("Backup file could not be deleted")
-                                }
-                            }
-                        },
-                    )
-                }
+
+    fun show(export: BackupExportProgress?) {
+        if (export == null) {
+            slot.removeAllViews()
+            message = null
+            return
+        }
+        val text = export.message ?: "Preparing…"
+        message?.let {
+            it.text = text
+            return
+        }
+        val colors = ThemeManager.colors
+        slot.tintedCard(colors.primary) {
+            iconColumnRow(R.drawable.wna_archive, colors.primary).apply {
+                addView(makeText(context, "Creating full backup…", Type.TITLE_SMALL, colors.onSurface))
+                message =
+                    makeText(context, text, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+                        setPadding(0, context.dp(2), 0, 0)
+                    }
+                addView(message)
+            }
             addView(
-                makeListRow(
-                    context,
-                    BackupFilePlanning.artifactLabel(file.name),
-                    "${BackupFilePlanning.sizeLabel(entry.sizeBytes)} · ${BackupFilePlanning.timestampLabel(entry.lastModifiedMillis)}",
-                    leadIcon = R.drawable.wna_folder,
-                    leadTint = colors.primary,
-                    trailing = actions,
-                ),
+                ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+                    isIndeterminate = true
+                    indeterminateTintList = ColorStateList.valueOf(colors.primary)
+                },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = context.dp(Space.SM)
+                },
             )
+        }
+    }
+}
+
+/** The Backup files section; [show] redraws its list. */
+internal class BackupFilesSection(
+    private val host: ScreenHost,
+    container: LinearLayout,
+    private val model: DataBackupScreenModel,
+) {
+    private val files: LinearLayout
+
+    init {
+        container.section("Backup files")
+        files = LinearLayout(container.context).apply { orientation = LinearLayout.VERTICAL }
+        container.addView(files)
+    }
+
+    fun show(state: BackupFilesState) {
+        val colors = ThemeManager.colors
+        files.removeAllViews()
+        when (state) {
+            BackupFilesState.Loading -> files.text("Loading backup files…", Type.BODY_SMALL, colors.onSurfaceVariant)
+            BackupFilesState.Failed -> files.text("Backup files could not be loaded.", Type.BODY_SMALL, colors.onSurfaceVariant)
+            is BackupFilesState.Loaded -> renderBackupFiles(state.files)
+        }
+    }
+
+    private fun renderBackupFiles(entries: List<BackupFileEntry>) {
+        val colors = ThemeManager.colors
+        if (entries.isEmpty()) {
+            files.settingsNote("Backups you create are kept here, in the app's private storage.")
+            return
+        }
+        files.settingsGroup {
+            entries.forEach { entry ->
+                val file = entry.file
+                val actions =
+                    LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        addView(
+                            makeRowIconButton(
+                                context,
+                                R.drawable.wna_share,
+                                "Share ${BackupFilePlanning.artifactLabel(file.name)}",
+                            ) { host.share(file) },
+                        )
+                        addView(
+                            makeRowIconButton(context, R.drawable.wna_delete, "Delete ${BackupFilePlanning.artifactLabel(file.name)}") {
+                                host.confirm("Delete this backup file? This cannot be undone.", confirmLabel = "Delete") {
+                                    model.deleteBackupFile(file) { host.toast("Backup file could not be deleted") }
+                                }
+                            },
+                        )
+                    }
+                addView(
+                    makeListRow(
+                        context,
+                        BackupFilePlanning.artifactLabel(file.name),
+                        "${BackupFilePlanning.sizeLabel(entry.sizeBytes)} · ${BackupFilePlanning.timestampLabel(entry.lastModifiedMillis)}",
+                        leadIcon = R.drawable.wna_folder,
+                        leadTint = colors.primary,
+                        trailing = actions,
+                    ),
+                )
+            }
         }
     }
 }

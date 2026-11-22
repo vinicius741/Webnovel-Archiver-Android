@@ -10,17 +10,10 @@ import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
-import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
-import com.vinicius741.webnovelarchiver.data.repository.coverFile
-import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
-import com.vinicius741.webnovelarchiver.data.repository.saveAiCoverPromptDraft
-import com.vinicius741.webnovelarchiver.data.repository.setAiCover
-import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.story.CoverViewerAction
 import com.vinicius741.webnovelarchiver.feature.story.CoverViewerItem
 import com.vinicius741.webnovelarchiver.feature.story.showCoverViewer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -39,7 +32,7 @@ import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
-import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /*
@@ -52,13 +45,12 @@ import kotlinx.coroutines.launch
 
 internal fun ScreenHost.addAiCoverTab(
     container: LinearLayout,
-    story: Story,
-    generating: StoryOperationState?,
+    render: AiTabRender,
 ) {
-    aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiNewCoverCard(container, story, draft) }
-    addAiCoverStrip(container, story)
+    render.state.coverDraft?.let { draft -> addAiNewCoverCard(container, render, draft) }
+    addAiCoverStrip(container, render)
     container.section("New cover")
-    addAiCoverMakerCard(container, story, generating)
+    addAiCoverMakerCard(container, render)
 }
 
 /**
@@ -67,9 +59,10 @@ internal fun ScreenHost.addAiCoverTab(
  */
 private fun ScreenHost.addAiNewCoverCard(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
     draft: AiCoverDraft,
 ) {
+    val story = render.story
     // Deciding on a waiting result stays open while another cover generates: the job never touches the cover in use.
     val editable = story.isArchived != true
     val colors = ThemeManager.colors
@@ -90,23 +83,13 @@ private fun ScreenHost.addAiNewCoverCard(
             addView(previewSlot)
             var useButton: Button? = null
             var viewButton: Button? = null
-            scope.launch(kotlinx.coroutines.Dispatchers.Default) {
-                // Older app versions could apply a draft without closing it; one identical to the
-                // cover in use is not news, so settle it instead of offering a no-op choice.
-                val applied = repository.coverFile(story)?.takeIf { AiCoverPlanning.isAiCoverActive(story) }
-                if (applied != null && runCatching { applied.readBytes() }.getOrNull()?.contentEquals(draft.bytes) == true) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        coverUiAttempt { closeAiCoverDraft(story.id, draft.prompt) }
-                        if (frameIsAiControls(story.id)) showAiControls(story.id)
-                    }
-                    return@launch
-                }
+            scope.launch(Dispatchers.Default) {
                 val bitmap = decodeSampledDraftPreview(draft.bytes)
                 app.runOnUiThread {
                     if (app.isFinishing || app.isDestroyed) return@runOnUiThread
                     previewSlot.removeAllViews()
                     if (bitmap != null) {
-                        val open = { index: Int -> showNewCoverViewer(story, draft, bitmap, index, editable) }
+                        val open = { index: Int -> showNewCoverViewer(render, draft, bitmap, index, editable) }
                         addAiCoverCompareRow(previewSlot, story, bitmap, onOpen = open)
                         viewButton?.apply {
                             visibility = View.VISIBLE
@@ -133,7 +116,7 @@ private fun ScreenHost.addAiNewCoverCard(
             viewButton =
                 fullButton("View full size", Btn.TONAL, R.drawable.wna_open_in_full, topMarginDp = Space.XS, bottomMarginDp = Space.SM) {}
                     .apply { visibility = View.GONE }
-            latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_IMAGE)?.let { cost ->
+            render.state.costs.coverImage?.let { cost ->
                 text(cost, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
                     setPadding(0, 0, 0, dp(Space.SM))
                 }
@@ -141,9 +124,9 @@ private fun ScreenHost.addAiNewCoverCard(
             row {
                 useButton =
                     button("Use it", Btn.FILLED, R.drawable.wna_check, enabled = false) {
-                        resolveAiCoverDraft(story, draft, use = true)
+                        render.model.resolveCoverDraft(draft, use = true)
                     }
-                button("Keep current", Btn.SURFACE, enabled = editable) { resolveAiCoverDraft(story, draft, use = false) }
+                button("Keep current", Btn.SURFACE, enabled = editable) { render.model.resolveCoverDraft(draft, use = false) }
                 for (index in 0 until childCount) {
                     (getChildAt(index).layoutParams as LinearLayout.LayoutParams).apply {
                         width = 0
@@ -157,12 +140,13 @@ private fun ScreenHost.addAiNewCoverCard(
 
 /** The compare viewer: Current and New full screen, swipe between them, then keep or use. */
 private fun ScreenHost.showNewCoverViewer(
-    story: Story,
+    render: AiTabRender,
     draft: AiCoverDraft,
     bitmap: android.graphics.Bitmap,
     index: Int,
     editable: Boolean,
 ) {
+    val story = render.story
     val current = activeCoverSource(story)
     val items =
         listOfNotNull(
@@ -181,48 +165,18 @@ private fun ScreenHost.showNewCoverViewer(
         },
     ) { action, viewer ->
         viewer.close()
-        resolveAiCoverDraft(story, draft, use = action == USE_ACTION)
-    }
-}
-
-/**
- * Closes the "New cover ready" decision. The image is already in Saved covers either way; its
- * prompt stays in the prompt box so the next attempt can start from it.
- */
-internal fun ScreenHost.resolveAiCoverDraft(
-    story: Story,
-    draft: AiCoverDraft,
-    use: Boolean,
-) {
-    if (story.isArchived == true) return
-    scope.launch {
-        coverUiAttempt {
-            if (use) repository.setAiCover(story.id, draft.bytes, draft.mediaType)
-            closeAiCoverDraft(story.id, draft.prompt)
-            if (use) toast("AI cover applied")
-            if (frameIsAiControls(story.id)) showAiControls(story.id)
-        }
-    }
-}
-
-/** Turns a pending image draft back into a prompt-only draft (the store keeps the image in history). */
-internal suspend fun ScreenHost.closeAiCoverDraft(
-    storyId: String,
-    prompt: String,
-) {
-    if (aiControlsScreenState.coverDrafts.remove(storyId) == null) return
-    if (prompt.isNotBlank()) {
-        repository.saveAiCoverPromptDraft(storyId, prompt)
-        aiControlsScreenState.coverPrompts[storyId] = prompt
+        render.model.resolveCoverDraft(draft, use = action == USE_ACTION)
     }
 }
 
 /** The single generation card: chapters, prompt box, the two actions, progress, and the models used. */
 private fun ScreenHost.addAiCoverMakerCard(
     container: LinearLayout,
-    story: Story,
-    generating: StoryOperationState?,
+    render: AiTabRender,
 ) {
+    val story = render.story
+    val state = render.state
+    val generating = state.coverJob
     val colors = ThemeManager.colors
     // Same gating as descriptions: no context chapters means nothing to feed the text model.
     val canGenerate = story.isArchived != true && story.chapters.any { it.downloaded }
@@ -238,12 +192,12 @@ private fun ScreenHost.addAiCoverMakerCard(
         )
         return
     }
-    val isBusy = aiOperation?.storyId == story.id || generating != null
-    val prompt = aiControlsScreenState.coverPrompts[story.id] ?: aiControlsScreenState.coverDrafts[story.id]?.prompt.orEmpty()
+    val isBusy = state.aiJob != null || generating != null
+    val prompt = state.coverPrompt?.text ?: state.coverDraft?.prompt.orEmpty()
     val cardView =
         container.card {
-            addAiContextChaptersRow(this, story, forCover = true)
-            addAiCoverPhaseRow(this, story)
+            addAiContextChaptersRow(this, render, forCover = true)
+            addAiCoverPhaseRow(this, render)
             spacer(Space.MD)
             val field =
                 EditText(context).apply {
@@ -278,30 +232,29 @@ private fun ScreenHost.addAiCoverMakerCard(
             }
             row {
                 button("Draft a prompt", Btn.OUTLINED, R.drawable.wna_auto_awesome, enabled = !isBusy) {
-                    writeAiCoverPrompt(story, field.text.toString())
+                    writeAiCoverPrompt(render, field.text.toString())
                 }
-                clearButton = button("Clear", Btn.TEXT) { clearAiCoverPrompt(story) }
+                clearButton = button("Clear", Btn.TEXT) { render.model.clearCoverPrompt() }
             }
             fullButton("New cover", Btn.FILLED, R.drawable.wna_auto_awesome, enabled = !isBusy, topMarginDp = Space.SM) {
-                generateAiCover(story, field.text.toString().trim())
+                generateAiCover(render, field.text.toString().trim())
             }
             // Keep typing across re-renders (progress ticks, results); it persists when a run starts.
             field.doAfterTextChanged { text ->
-                aiControlsScreenState.coverPrompts[story.id] = text?.toString().orEmpty()
+                render.model.typeCoverPrompt(text?.toString().orEmpty())
                 syncPromptState()
             }
             syncPromptState()
-            latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_PROMPT)
-                ?.takeIf { aiControlsScreenState.coverDrafts[story.id] == null && prompt.isNotBlank() }
+            state.costs.coverPrompt
+                ?.takeIf { state.coverDraft == null && prompt.isNotBlank() }
                 ?.let { cost -> text("Last prompt — $cost", Type.LABEL_MEDIUM, colors.tertiary) }
             generating?.let { operation ->
                 spacer(Space.MD)
-                aiControlsScreenState.binding?.addProgress(this, operation)
+                render.addProgress(this, operation)
             }
         }
     container.addView(cardView)
-    val settings = repository.aiSettings.get()
-    addAiModelFooter(container, "Image" to settings.imageModel, "Prompt" to settings.descriptionModel)
+    addAiModelFooter(container, "Image" to state.settings.imageModel, "Prompt" to state.settings.descriptionModel)
 }
 
 /**

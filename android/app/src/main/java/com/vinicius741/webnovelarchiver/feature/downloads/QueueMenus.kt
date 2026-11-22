@@ -1,246 +1,214 @@
 package com.vinicius741.webnovelarchiver.feature.downloads
 
 import android.app.AlertDialog
-import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
-import com.vinicius741.webnovelarchiver.download.DownloadCounts
 import com.vinicius741.webnovelarchiver.download.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.download.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAppBarPlan
 import com.vinicius741.webnovelarchiver.download.QueueSection
+import com.vinicius741.webnovelarchiver.download.SourceCheckCard
+import com.vinicius741.webnovelarchiver.feature.browser.showBrowser
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.settings.resetSourceWebSessions
+import com.vinicius741.webnovelarchiver.feature.settings.shareDiagnostics
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.APP_BAR_SUBTITLE_TAG
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
-import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
-import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.confirm
-import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.makeSheetRow
-import com.vinicius741.webnovelarchiver.ui.showBottomSheet
 
-// App-bar, novel, and chapter menus for the Downloads screen. Choices are computed at tap time
-// from the live queue, so a menu never offers an action the queue has already outgrown.
-
-internal fun ScreenHost.queueAppBarActions(plan: QueueAppBarPlan): List<AppBarAction> =
-    buildList {
-        when (plan.toggle) {
-            GlobalQueueAction.PAUSE_ALL ->
-                add(
-                    AppBarAction(R.drawable.wna_pause, "Pause all") {
-                        launchQueueControl("pauseAll") { downloadEngine.pauseAll() }
-                    },
-                )
-            GlobalQueueAction.RESUME_ALL ->
-                add(
-                    AppBarAction(R.drawable.wna_play, "Resume all", ThemeManager.colors.primary) {
-                        launchQueueControl("resumeAll") { downloadEngine.resumeAll() }
-                        startDownloadForegroundService()
-                    },
-                )
-            else -> Unit
-        }
-        add(AppBarAction(R.drawable.wna_tune, "Download settings") { showDownloadSettings() })
-        if (plan.overflow.isNotEmpty()) add(AppBarAction(R.drawable.wna_more_vert, "More options") { showQueueOverflow() })
-    }
-
-/** Whole-queue actions, computed at tap time so the menu never shows a stale choice. */
-private fun ScreenHost.showQueueOverflow() {
-    val plan = queuePlan(repository.downloadState.value.queue)
-    val overflow = DownloadManagerPlanning.appBar(plan.counts, plan.failedChapters).overflow
-    val items =
-        buildList {
-            if (GlobalQueueAction.RETRY_ALL in overflow) {
-                add(QueueMenuEntry("Retry failed chapters", R.drawable.wna_refresh) { retryFailedChapters() })
-            }
-            if (GlobalQueueAction.CLEAR_FINISHED in overflow) {
-                add(QueueMenuEntry("Clear finished", R.drawable.wna_check) { confirmClearFinished() })
-            }
-            if (GlobalQueueAction.CANCEL_ALL in overflow) {
-                if (isNotEmpty()) add(null)
-                add(
-                    QueueMenuEntry("Cancel all downloads", R.drawable.wna_close, destructive = true) {
-                        confirm("Cancel all active and queued downloads? Downloaded chapters stay.", confirmLabel = "Cancel all") {
-                            launchQueueControl("cancelAll") { downloadEngine.cancelAll() }
-                        }
-                    },
-                )
-            }
-        }
-    if (items.isNotEmpty()) showQueueMenu("Downloads", null, items)
-}
-
-internal fun ScreenHost.retryFailedChapters() {
-    launchQueueControl("retryFailed") { downloadEngine.retryFailed() }
-    startDownloadForegroundService()
-}
-
-internal fun ScreenHost.confirmClearFinished() {
-    confirm("Remove downloaded, failed, and cancelled chapters from the list?", confirmLabel = "Clear") {
-        launchQueueControl("clearFinished") { downloadEngine.clearFinished() }
-    }
-}
-
-private fun ScreenHost.storyJobs(storyId: String): List<DownloadJob> =
-    repository.downloadState.value.queue
-        .filter { it.storyId == storyId }
-
-internal fun ScreenHost.runStoryAction(
-    storyId: String,
-    action: QueueAction,
+/**
+ * The Downloads screen's app-bar, novel, chapter and site-check menus. Choices are read from
+ * [model] at tap time, so a menu never offers an action the queue has already outgrown; every
+ * choice runs a model action.
+ */
+internal class QueueMenus(
+    private val host: ScreenHost,
+    private val model: QueueScreenModel,
 ) {
-    when (action) {
-        QueueAction.PAUSE -> launchQueueControl("pauseStory") { downloadEngine.pauseStory(storyId) }
-        QueueAction.RESUME -> {
-            launchQueueControl("resumeStory") { downloadEngine.resumeStory(storyId) }
-            startDownloadForegroundService()
-        }
-        QueueAction.RETRY -> {
-            launchQueueControl("retryFailedForStory") { downloadEngine.retryFailedForStory(storyId) }
-            startDownloadForegroundService()
-        }
-        QueueAction.CANCEL ->
-            confirm("Cancel this novel's remaining downloads?", confirmLabel = "Cancel downloads") {
-                launchQueueControl("cancelStory") { downloadEngine.cancelStory(storyId) }
-            }
-        QueueAction.REMOVE -> launchQueueControl("removeStory") { downloadEngine.removeStory(storyId) }
-    }
-}
+    private val app = host.app
 
-internal fun ScreenHost.showStoryMenu(
-    item: QueueStoryItem,
-    renderNow: () -> Unit,
-) {
-    val counts = DownloadCounts.from(storyJobs(item.storyId))
-    val upNextCount = queuePlan(repository.downloadState.value.queue).upNext.size
-    val items =
+    fun appBarActions(plan: QueueAppBarPlan): List<AppBarAction> =
         buildList {
-            if (item.section == QueueSection.UP_NEXT) {
-                add(
-                    QueueMenuEntry("Download now", R.drawable.wna_up) {
-                        launchQueueControl("downloadStoryNext") { downloadEngine.downloadStoryNext(item.storyId) }
-                    },
-                )
-                if (upNextCount > 1) {
+            when (plan.toggle) {
+                GlobalQueueAction.PAUSE_ALL ->
+                    add(AppBarAction(R.drawable.wna_pause, "Pause all") { model.run(QueueControl.PauseAll) })
+                GlobalQueueAction.RESUME_ALL ->
+                    add(AppBarAction(R.drawable.wna_play, "Resume all", ThemeManager.colors.primary) { model.run(QueueControl.ResumeAll) })
+                else -> Unit
+            }
+            add(AppBarAction(R.drawable.wna_tune, "Download settings") { host.showDownloadSettings() })
+            if (plan.overflow.isNotEmpty()) add(AppBarAction(R.drawable.wna_more_vert, "More options") { showOverflow() })
+        }
+
+    /** Whole-queue actions. */
+    private fun showOverflow() {
+        val overflow = model.overflow()
+        val items =
+            buildList {
+                if (GlobalQueueAction.RETRY_ALL in overflow) {
+                    add(QueueMenuEntry("Retry failed chapters", R.drawable.wna_refresh) { model.run(QueueControl.RetryFailed) })
+                }
+                if (GlobalQueueAction.CLEAR_FINISHED in overflow) {
+                    add(QueueMenuEntry("Clear finished", R.drawable.wna_check) { confirmClearFinished() })
+                }
+                if (GlobalQueueAction.CANCEL_ALL in overflow) {
+                    if (isNotEmpty()) add(null)
                     add(
-                        QueueMenuEntry("Move to bottom", R.drawable.wna_down) {
-                            launchQueueControl("moveStoryToEnd") { downloadEngine.moveStoryToEnd(item.storyId) }
+                        QueueMenuEntry("Cancel all downloads", R.drawable.wna_close, destructive = true) {
+                            host.confirm("Cancel all active and queued downloads? Downloaded chapters stay.", confirmLabel = "Cancel all") {
+                                model.run(QueueControl.CancelAll)
+                            }
                         },
                     )
                 }
             }
-            if (item.expandable) {
-                add(
-                    QueueMenuEntry(if (item.expanded) "Hide chapters" else "Show chapters", R.drawable.wna_list) {
-                        storyExpandOverride[item.storyId] = !item.expanded
-                        renderNow()
-                    },
-                )
-            }
-            add(QueueMenuEntry("Open novel", R.drawable.wna_menu_book) { showDetails(item.storyId) })
-            if (counts.hasActive) add(QueueMenuEntry("Pause", R.drawable.wna_pause) { runStoryAction(item.storyId, QueueAction.PAUSE) })
-            if (counts.hasPaused) add(QueueMenuEntry("Resume", R.drawable.wna_play) { runStoryAction(item.storyId, QueueAction.RESUME) })
-            if (counts.hasFailed || counts.hasCancelled) {
-                add(QueueMenuEntry("Retry failed chapters", R.drawable.wna_refresh) { runStoryAction(item.storyId, QueueAction.RETRY) })
-            }
-            add(null)
-            if (counts.hasActive || counts.hasPaused) {
-                add(
-                    QueueMenuEntry("Cancel downloads", R.drawable.wna_close, destructive = true) {
-                        runStoryAction(item.storyId, QueueAction.CANCEL)
-                    },
-                )
-            } else {
-                add(QueueMenuEntry("Remove from list", R.drawable.wna_delete) { runStoryAction(item.storyId, QueueAction.REMOVE) })
-            }
-        }
-    showQueueMenu(item.title, "${counts.completed} of ${counts.total} chapters", items)
-}
+        if (items.isNotEmpty()) showQueueMenu(app, "Downloads", null, items)
+    }
 
-internal fun ScreenHost.showChapterMenu(item: QueueChapterItem) {
-    val job =
-        repository.downloadState.value.queue
-            .firstOrNull { it.id == item.jobId } ?: return
-    val items =
-        buildList {
-            DownloadManagerPlanning.chapterActions(job.status).forEach { action ->
-                when (action) {
-                    QueueAction.PAUSE ->
-                        add(
-                            QueueMenuEntry(
-                                "Pause",
-                                R.drawable.wna_pause,
-                            ) { launchQueueControl("pauseJob") { downloadEngine.pauseJob(job.id) } },
-                        )
-                    QueueAction.RESUME ->
-                        add(
-                            QueueMenuEntry("Resume", R.drawable.wna_play) {
-                                launchQueueControl("resumeJob") { downloadEngine.resumeJob(job.id) }
-                                startDownloadForegroundService()
-                            },
-                        )
-                    QueueAction.RETRY ->
-                        if (item.blocked) {
-                            providerIdForJob(job)?.let { providerId ->
-                                add(
-                                    QueueMenuEntry("Verify ${siteName(providerId)}", R.drawable.wna_shield) {
-                                        startSourceCheck(providerId, job.chapter.url)
-                                    },
-                                )
-                            }
-                        } else {
-                            add(
-                                QueueMenuEntry("Retry", R.drawable.wna_refresh) {
-                                    launchQueueControl("retryJob") { downloadEngine.retryJob(job.id) }
-                                    startDownloadForegroundService()
-                                },
-                            )
-                        }
-                    QueueAction.CANCEL ->
-                        add(
-                            QueueMenuEntry("Cancel", R.drawable.wna_close, destructive = true) {
-                                launchQueueControl("cancelJob") { downloadEngine.cancelJob(job.id) }
-                            },
-                        )
-                    QueueAction.REMOVE ->
-                        add(
-                            QueueMenuEntry("Remove from list", R.drawable.wna_delete) {
-                                launchQueueControl("removeJob") { downloadEngine.removeJob(job.id) }
-                            },
-                        )
+    fun confirmClearFinished() {
+        host.confirm("Remove downloaded, failed, and cancelled chapters from the list?", confirmLabel = "Clear") {
+            model.run(QueueControl.ClearFinished)
+        }
+    }
+
+    fun runStoryAction(
+        storyId: String,
+        action: QueueAction,
+    ) {
+        when (action) {
+            QueueAction.PAUSE -> model.run(QueueControl.PauseStory(storyId))
+            QueueAction.RESUME -> model.run(QueueControl.ResumeStory(storyId))
+            QueueAction.RETRY -> model.run(QueueControl.RetryStory(storyId))
+            QueueAction.CANCEL ->
+                host.confirm("Cancel this novel's remaining downloads?", confirmLabel = "Cancel downloads") {
+                    model.run(QueueControl.CancelStory(storyId))
+                }
+            QueueAction.REMOVE -> model.run(QueueControl.RemoveStory(storyId))
+        }
+    }
+
+    fun showStoryMenu(item: QueueStoryItem) {
+        val menu = model.storyMenu(item.storyId)
+        val counts = menu.counts
+        val items =
+            buildList {
+                if (item.section == QueueSection.UP_NEXT) {
+                    add(QueueMenuEntry("Download now", R.drawable.wna_up) { model.run(QueueControl.DownloadNow(item.storyId)) })
+                    if (menu.upNextCount > 1) {
+                        add(QueueMenuEntry("Move to bottom", R.drawable.wna_down) { model.run(QueueControl.MoveToBottom(item.storyId)) })
+                    }
+                }
+                if (item.expandable) {
+                    add(
+                        QueueMenuEntry(if (item.expanded) "Hide chapters" else "Show chapters", R.drawable.wna_list) {
+                            model.setStoryExpanded(item.storyId, !item.expanded)
+                        },
+                    )
+                }
+                add(QueueMenuEntry("Open novel", R.drawable.wna_menu_book) { host.showDetails(item.storyId) })
+                if (counts.hasActive) add(QueueMenuEntry("Pause", R.drawable.wna_pause) { runStoryAction(item.storyId, QueueAction.PAUSE) })
+                if (counts.hasPaused) {
+                    add(
+                        QueueMenuEntry("Resume", R.drawable.wna_play) { runStoryAction(item.storyId, QueueAction.RESUME) },
+                    )
+                }
+                if (counts.hasFailed || counts.hasCancelled) {
+                    add(QueueMenuEntry("Retry failed chapters", R.drawable.wna_refresh) { runStoryAction(item.storyId, QueueAction.RETRY) })
+                }
+                add(null)
+                if (counts.hasActive || counts.hasPaused) {
+                    add(
+                        QueueMenuEntry("Cancel downloads", R.drawable.wna_close, destructive = true) {
+                            runStoryAction(item.storyId, QueueAction.CANCEL)
+                        },
+                    )
+                } else {
+                    add(QueueMenuEntry("Remove from list", R.drawable.wna_delete) { runStoryAction(item.storyId, QueueAction.REMOVE) })
                 }
             }
-            if (job.error != null) add(QueueMenuEntry("Error details", R.drawable.wna_info) { showChapterErrorDetails(job) })
-        }
-    if (items.isNotEmpty()) showQueueMenu(item.title, item.status, items)
-}
+        showQueueMenu(app, item.title, "${counts.completed} of ${counts.total} chapters", items)
+    }
 
-private fun ScreenHost.showChapterErrorDetails(job: DownloadJob) {
-    val message =
-        buildString {
-            append(job.error.orEmpty())
-            job.errorCode?.let { append("\n\nCode: ").append(it) }
-            job.errorCategory?.let { append("\nCategory: ").append(it) }
-            append("\nRetries: ${job.retryCount} of ${job.maxRetries}")
-        }
-    AlertDialog
-        .Builder(app)
-        .setTitle("Chapter ${job.chapterIndex + 1}")
-        .setMessage(message)
-        .setPositiveButton("OK", null)
-        .show()
-        .also { it.applyAppTheme() }
-}
+    fun showChapterMenu(item: QueueChapterItem) {
+        val job = model.job(item.jobId) ?: return
+        val items =
+            buildList {
+                DownloadManagerPlanning.chapterActions(job.status).forEach { action ->
+                    when (action) {
+                        QueueAction.PAUSE ->
+                            add(QueueMenuEntry("Pause", R.drawable.wna_pause) { model.run(QueueControl.PauseJob(job.id)) })
+                        QueueAction.RESUME ->
+                            add(QueueMenuEntry("Resume", R.drawable.wna_play) { model.run(QueueControl.ResumeJob(job.id)) })
+                        QueueAction.RETRY ->
+                            if (item.blocked) {
+                                model.providerOf(job)?.let { providerId ->
+                                    add(
+                                        QueueMenuEntry("Verify ${siteName(providerId)}", R.drawable.wna_shield) {
+                                            model.verifySite(providerId, job.chapter.url)
+                                        },
+                                    )
+                                }
+                            } else {
+                                add(QueueMenuEntry("Retry", R.drawable.wna_refresh) { model.run(QueueControl.RetryJob(job.id)) })
+                            }
+                        QueueAction.CANCEL ->
+                            add(
+                                QueueMenuEntry("Cancel", R.drawable.wna_close, destructive = true) {
+                                    model.run(QueueControl.CancelJob(job.id))
+                                },
+                            )
+                        QueueAction.REMOVE ->
+                            add(QueueMenuEntry("Remove from list", R.drawable.wna_delete) { model.run(QueueControl.RemoveJob(job.id)) })
+                    }
+                }
+                if (job.error != null) add(QueueMenuEntry("Error details", R.drawable.wna_info) { showChapterErrorDetails(job) })
+            }
+        if (items.isNotEmpty()) showQueueMenu(app, item.title, item.status, items)
+    }
 
-/** Patches the app bar's subtitle in place, so a queue tick never rebuilds the screen for it. */
-internal fun ScreenHost.setQueueSubtitle(text: String) {
-    val subtitle = frame.findViewWithTag<TextView>(APP_BAR_SUBTITLE_TAG) ?: return
-    if (subtitle.text != text) subtitle.text = text
+    /** Fallbacks when the in-app check keeps failing, kept off the card so it stays one decision. */
+    fun showSourceCheckTrouble(card: SourceCheckCard) {
+        val name = siteName(card.providerId)
+        val provider = SourceRegistry.getById(card.providerId)
+        val url = card.sampleUrl ?: provider?.baseUrl
+        val items =
+            buildList {
+                url?.let { add(QueueMenuEntry("Open $name in your browser", R.drawable.wna_open_external) { host.showBrowser(it) }) }
+                provider?.let {
+                    add(
+                        QueueMenuEntry("Reset $name web session", R.drawable.wna_restore) {
+                            host.confirm("Reset the $name web session? You'll need to verify again afterwards.", confirmLabel = "Reset") {
+                                host.resetSourceWebSessions(listOf(it))
+                            }
+                        },
+                    )
+                }
+                add(QueueMenuEntry("Share diagnostics", R.drawable.wna_bug_report) { host.shareDiagnostics() })
+                add(null)
+                add(QueueMenuEntry("Pause $name downloads", R.drawable.wna_pause) { model.run(QueueControl.PauseSource(card.providerId)) })
+            }
+        showQueueMenu(app, "Having trouble?", "Some sites ask for a quick human check before chapters can download.", items)
+    }
+
+    private fun showChapterErrorDetails(job: DownloadJob) {
+        val message =
+            buildString {
+                append(job.error.orEmpty())
+                job.errorCode?.let { append("\n\nCode: ").append(it) }
+                job.errorCategory?.let { append("\nCategory: ").append(it) }
+                append("\nRetries: ${job.retryCount} of ${job.maxRetries}")
+            }
+        AlertDialog
+            .Builder(app)
+            .setTitle("Chapter ${job.chapterIndex + 1}")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
+            .also { it.applyAppTheme() }
+    }
 }

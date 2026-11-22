@@ -7,17 +7,11 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
-import com.vinicius741.webnovelarchiver.tts.TtsEngineInfo
 import com.vinicius741.webnovelarchiver.tts.TtsEnginePlanning
-import com.vinicius741.webnovelarchiver.tts.VoiceInfo
 import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroInstallPlanning
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelFiles
-import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelInstaller
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelState
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
@@ -26,7 +20,6 @@ import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.WrapLayout
-import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeCard
@@ -35,14 +28,7 @@ import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.showBottomSheet
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-
-/** Saves [settings] and hands them to the loaded chapter, which picks up a new voice in place. */
-internal suspend fun ScreenHost.persistTtsSettings(settings: TtsSettings) {
-    repository.ttsSettings.save(settings)
-    ttsEngine.applySettings(repository.ttsSettings.get())
-}
 
 /**
  * How the Voice setting shows [identifier]: a built-in voice by name, an Android voice by its id. With
@@ -57,42 +43,10 @@ internal fun ttsVoiceLabel(
         ?: KokoroVoices.model(enginePackage)?.defaultVoice?.name
         ?: "Engine default"
 
-internal fun ScreenHost.modelInstaller(model: BuiltInModel): KokoroModelInstaller = app.appContainer.modelInstallers.getValue(model)
-
-/**
- * The built-in models whose card belongs on the screen: the chosen one, and any installed or
- * installing (so it can be removed). The chosen one comes first.
- */
-internal fun ScreenHost.modelCards(settings: TtsSettings): List<BuiltInModel> {
-    val chosen = KokoroVoices.model(settings.enginePackage)
-    val others = BuiltInModel.entries.filter { it != chosen && modelInstaller(it).state.value != KokoroModelState.NotInstalled() }
-    return listOfNotNull(chosen) + others
-}
-
 /** Picks which speech engine the app speaks with; voices differ per engine, so the voice resets. */
-internal fun ScreenHost.showTtsEnginePicker(
-    engines: List<TtsEngineInfo>,
-    phoneEngine: String?,
-    draft: () -> TtsSettings,
-) {
-    val selected = repository.ttsSettings.get().enginePackage
-
-    fun choose(packageName: String?) {
-        scope.launch {
-            persistTtsSettings(draft().copy(enginePackage = packageName, voiceIdentifier = null))
-            val model = KokoroVoices.model(packageName)
-            // A built-in model needs no download: chapters generate on the computers.
-            toast(
-                if (model != null && !modelInstaller(model).isInstalled) {
-                    "Engine changed. Chapters generate on your computers until you download it here."
-                } else {
-                    "Engine changed. Pick a voice from it, or keep its default."
-                },
-            )
-            showTtsSettings()
-        }
-    }
-
+internal fun ScreenHost.showTtsEnginePicker(model: TtsSettingsScreenModel) {
+    val state = model.state.value
+    val selected = state.settings.enginePackage
     val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     var sheet: BottomSheetHandle? = null
 
@@ -100,166 +54,153 @@ internal fun ScreenHost.showTtsEnginePicker(
         packageName: String?,
         label: String,
     ) {
-        val model = KokoroVoices.model(packageName)
-        val supporting =
-            if (model != null &&
-                !modelInstaller(model).isInstalled
-            ) {
-                "Not on this phone · generates on your computers"
-            } else {
-                null
-            }
+        val builtIn = KokoroVoices.model(packageName)
+        val supporting = if (builtIn != null && !state.installed(builtIn)) "Not on this phone · generates on your computers" else null
         body.addView(
             makeSheetRow(app, label, supporting, R.drawable.wna_speaker, checked = packageName == selected) {
                 sheet?.dismiss()
-                if (packageName != selected) choose(packageName)
+                if (packageName != selected) toast(model.chooseEngine(packageName))
             },
         )
     }
-    option(null, TtsEnginePlanning.label(null, engines, phoneEngine))
-    engines.forEach { option(it.packageName, it.label) }
+    option(null, TtsEnginePlanning.label(null, state.engines, state.phoneEngine))
+    state.engines.forEach { option(it.packageName, it.label) }
     sheet = showBottomSheet(app, title = "Speech engine", subtitle = "Voices differ per engine", body = body)
 }
 
-/** Download progress and actions for one built-in model, updated live while the screen is open. */
-internal fun ScreenHost.kokoroModelCard(model: BuiltInModel): View {
-    val installer = modelInstaller(model)
-    val colors = ThemeManager.colors
-    return makeCard(app).apply {
-        val icon = ImageView(context)
-        val status = makeText(context, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply { setPadding(0, dp(2), 0, 0) }
-        addView(
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(icon, LinearLayout.LayoutParams(dp(ICON_DP), dp(ICON_DP)).apply { marginEnd = dp(Spacing.MD + 2) })
-                addView(
-                    LinearLayout(context).apply {
-                        orientation = LinearLayout.VERTICAL
-                        addView(
-                            makeText(
-                                context,
-                                if (model.retired) "Kokoro v0.19 voices · no longer used" else "${model.family} voices",
-                                Type.TITLE_SMALL,
-                                colors.onSurface,
-                            ).apply {
-                                textSize =
-                                    TITLE_SP
-                            },
-                        )
-                        addView(status)
-                    },
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-                )
-            },
-        )
-        val actions =
-            WrapLayout(context).apply {
-                horizontalSpacingDp = Spacing.SM
-                verticalSpacingDp = Spacing.SM
-            }
-        addView(
-            actions,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin =
-                    dp(Spacing.MD)
-            },
-        )
-        var shownKind: String? = null
-
-        fun render(state: KokoroModelState) {
-            val runsHere = KokoroModelFiles.isDeviceSupported(model)
-            status.text =
-                if (!runsHere && state is KokoroModelState.NotInstalled) {
-                    "This phone can't run ${model.family} itself. Chapters generate on your computers."
-                } else {
-                    KokoroInstallPlanning.describe(state, model.modelPackage)
-                }
-            val installed = state is KokoroModelState.Installed
-            icon.setImageDrawable(
-                context.tintedIcon(if (installed) R.drawable.wna_download_done else R.drawable.wna_download, colors.primary),
-            )
-            // Progress only changes the text; rebuild the buttons when the stage changes.
-            val kind =
-                if (state is KokoroModelState.NotInstalled) {
-                    "paused=${state.downloadedBytes > 0L} update=${state.updateBytes > 0L}"
-                } else {
-                    state.javaClass.name
-                }
-            if (kind == shownKind) return
-            shownKind = kind
-            actions.removeAllViews()
-            when (state) {
-                is KokoroModelState.NotInstalled -> if (runsHere) addNotInstalledActions(actions, model, state)
-                is KokoroModelState.Failed ->
-                    actions.addView(
-                        makeButton(context, "Try again", Btn.FILLED, R.drawable.wna_download) { installer.install() },
-                    )
-                is KokoroModelState.Installed -> {
-                    addSpeedTestActions(actions, model)
-                    actions.addView(
-                        makeButton(context, "Remove", Btn.TEXT) { confirmKokoroRemoval(model) }.apply { setTextColor(colors.error) },
-                    )
-                }
-                else -> actions.addView(makeButton(context, "Cancel", Btn.TEXT, R.drawable.wna_stop) { installer.cancel() })
-            }
+/** Download progress and actions for one built-in model; [show] follows the page's state. */
+internal class KokoroModelCard(
+    private val host: ScreenHost,
+    private val model: TtsSettingsScreenModel,
+    private val builtIn: BuiltInModel,
+) {
+    private val context = host.app
+    private val colors = ThemeManager.colors
+    private val icon = ImageView(context)
+    private val status = makeText(context, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply { setPadding(0, context.dp(2), 0, 0) }
+    private val actions =
+        WrapLayout(context).apply {
+            horizontalSpacingDp = Spacing.SM
+            verticalSpacingDp = Spacing.SM
         }
-        render(installer.state.value)
-        var watcher: Job? = null
-        addOnAttachStateChangeListener(
-            object : View.OnAttachStateChangeListener {
-                override fun onViewAttachedToWindow(view: View) {
-                    watcher = scope.launch { installer.state.collect(::render) }
-                }
+    private var shownKind: String? = null
+    private var shownState: KokoroModelState? = null
 
-                override fun onViewDetachedFromWindow(view: View) {
-                    watcher?.cancel()
-                    watcher = null
-                }
-            },
+    val view: View =
+        makeCard(context).apply {
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(
+                        icon,
+                        LinearLayout.LayoutParams(context.dp(ICON_DP), context.dp(ICON_DP)).apply {
+                            marginEnd =
+                                context.dp(Spacing.MD + 2)
+                        },
+                    )
+                    addView(
+                        LinearLayout(context).apply {
+                            orientation = LinearLayout.VERTICAL
+                            addView(
+                                makeText(
+                                    context,
+                                    if (builtIn.retired) "Kokoro v0.19 voices · no longer used" else "${builtIn.family} voices",
+                                    Type.TITLE_SMALL,
+                                    colors.onSurface,
+                                ).apply {
+                                    textSize =
+                                        TITLE_SP
+                                },
+                            )
+                            addView(status)
+                        },
+                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                    )
+                },
+            )
+            addView(
+                actions,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin =
+                        context.dp(Spacing.MD)
+                },
+            )
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+
+    fun show(page: TtsSettingsUiState) {
+        val state = page.modelStates[builtIn] ?: return
+        if (state == shownState) return
+        shownState = state
+        val runsHere = KokoroModelFiles.isDeviceSupported(builtIn)
+        status.text =
+            if (!runsHere && state is KokoroModelState.NotInstalled) {
+                "This phone can't run ${builtIn.family} itself. Chapters generate on your computers."
+            } else {
+                KokoroInstallPlanning.describe(state, builtIn.modelPackage)
+            }
+        val installed = state is KokoroModelState.Installed
+        icon.setImageDrawable(
+            context.tintedIcon(if (installed) R.drawable.wna_download_done else R.drawable.wna_download, colors.primary),
         )
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        // Progress only changes the text; rebuild the buttons when the stage changes.
+        val kind =
+            if (state is KokoroModelState.NotInstalled) {
+                "paused=${state.downloadedBytes > 0L} update=${state.updateBytes > 0L}"
+            } else {
+                state.javaClass.name
+            }
+        if (kind == shownKind) return
+        shownKind = kind
+        actions.removeAllViews()
+        when (state) {
+            is KokoroModelState.NotInstalled -> if (runsHere) host.addNotInstalledActions(actions, model, builtIn, state)
+            is KokoroModelState.Failed ->
+                actions.addView(
+                    makeButton(context, "Try again", Btn.FILLED, R.drawable.wna_download) { model.installModel(builtIn) },
+                )
+            is KokoroModelState.Installed -> {
+                host.addSpeedTestActions(actions, model, builtIn, page)
+                actions.addView(
+                    makeButton(
+                        context,
+                        "Remove",
+                        Btn.TEXT,
+                    ) { host.confirmKokoroRemoval(model, builtIn) }.apply { setTextColor(colors.error) },
+                )
+            }
+            else -> actions.addView(makeButton(context, "Cancel", Btn.TEXT, R.drawable.wna_stop) { model.cancelInstall(builtIn) })
+        }
     }
 }
 
 /** The speed test is a developer tool: its buttons show in debug builds only. */
 private fun ScreenHost.addSpeedTestActions(
     actions: ViewGroup,
-    model: BuiltInModel,
+    model: TtsSettingsScreenModel,
+    builtIn: BuiltInModel,
+    page: TtsSettingsUiState,
 ) {
     if (!BuildConfig.DEBUG) return
-    actions.addView(makeButton(app, "Test speed", Btn.SURFACE, R.drawable.wna_speed) { confirmKokoroSpeedTest(model) })
-    if (hasKokoroSpeedTest(model)) actions.addView(makeButton(app, "Last results", Btn.SURFACE) { showLastKokoroSpeedTest(model) })
-}
-
-/** [draft] is what the settings screen currently shows, kept when picking a voice rebuilds it. */
-internal fun ScreenHost.showTtsVoicePicker(draft: () -> TtsSettings = { repository.ttsSettings.get() }) {
-    val current = draft()
-    // A built-in model lists its voices even before it is downloaded, so a voice can be chosen early.
-    val engine =
-        current.enginePackage?.takeIf(KokoroVoices::isEngine)
-            ?: TtsEnginePlanning.resolve(
-                current.enginePackage,
-                TtsEngineCatalog.usablePackages(app, app.appContainer.builtIns.installedEngines),
-            )
-    if (!KokoroVoices.isEngine(engine)) toast("Loading voices")
-    scope.launch {
-        val voices = TtsEngineCatalog.voices(app, engine)
-        when {
-            voices == null -> toast("The speech engine did not start")
-            voices.isEmpty() -> toast("This speech engine has no offline voices")
-            else -> showTtsVoiceSheet(voices, current.voiceIdentifier) { voice -> saveTtsVoice(voice, draft()) }
-        }
+    actions.addView(makeButton(app, "Test speed", Btn.SURFACE, R.drawable.wna_speed) { confirmKokoroSpeedTest(model, builtIn) })
+    if (builtIn in page.speedTests) {
+        actions.addView(makeButton(app, "Last results", Btn.SURFACE) { showLastKokoroSpeedTest(model, builtIn) })
     }
 }
 
-private fun ScreenHost.saveTtsVoice(
-    voice: VoiceInfo?,
-    current: TtsSettings,
-) {
+/** Lists the voices of the engine the page shows (a built-in model's even before it is downloaded) and saves the pick. */
+internal fun ScreenHost.showTtsVoicePicker(model: TtsSettingsScreenModel) {
+    val current = model.state.value.settings
+    val engine = model.voiceEngine()
+    if (!KokoroVoices.isEngine(engine)) toast("Loading voices")
     scope.launch {
-        persistTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
-        showTtsSettings()
+        val voices = model.voices(engine)
+        when {
+            voices == null -> toast("The speech engine did not start")
+            voices.isEmpty() -> toast("This speech engine has no offline voices")
+            else -> showTtsVoiceSheet(voices, current.voiceIdentifier) { voice -> model.chooseVoice(voice) }
+        }
     }
 }
 

@@ -9,17 +9,13 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPositions
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.player.ContinuePlace
 import com.vinicius741.webnovelarchiver.feature.player.PlayerProgressLine
 import com.vinicius741.webnovelarchiver.feature.player.playbackFraction
 import com.vinicius741.webnovelarchiver.feature.player.playbackTimeLeft
 import com.vinicius741.webnovelarchiver.feature.player.rateLabel
-import com.vinicius741.webnovelarchiver.feature.player.showPlayer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
-import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -32,62 +28,76 @@ import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import kotlinx.coroutines.launch
-
-/** The last Continue listening card shown, kept across the hub's rebuilds (main thread only). */
-private var lastContinue: ContinueCard? = null
-
-/** A Continue listening card's content; [key] holds everything it shows, so equal keys need no new card. */
-private class ContinueCard(
-    val target: TtsContinueListening.Target,
-    val sentence: String?,
-    val key: List<Any?>,
-)
 
 /**
  * The Listen hub's top card: what is playing (cover, chapter, story, progress, play/pause; opens
  * Now Playing), else the saved place to continue listening, else a short "nothing playing" note.
- * [bind] patches it in place on every playback update and rebuilds only when the story changes.
+ * [bind] patches it in place on every playback update and rebuilds it only when the story, or the
+ * place to continue, changes.
  */
 internal class ListenNowCard(
     private val host: ScreenHost,
+    private val onPlayPause: () -> Unit,
+    private val onResume: (ContinuePlace) -> Unit,
+    private val onOpenPlayer: () -> Unit,
 ) {
     private val context = host.app
     private val colors = ThemeManager.colors
-    private var mode: Mode? = null
-    private var builtStoryId: String? = null
     private var playing: PlayingViews? = null
+    private var builtStoryId: String? = null
+
+    /** What the idle card shows (a place to continue, or nothing); equal keys need no new card. */
+    private var idleKey: List<Any?>? = null
 
     val view: FrameLayout = FrameLayout(context)
 
-    fun bind(snapshot: TtsPlaybackSnapshot?) {
-        if (snapshot == null) {
-            if (mode != Mode.IDLE) {
-                mode = Mode.IDLE
-                playing = null
-                builtStoryId = null
-                showIdle()
+    fun bind(now: ListenNow) {
+        when (now) {
+            is ListenNow.Playing -> {
+                idleKey = null
+                if (playing == null || builtStoryId != now.snapshot.storyId) {
+                    builtStoryId = now.snapshot.storyId
+                    playing = buildPlaying(now.story)
+                }
+                playing?.apply(now)
             }
-            return
+            is ListenNow.Continue -> showIdle(continueKey(now.place)) { showContinue(now.place) }
+            ListenNow.Nothing -> showIdle(NOTHING_KEY, ::showNothing)
         }
-        if (mode != Mode.PLAYING || builtStoryId != snapshot.storyId) {
-            mode = Mode.PLAYING
-            builtStoryId = snapshot.storyId
-            playing = buildPlaying(snapshot)
-        }
-        playing?.apply(snapshot)
     }
 
-    private fun buildPlaying(snapshot: TtsPlaybackSnapshot): PlayingViews {
+    private fun showIdle(
+        key: List<Any?>,
+        show: () -> Unit,
+    ) {
+        playing = null
+        builtStoryId = null
+        if (idleKey == key) return
+        idleKey = key
+        show()
+    }
+
+    private fun continueKey(place: ContinuePlace): List<Any?> {
+        val target = place.target
+        return listOf(
+            target.story.id,
+            target.story.title,
+            host.activeCoverSource(target.story),
+            target.chapter.id,
+            target.chapter.title,
+            place.sentence,
+        )
+    }
+
+    private fun buildPlaying(story: Story?): PlayingViews {
         val eyebrow = eyebrow(colors.primary)
         val title = line(title = true)
-        val story = line()
+        val storyLine = line()
         val line = PlayerProgressLine(context, rounded = true)
         val meta = line()
-        val play =
-            playButton(colors.primary, colors.onPrimary) { TtsForegroundService.command(context, TtsForegroundService.ACTION_PLAY_PAUSE) }
+        val play = playButton(colors.primary, colors.onPrimary, onPlayPause)
         val texts =
-            column(eyebrow, title, story).apply {
+            column(eyebrow, title, storyLine).apply {
                 addView(
                     line,
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, context.dp(4)).apply {
@@ -103,13 +113,8 @@ internal class ListenNowCard(
                     },
                 )
             }
-        setCard(
-            cardGradient(context, PLAYING_START, PLAYING_END, colors.primary),
-            host.repository.story(snapshot.storyId),
-            texts,
-            play,
-        ) { host.showPlayer() }
-        return PlayingViews(eyebrow, title, story, line, meta, play)
+        setCard(cardGradient(context, PLAYING_START, PLAYING_END, colors.primary), story, texts, play, onOpenPlayer)
+        return PlayingViews(eyebrow, title, storyLine, line, meta, play)
     }
 
     private inner class PlayingViews(
@@ -120,56 +125,16 @@ internal class ListenNowCard(
         val meta: TextView,
         val play: ImageView,
     ) {
-        fun apply(snapshot: TtsPlaybackSnapshot) {
+        fun apply(now: ListenNow.Playing) {
+            val snapshot = now.snapshot
             val paused = snapshot.isPaused
             eyebrow.text = if (paused) "Paused" else "Playing now"
             title.text = snapshot.title
             story.text = snapshot.storyTitle
             line.fraction = playbackFraction(snapshot)
-            val voice =
-                host.narration.store
-                    .pack(snapshot.storyId, snapshot.chapterId)
-                    ?.recipe
-                    ?.voice
-                    ?.label
-            meta.text = listOfNotNull(playbackTimeLeft(snapshot), rateLabel(snapshot.rate), voice).joinToString(" · ")
+            meta.text = listOfNotNull(playbackTimeLeft(snapshot), rateLabel(snapshot.rate), now.voice).joinToString(" · ")
             play.setImageDrawable(context.tintedIcon(if (paused) R.drawable.wna_play else R.drawable.wna_pause, colors.onPrimary))
             play.contentDescription = if (paused) "Play" else "Pause"
-        }
-    }
-
-    private fun showIdle() {
-        // The hub rebuilds this card on every queue change; showing the last place found at once
-        // (then checking it again) keeps the taller Continue card from replacing a short note each time.
-        val shown = lastContinue
-        if (shown != null) showContinue(shown) else showNothing()
-        host.scope.launch {
-            val positions = runCatching { host.repository.getTtsStoryPositions() }.getOrDefault(emptyList())
-            val target = TtsContinueListening.target(positions) { host.repository.story(it) }
-            if (mode != Mode.IDLE) return@launch
-            if (target == null) {
-                lastContinue = null
-                if (shown != null) showNothing()
-                return@launch
-            }
-            val position = positions.firstOrNull { it.storyId == target.story.id }
-            val sentence =
-                position
-                    ?.takeIf {
-                        !it.caughtUp && it.chapterId == target.chapter.id
-                    }?.let { "sentence ${it.currentChunkIndex + 1}" }
-            val key =
-                listOf(
-                    target.story.id,
-                    target.story.title,
-                    host.activeCoverSource(target.story),
-                    target.chapter.id,
-                    target.chapter.title,
-                    sentence,
-                )
-            val found = ContinueCard(target, sentence, key)
-            lastContinue = found
-            if (shown?.key != key) showContinue(found)
         }
     }
 
@@ -184,19 +149,14 @@ internal class ListenNowCard(
         )
     }
 
-    private fun showContinue(card: ContinueCard) {
-        val target = card.target
-        val sentence = card.sentence
-        val resume = {
-            host.playIfGenerated(target.story.id, target.chapter.id) {
-                TtsForegroundService.start(context, target.story.id, target.chapter.id)
-            }
-        }
+    private fun showContinue(place: ContinuePlace) {
+        val target = place.target
+        val resume = { onResume(place) }
         val texts =
             column(
                 eyebrow(colors.secondary).apply { text = "Continue listening" },
                 line(title = true).apply { text = target.chapter.title },
-                line().apply { text = listOfNotNull(target.story.title, sentence).joinToString(" · ") },
+                line().apply { text = listOfNotNull(target.story.title, place.sentence).joinToString(" · ") },
             )
         val play = playButton(colors.secondary, colors.onSecondary, resume).apply { contentDescription = "Resume" }
         setCard(cardGradient(context, RESUME_START, RESUME_END, colors.secondary), target.story, texts, play, resume)
@@ -291,9 +251,8 @@ internal class ListenNowCard(
         }
     }
 
-    private enum class Mode { PLAYING, IDLE }
-
     private companion object {
+        val NOTHING_KEY = listOf<Any?>("nothing")
         const val COVER_WIDTH_DP = 64
         const val COVER_HEIGHT_DP = 96
         const val PLAY_SIZE_DP = 52

@@ -5,7 +5,6 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Choreographer
-import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,35 +21,37 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
-import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.feature.ai.attachAiJobChip
 import com.vinicius741.webnovelarchiver.feature.browser.ACTION_IMPORT_CURRENT_URL
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
-import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
+import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenStatePersistence
 import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
+import com.vinicius741.webnovelarchiver.feature.player.TtsMiniPlayer
+import com.vinicius741.webnovelarchiver.feature.settings.BackupExports
+import com.vinicius741.webnovelarchiver.feature.settings.HostBackupExportHost
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
+import com.vinicius741.webnovelarchiver.feature.settings.refreshAppUpdate
+import com.vinicius741.webnovelarchiver.feature.settings.refreshPatreonAccount
+import com.vinicius741.webnovelarchiver.feature.settings.refreshSettingsHub
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
-import com.vinicius741.webnovelarchiver.feature.settings.showSettings
-import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
+import com.vinicius741.webnovelarchiver.feature.updates.HostUpdatesSyncHost
+import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncs
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
-import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
-import com.vinicius741.webnovelarchiver.navigation.BackupExportState
-import com.vinicius741.webnovelarchiver.navigation.LibraryScreenState
 import com.vinicius741.webnovelarchiver.navigation.RouteViewMemory
 import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.ScreenModelStore
 import com.vinicius741.webnovelarchiver.navigation.ShellBadgePlanning
 import com.vinicius741.webnovelarchiver.navigation.ShellDestination
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.openDestination
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperations
 import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
 import com.vinicius741.webnovelarchiver.perf.PerfRecorder
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
@@ -68,7 +69,6 @@ import com.vinicius741.webnovelarchiver.ui.systemBarTop
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -94,23 +94,15 @@ class MainActivity :
     override lateinit var frame: FrameLayout
     override lateinit var shell: AppShell
     override var activeStory: Story? = null
-    override var storyOperation: StoryOperationState? = null
-    override var aiOperation: StoryOperationState? = null
-    override var detailsOperationSlot: ViewGroup? = null
-    override var detailsAiOperationSlot: ViewGroup? = null
+    override val operations = StoryOperations()
+    override val screenModels = ScreenModelStore()
     override val navigator = AppNavigator()
     override val routeMemory: RouteViewMemory = RouteViewMemory()
-    override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
-    override val backupExportState: BackupExportState = BackupExportState()
-    override val aiControlsScreenState: AiControlsScreenState = AiControlsScreenState()
-    override val libraryScreenState: LibraryScreenState = LibraryScreenState()
-    override val cleanupScreenState: CleanupScreenState = CleanupScreenState()
-    override val updatesSyncState: UpdatesSyncState = UpdatesSyncState()
-    override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
+    override val backupExports: BackupExports by lazy { BackupExports(HostBackupExportHost(this), scope) }
+    override val updatesSyncs: UpdatesSyncs by lazy { UpdatesSyncs(HostUpdatesSyncHost(this), operations, scope) }
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
     override var rerender: (() -> Unit)? = null
-    override var screenObserver: Job? = null
     override var onScreenBuilt: (() -> Unit)? = null
 
     /** Created in [onCreate] once engines/storage are up. */
@@ -146,7 +138,7 @@ class MainActivity :
 
     override val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-            if (uiReady && navigator.current == AppRoute.Settings) showSettings()
+            if (uiReady) refreshSettingsHub()
         }
 
     override var screenBack: ScreenBack? = null
@@ -235,7 +227,9 @@ class MainActivity :
                         )
                     ttsEngine = container.ttsEngine
                     ttsEngine.addErrorListener(audioNotGeneratedListener)
-                    attachTtsMiniPlayer(shell.miniSlot)
+                    val miniPlayer = TtsMiniPlayer(this@MainActivity)
+                    onScreenBuilt = miniPlayer::onRouteRendered
+                    miniPlayer.attach(shell.miniSlot)
                     attachAiJobChip(root)
                     attachAiJobBridges()
                     container.awaitRepositoryReady()
@@ -355,11 +349,11 @@ class MainActivity :
         SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
         SourceCheckOutcomes.returnedToApp(DevEnvironment.active?.time?.nowMillis() ?: System.currentTimeMillis())
         // Returning from Android's notification settings: refresh the Settings row.
-        if (uiReady && navigator.current == AppRoute.Settings) showSettings()
+        if (uiReady) refreshSettingsHub()
         // Returning from Firefox: refresh which setup steps are done.
-        if (uiReady && navigator.current is AppRoute.PatreonAccount) rerender?.invoke()
+        if (uiReady) refreshPatreonAccount()
         // Returning from the browser: refresh the "checked" time and state.
-        if (uiReady && navigator.current == AppRoute.AppUpdate) rerender?.invoke()
+        if (uiReady && navigator.current == AppRoute.AppUpdate) refreshAppUpdate()
         if (uiReady) maybePromptForAppUpdate()
         // Queued audio starts generating whenever the app is in front, even if a background start was refused.
         if (uiReady) appContainer.narration.let { if (it.hasRunnableWork()) NarrationForegroundService.start(this) }
@@ -385,9 +379,7 @@ class MainActivity :
 
     override fun onDestroy() {
         finishPerfSession()
-        aiControlsScreenState.binding = null
-        aiControlsScreenState.characterProgress = null
-        screenObserver?.cancel()
+        screenModels.clear()
         // Destroy lingering reader WebViews so they can't leak the activity reference.
         com.vinicius741.webnovelarchiver.platform.WebViewSafety
             .disposeAll(frame)
@@ -400,8 +392,8 @@ class MainActivity :
         captureScreenViewState()
         outState.putStringArrayList(STATE_ROUTE_STACK, ArrayList(navigator.encodedStack()))
         routeMemory.save(outState)
-        LibraryScreenStatePersistence.save(libraryScreenState, outState)
-        cleanupScreenState.save(outState)
+        LibraryScreenStatePersistence.save(screenModels, outState)
+        CleanupScreenStatePersistence.save(screenModels, outState)
         super.onSaveInstanceState(outState)
     }
 
@@ -410,8 +402,8 @@ class MainActivity :
     private fun restoreNavigationState(state: Bundle?): Boolean {
         state ?: return false
         // Library view memory restores even when the route stack can't: the root Library screen uses it too.
-        LibraryScreenStatePersistence.restore(libraryScreenState, state)
-        cleanupScreenState.restore(state)
+        LibraryScreenStatePersistence.restore(screenModels, state)
+        CleanupScreenStatePersistence.restore(screenModels, state)
         val stack = state.getStringArrayList(STATE_ROUTE_STACK) ?: return false
         if (!navigator.restore(stack)) return false
         if (navigator.current == AppRoute.Working) {
@@ -446,7 +438,7 @@ class MainActivity :
         // Updates overview is planned in the background when the library changes. The Updates
         // screen reuses that plan, so opening it skips the forecast.
         scope.launch {
-            val cache = updatesSyncState.overviewCache
+            val cache = updatesSyncs.overviewCache
             repository.downloadState.collectLatest { snapshot ->
                 val now = System.currentTimeMillis()
                 // A fresh plan is shown again, not skipped: a plan interrupted by a newer snapshot

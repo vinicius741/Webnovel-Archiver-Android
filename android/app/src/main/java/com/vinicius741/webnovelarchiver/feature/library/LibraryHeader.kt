@@ -13,11 +13,9 @@ import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
-import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
 import com.vinicius741.webnovelarchiver.ui.RAIL_MIN_WIDTH_DP
 import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Spacing
@@ -36,26 +34,6 @@ import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.systemBarTop
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import java.lang.ref.WeakReference
-import java.util.WeakHashMap
-
-/** Library UI state that only lives as long as the activity (not saved across process death). */
-internal class LibraryUiExtras {
-    /** The app-bar search field is open (it also opens whenever a query is remembered). */
-    var searchOpen = false
-
-    /** Add story's "Save to tab" pick, kept across its status-driven re-renders; null = Unassigned. */
-    var addStoryTabId: String? = null
-    var addStoryTabChosen = false
-
-    /** The open Sort & filter sheet, closed when the Library re-renders (its closures would act on the old screen). */
-    var sortFilterSheet: WeakReference<BottomSheetHandle>? = null
-}
-
-private val libraryExtrasByActivity = WeakHashMap<AppCompatActivity, LibraryUiExtras>()
-
-internal val ScreenHost.libraryExtras: LibraryUiExtras
-    get() = libraryExtrasByActivity.getOrPut(app) { LibraryUiExtras() }
 
 internal const val SORT_FILTER_LABEL = "Sort and filter"
 
@@ -64,22 +42,19 @@ internal fun ScreenHost.makeLibraryAppBar(
     novelCount: Int,
     viewMode: LibraryViewMode,
     filtersActive: Boolean,
+    onSearch: () -> Unit,
+    onSwitchViewMode: () -> Unit,
     onSortFilter: () -> Unit,
 ): TopLevelAppBar {
     val actions =
         buildList {
-            add(
-                AppBarAction(R.drawable.wna_search, "Search") {
-                    libraryExtras.searchOpen = true
-                    showLibrary()
-                },
-            )
+            add(AppBarAction(R.drawable.wna_search, "Search") { onSearch() })
             // The icon shows the layout a tap switches to.
             add(
                 if (viewMode == LibraryViewMode.LIST) {
-                    AppBarAction(R.drawable.wna_grid_view, "Cover view") { switchLibraryViewMode(viewMode.toggled) }
+                    AppBarAction(R.drawable.wna_grid_view, "Cover view") { onSwitchViewMode() }
                 } else {
-                    AppBarAction(R.drawable.wna_list, "List view") { switchLibraryViewMode(viewMode.toggled) }
+                    AppBarAction(R.drawable.wna_list, "List view") { onSwitchViewMode() }
                 },
             )
             add(AppBarAction(R.drawable.wna_tune, SORT_FILTER_LABEL) { onSortFilter() })
@@ -229,9 +204,12 @@ internal fun ScreenHost.makeLibrarySelectionTopBar(
     }
 }
 
-/** Retitles the selection bar in place as cards are toggled. */
-internal fun ScreenHost.setLibrarySelectionTitle(count: Int) {
-    frame.findViewWithTag<TextView>(SELECTION_TITLE_TAG)?.text = LibrarySelectionPlanning.title(count)
+/** Retitles the selection bar under [root] in place as cards are toggled. */
+internal fun retitleLibrarySelection(
+    root: View,
+    count: Int,
+) {
+    root.findViewWithTag<TextView>(SELECTION_TITLE_TAG)?.text = LibrarySelectionPlanning.title(count)
 }
 
 /**

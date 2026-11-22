@@ -2,165 +2,137 @@ package com.vinicius741.webnovelarchiver.app
 
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobEvent
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobKind
+import com.vinicius741.webnovelarchiver.ai.AiCoverJobState
+import com.vinicius741.webnovelarchiver.ai.AiDescriptionJobEvent
+import com.vinicius741.webnovelarchiver.ai.AiJobModel
 import com.vinicius741.webnovelarchiver.ai.CharacterJobEvent
 import com.vinicius741.webnovelarchiver.ai.CharacterJobKind
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
+import com.vinicius741.webnovelarchiver.feature.ai.AiAttention
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
-import com.vinicius741.webnovelarchiver.feature.ai.aiControlsTab
-import com.vinicius741.webnovelarchiver.feature.ai.frameIsAiControls
-import com.vinicius741.webnovelarchiver.feature.ai.patchCharacterProgress
-import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
-import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
-import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
-import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /*
- * The activity-side bridge for background AI cover jobs, which
- * run on the process-wide application scope and so outlive this activity — this bridge is what
- * makes a running job VISIBLE again: it mirrors the coordinator's state into the AI
- * [StoryOperationState] slot (Details progress bar, AI Controls button gating) and reacts to
- * terminal events by surfacing the persisted draft, toasting, and re-rendering.
+ * The activity-side bridge for the background AI jobs (cover, description, characters), which run
+ * on the process-wide application scope and so outlive this activity. It translates them into
+ * state that screens observe: running jobs into the AI slot of [StoryOperations], finished results
+ * and failures into [AiAttention]. It toasts, but it redraws nothing; the AI tab, the story page and
+ * the job chip follow that state themselves.
+ *
+ * A job's terminal event also ends its slot. The mirror alone can miss a job that fails at once (no
+ * API key): the coordinator is idle again before the mirror runs, so it sees no change, and the
+ * slot the AI tab took when it started the job would stay held, refusing every later AI start.
  *
  * The bridge dies with the activity (it launches on the activity scope), but every event it might
- * miss is covered elsewhere: the draft itself is persisted before the event fires, the foreground
- * service posts a result notification, and the AI screens rehydrate persisted state on render.
+ * miss is covered elsewhere: cover results are persisted before the event fires, the foreground
+ * service posts a result notification, and the AI tab rehydrates persisted cover work.
  */
 
-/**
- * Attaches the AI job observers. Called once from [MainActivity.onCreate]; the collectors are
- * not stored in [com.vinicius741.webnovelarchiver.navigation.ScreenHost.screenObserver] on purpose
- * — they must survive in-place screen re-renders and only end with the activity.
- */
+/** Attaches the AI job observers. Called once from [MainActivity.onCreate]; they end with the activity. */
 internal fun MainActivity.attachAiJobBridges() {
-    attachCoverJobBridge()
-    attachCharacterJobBridge()
-}
-
-/**
- * Characters-tab jobs: a job starting or ending re-renders the tab when it is on screen; message
- * ticks only patch its progress line. Results are already saved when the event arrives.
- */
-private fun MainActivity.attachCharacterJobBridge() {
-    val coordinator = appContainer.characterJobCoordinator
-    scope.launch {
-        var running: Map<String, Pair<CharacterJobKind, String?>> = emptyMap()
-        coordinator.jobs.collect { jobs ->
-            val now = jobs.mapValues { it.value.kind to it.value.characterId }
-            // A start or finish changes buttons and results: re-render. A message only patches its line.
-            (running.keys + now.keys).forEach { storyId ->
-                val showing = frameIsAiControls(storyId) && aiControlsTab(storyId) == AiControlsTab.CHARACTERS
-                if (showing && running[storyId] != now[storyId]) showAiControls(storyId)
-            }
-            jobs.values.forEach { patchCharacterProgress(it) }
-            // Another novel's job ending re-enables this novel's buttons.
-            if (running.isNotEmpty() && now.isEmpty()) {
-                (navigator.current as? com.vinicius741.webnovelarchiver.navigation.AppRoute.AiControls)?.storyId?.let { storyId ->
-                    if (storyId !in running && aiControlsTab(storyId) == AiControlsTab.CHARACTERS) showAiControls(storyId)
-                }
-            }
-            running = now
-        }
-    }
-    scope.launch {
-        coordinator.events.collect { event ->
-            // The jobs collector has re-rendered by now; results were saved before the event.
-            val showing = frameIsAiControls(event.storyId) && aiControlsTab(event.storyId) == AiControlsTab.CHARACTERS
-            when (event) {
-                is CharacterJobEvent.Succeeded -> {
-                    if (!showing) aiControlsScreenState.unseenCharacters += event.storyId
-                    toast(if (event.kind == CharacterJobKind.FIND) "Characters found" else "Portrait of ${event.characterName} ready")
-                }
-                is CharacterJobEvent.Failed -> toast(event.message)
+    val container = appContainer
+    val attention = container.aiAttention
+    mirrorIntoAiSlot(container.aiCoverJobCoordinator.jobs, StoryOperationKind.AI_COVER) { job ->
+        // A one-step job persists its prompt before painting: the old preview no longer matches it.
+        (job as? AiCoverJobState)?.persistedPrompt?.let { prompt ->
+            val held = attention.state.value
+            if (held.coverPrompts[job.storyId]?.text != prompt || job.storyId in held.coverDrafts) {
+                attention.replaceCoverPreviewWithPrompt(job.storyId, prompt)
             }
         }
     }
+    mirrorIntoAiSlot(container.aiDescriptionJobs.jobs, StoryOperationKind.AI_DESCRIPTION)
+    scope.launch { container.aiCoverJobCoordinator.events.collect { presentCoverEvent(attention, it) } }
+    scope.launch { container.aiDescriptionJobs.events.collect { presentDescriptionEvent(attention, it) } }
+    scope.launch { container.characterJobCoordinator.events.collect { presentCharacterEvent(attention, it) } }
 }
 
-private fun MainActivity.attachCoverJobBridge() {
-    val coordinator = appContainer.aiCoverJobCoordinator
+/** Keeps the AI slot in step with one coordinator: its running job's progress, then clearing it once idle. */
+private fun MainActivity.mirrorIntoAiSlot(
+    jobs: StateFlow<Map<String, AiJobModel>>,
+    kind: StoryOperationKind,
+    onJob: (AiJobModel) -> Unit = {},
+) {
     scope.launch {
-        var renderedMessages: Map<String, String> = emptyMap()
-        coordinator.jobs.collect { jobs ->
-            val job = jobs.values.firstOrNull()
+        jobs.collect { running ->
+            val job = running.values.firstOrNull()
             if (job != null) {
-                val promptChanged =
-                    job.persistedPrompt?.let { prompt ->
-                        aiControlsScreenState.replaceCoverPreviewWithPrompt(job.storyId, prompt)
-                    } ?: false
-                val current = aiOperation
-                val ownsSlot =
-                    current == null || (current.storyId == job.storyId && current.kind == StoryOperationKind.AI_COVER)
-                if (ownsSlot) {
-                    val next = StoryOperationState(job.storyId, StoryOperationKind.AI_COVER, job.message)
-                    aiOperation = next
-                    if (promptChanged || renderedMessages[job.storyId] != job.message) {
-                        detailsAiOperationSlot?.let { renderStoryOperationProgress(it, next) }
-                        updateAiControlsProgress(next, structuralChange = promptChanged)
-                    }
-                }
+                onJob(job)
+                operations.updateAi(job.storyId, kind, job.message, startIfIdle = true)
             } else {
-                clearOperationSlot(StoryOperationKind.AI_COVER)
+                operations.clearAi(kind)
             }
-            renderedMessages = jobs.mapValues { it.value.message }
         }
     }
-    scope.launch {
-        coordinator.events.collect { event -> presentAiCoverJobEvent(event) }
-    }
 }
 
-/** Clears this kind's progress slot and refreshes the visible surface so nothing stays stale. */
-private fun MainActivity.clearOperationSlot(kind: StoryOperationKind) {
-    val cleared = aiOperation?.takeIf { it.kind == kind } ?: return
-    aiOperation = null
-    detailsAiOperationSlot = null
-    // The event collector may re-render before or after this clearing; refresh the visible
-    // surface so a finished job never leaves a stale progress slot behind.
-    if (frameIsAiControls(cleared.storyId)) showAiControls(cleared.storyId) else rerenderDetailsIfVisible(cleared.storyId)
-}
+/** The user is looking at [storyId]'s AI tab, which shows a failure itself (as a toast) instead of the chip. */
+private fun MainActivity.viewingAiTab(storyId: String): Boolean = navigator.current == AppRoute.AiControls(storyId)
 
-private fun MainActivity.presentAiCoverJobEvent(event: AiCoverJobEvent) {
+private fun MainActivity.presentCoverEvent(
+    attention: AiAttention,
+    event: AiCoverJobEvent,
+) {
+    operations.clearAi(event.storyId, StoryOperationKind.AI_COVER)
     when (event) {
-        is AiCoverJobEvent.Succeeded -> {
+        is AiCoverJobEvent.Succeeded ->
             when (val record = event.record) {
-                is AiCoverDraftRecord.PromptOnly -> {
-                    // A fresh prompt invalidates the preview painted from the previous one (the store
-                    // dropped its image on save); clear the in-memory mirror so the replaced preview
-                    // stays neither renderable nor applicable.
-                    aiControlsScreenState.coverDrafts.remove(event.storyId)
-                    aiControlsScreenState.coverPrompts[event.storyId] = record.prompt
-                }
+                // A fresh prompt invalidates the preview painted from the previous one (the store
+                // dropped its image on save), so the replaced preview is neither shown nor applicable.
+                is AiCoverDraftRecord.PromptOnly -> attention.replaceCoverPreviewWithPrompt(event.storyId, record.prompt)
                 is AiCoverDraftRecord.Image -> {
-                    aiControlsScreenState.coverDrafts[event.storyId] = record.draft
-                    if (event.kind == AiCoverJobKind.ONE_STEP) {
-                        // The one-shot flow bypasses the prompt editor; any staged prompt is stale.
-                        aiControlsScreenState.coverPrompts.remove(event.storyId)
-                    } else {
-                        // Keep the editor in sync with the cleaned prompt the model actually received.
-                        aiControlsScreenState.coverPrompts[event.storyId] = record.draft.prompt
-                    }
+                    attention.setCoverDraft(event.storyId, record.draft)
+                    // The one-shot flow bypasses the prompt editor, so any staged prompt is stale; otherwise
+                    // the editor keeps the cleaned prompt the model actually received.
+                    attention.setCoverPrompt(event.storyId, if (event.kind == AiCoverJobKind.ONE_STEP) null else record.draft.prompt)
                 }
             }
-            // Off this page the app-wide job chip announces the result (it follows the repository's
-            // unseen set), so no toast has to describe where to find it.
-            if (frameIsAiControls(event.storyId)) showAiControls(event.storyId) else rerenderDetailsIfVisible(event.storyId)
-        }
         is AiCoverJobEvent.Failed -> {
-            event.persistedPrompt?.let { prompt ->
-                aiControlsScreenState.replaceCoverPreviewWithPrompt(event.storyId, prompt)
-            }
-            if (frameIsAiControls(event.storyId)) {
-                toast(event.message)
-                showAiControls(event.storyId)
-            } else {
-                aiControlsScreenState.recordFailure(event.storyId, AiControlsTab.COVER, event.message)
-                aiControlsScreenState.refreshJobChip()
-                rerenderDetailsIfVisible(event.storyId)
-            }
+            event.persistedPrompt?.let { attention.replaceCoverPreviewWithPrompt(event.storyId, it) }
+            reportFailure(attention, event.storyId, AiControlsTab.COVER, event.message)
         }
     }
+}
+
+private fun MainActivity.presentDescriptionEvent(
+    attention: AiAttention,
+    event: AiDescriptionJobEvent,
+) {
+    operations.clearAi(event.storyId, StoryOperationKind.AI_DESCRIPTION)
+    when (event) {
+        is AiDescriptionJobEvent.Succeeded -> {
+            attention.setDescriptionDraft(event.storyId, event.draft)
+            // The chip points back to the waiting preview; the open Description tab marks it seen at once.
+            attention.markUnseen(event.storyId, AiControlsTab.DESCRIPTION)
+        }
+        is AiDescriptionJobEvent.Failed -> reportFailure(attention, event.storyId, AiControlsTab.DESCRIPTION, event.message)
+    }
+}
+
+/** Results are saved before the event arrives; the Characters tab reloads them when its job ends. */
+private fun MainActivity.presentCharacterEvent(
+    attention: AiAttention,
+    event: CharacterJobEvent,
+) {
+    when (event) {
+        is CharacterJobEvent.Succeeded -> {
+            attention.markUnseen(event.storyId, AiControlsTab.CHARACTERS)
+            toast(if (event.kind == CharacterJobKind.FIND) "Characters found" else "Portrait of ${event.characterName} ready")
+        }
+        is CharacterJobEvent.Failed -> toast(event.message)
+    }
+}
+
+/** On the story's AI tab a failure is a toast; anywhere else the job chip shows it until dismissed. */
+private fun MainActivity.reportFailure(
+    attention: AiAttention,
+    storyId: String,
+    tab: AiControlsTab,
+    message: String,
+) {
+    if (viewingAiTab(storyId)) toast(message) else attention.recordFailure(storyId, tab, message)
 }

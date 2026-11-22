@@ -26,7 +26,6 @@ object TtsSessionPlanning {
         requestedChapterId: String,
         position: TtsStoryPosition?,
     ): StartPosition {
-        if (TtsDescriptionPlanning.isDescriptionSession(requestedChapterId)) return StartPosition(requestedChapterId, 0)
         if (position != null && position.storyId == story.id) {
             if (position.caughtUp) {
                 return TtsContinueListening.nextPlayableAfter(story, position.chapterId)?.let { StartPosition(it.id, 0) }

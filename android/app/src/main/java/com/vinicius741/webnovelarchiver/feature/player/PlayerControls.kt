@@ -12,7 +12,6 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsTimeFormat
 import com.vinicius741.webnovelarchiver.ui.Spacing
@@ -97,6 +96,7 @@ internal class NowPlayingViews(
     private val caption: NowReadingCaption,
     private val rateChip: PlayerChip,
     private val sleepChip: PlayerChip,
+    private val model: PlayerScreenModel,
 ) {
     private var state: TtsPlaybackSnapshot? = null
     private var isUserSeeking = false
@@ -104,6 +104,7 @@ internal class NowPlayingViews(
     /** The chapter's spoken sentences, aligned with the engine's chunk indices; empty until loaded. */
     var sentences: List<String> = emptyList()
         set(value) {
+            if (field == value) return
             field = value
             renderCaption()
         }
@@ -125,7 +126,7 @@ internal class NowPlayingViews(
 
                 override fun onStopTrackingTouch(sb: SeekBar?) {
                     isUserSeeking = false
-                    TtsForegroundService.seekTo(context, (sb?.progress ?: 0) * SEEK_STEP_MS)
+                    model.seekTo((sb?.progress ?: 0) * SEEK_STEP_MS)
                 }
             },
         )
@@ -193,7 +194,7 @@ internal class NowPlayingViews(
             body.addView(
                 makeSheetRow(context, label, iconRes = icon, checked = checked) {
                     dismiss()
-                    TtsForegroundService.setSleepTimer(context, minutes)
+                    model.setSleepTimer(minutes)
                 },
             )
         }
@@ -213,7 +214,7 @@ internal class NowPlayingViews(
             body.addView(
                 makeSheetRow(context, entry.chapterTitle, supporting = "$age$excerpt", iconRes = R.drawable.wna_history) {
                     dismiss()
-                    TtsForegroundService.jumpToHistory(context, entry)
+                    model.jumpToHistory(entry)
                 },
             )
         }

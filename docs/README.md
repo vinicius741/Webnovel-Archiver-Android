@@ -26,6 +26,7 @@ under `android/`.
 | File | Description |
 |------|-------------|
 | `activity-log.md` | Persistent activity log: what syncs, downloads, library changes, backups, network access, warnings and crashes record, 7-day file retention outside the storage root, the Settings → Share Activity Logs export format, and privacy rules. |
+| `architecture-plan-2026-11-21.md` | Plan for the screen layer, implemented through Phase 3: guardrail checks and a slimmer `AGENTS.md`, `operations/StoryOperations`, and per-screen models with View renderers; includes the Gemini 4 Neon and Fable 5.2 reviews, the worth-it verdict, what is deliberately not done (Compose, Room, Media3, modules), a progress log per migrated screen, and the result with the remaining work. Supersedes Phases 4–6 of the 2026-10-06 roadmap. |
 | `implicit-state-machines-2026-11-07.md` | Static inventory of 75 implicit and partially explicit workflow boundaries, their state fields, transitions, source locations, and refactoring priorities. |
 | `simplification-roadmap-2026-10-06.md` | Structural simplification roadmap with checklists: file-cap and planning-rule cleanup, one AI job pipeline, generic settings documents, screen architecture (Compose or per-screen controllers), Room for library/queue, and TTS on Media3; includes baseline measurements and a progress log. |
 | `ui-v3-design.md` | The v3 "Restructured" UI: five destinations, the app shell (docked mini player, bottom bar or right-hand rail), story-page tabs, badges, palette, bottom sheets, steppers, whole covers, and the owner feedback that shaped it. |
@@ -84,6 +85,7 @@ Emulator-based functional QA reports for the native Android app.
 |------|-------------|
 | `dependency-update-2026-11-09.md` | Stable dependency audit (AGP 9.5.1, jsoup 1.24.1, Gradle 9.9.0), repair of the broken androidTest build plus stale/flaky device tests, pre-change verification of those failures, and local/emulator validation results. |
 | `native-app-emulator-qa-2026-11-07.md` | Emulator QA and independent retest on 1.0.6-native: confirmed Trends player overlap and Patreon earnings inconsistency; Library count and AI Settings grouping are design observations; the AI key finding was retracted and the banner observation remains unconfirmed. Evidence in `assets/qa-2026-11-07/`. |
+| `dev-launch.md` | Debug-only cold-start hooks for agent QA (dev launch screen tokens, dev library report, dev full-backup restore) and the Fold7 emulator hardware profile and multi-display screenshot rules. |
 | `offline-simulation.md` | Offline agent QA commands, scenario catalog, timing/hold controls, disposable storage, fail-closed networking, reports, replay fixtures, and validation. |
 | `offline-simulation-plan.md` | Original design and options for offline agent QA, with implementation references. |
 | `pre-release-review-2026-11-06.md` | Review since 1.0.4-native, Patreon link fix, cleanup instrumentation updates, passing host checks, and emulator coverage blocked by a stale device session. |

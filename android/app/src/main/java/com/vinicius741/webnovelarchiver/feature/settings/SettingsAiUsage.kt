@@ -4,12 +4,9 @@ import android.content.Context
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.ai.AiUsagePeriod
 import com.vinicius741.webnovelarchiver.ai.AiUsagePlanning
 import com.vinicius741.webnovelarchiver.ai.OpenRouterKeyUsage
 import com.vinicius741.webnovelarchiver.ai.RecentAiRequestGroup
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.feature.narration.makeListGroup
 import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
@@ -17,12 +14,14 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.showBottomSheet
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -30,18 +29,14 @@ import java.util.Locale
 
 /**
  * One spending card (the app's own log, replaced by OpenRouter's figures for the entered key when
- * they load) and the recent requests.
+ * they load) and the recent requests, from [model]'s state.
  */
 internal fun ScreenHost.showAiUsageSection(
     container: LinearLayout,
-    apiKeyProvider: () -> String?,
+    model: AiSettingsScreenModel,
 ) {
     val colors = ThemeManager.colors
-    val ledger = repository.getAiUsageLedger()
-    val now = System.currentTimeMillis()
-    val today = AiUsagePlanning.summaryForPeriod(ledger, AiUsagePeriod.TODAY, now)
-    val month = AiUsagePlanning.summaryForPeriod(ledger, AiUsagePeriod.CURRENT_MONTH, now)
-    val allTime = AiUsagePlanning.summaryForPeriod(ledger, AiUsagePeriod.ALL_TIME, now)
+    val spending = model.state.value.spending
 
     container.section("Spending")
     lateinit var values: List<TextView>
@@ -55,38 +50,34 @@ internal fun ScreenHost.showAiUsageSection(
     )
 
     // The app's own log first; OpenRouter's figures replace it when they load.
-    fun showLedger() {
-        values[0].text = formatUsd(today.costUsd)
-        values[1].text = formatUsd(month.costUsd)
-        values[2].text = formatUsd(allTime.costUsd)
-        source.text =
-            listOfNotNull(
-                "Requests made by this app",
-                allTime.unknownCallCount.takeIf { it > 0 }?.let { "$it with unknown cost" },
-            ).joinToString(" · ")
-    }
-    showLedger()
-    val apiKey = apiKeyProvider()?.trim().orEmpty()
-    if (apiKey.isNotBlank()) {
-        scope.launch {
-            val usage = runCatching { app.appContainer.openRouter.fetchCurrentKeyUsage(apiKey) }.getOrNull() ?: return@launch
-            app.runOnUiThread {
-                if (!source.isAttachedToWindow) return@runOnUiThread
-                values[0].text = formatUsd(usage.usageDaily)
-                values[1].text = formatUsd(usage.usageMonthly)
-                values[2].text = formatUsd(usage.usage)
-                source.text = OpenRouterUsageLine.of(usage)
-            }
+    fun show(usage: OpenRouterKeyUsage?) {
+        if (usage == null) {
+            values[0].text = formatUsd(spending.today.costUsd)
+            values[1].text = formatUsd(spending.month.costUsd)
+            values[2].text = formatUsd(spending.allTime.costUsd)
+            source.text =
+                listOfNotNull(
+                    "Requests made by this app",
+                    spending.allTime.unknownCallCount
+                        .takeIf { it > 0 }
+                        ?.let { "$it with unknown cost" },
+                ).joinToString(" · ")
+        } else {
+            values[0].text = formatUsd(usage.usageDaily)
+            values[1].text = formatUsd(usage.usageMonthly)
+            values[2].text = formatUsd(usage.usage)
+            source.text = OpenRouterUsageLine.of(usage)
         }
     }
+    source.bindWhileAttached(scope, model.state.map { it.keyUsage }.distinctUntilChanged()) { show(it) }
+    show(model.state.value.keyUsage)
 
     container.section("Recent requests")
-    val recentGroups = AiUsagePlanning.groupRecentRecords(ledger.recentRecords, MAX_RECENT_REQUESTS)
-    if (recentGroups.isEmpty()) {
+    if (spending.recent.isEmpty()) {
         container.settingsNote("No AI requests recorded yet.")
     } else {
         container.settingsGroup {
-            recentGroups.forEach { recentRequestRow(this, it) }
+            spending.recent.forEach { recentRequestRow(this, it) }
         }
     }
 }
@@ -239,5 +230,3 @@ private val REQUEST_TIME_FORMATTER: DateTimeFormatter =
 
 private val REQUEST_DETAIL_TIME_FORMATTER: DateTimeFormatter =
     DateTimeFormatter.ofPattern("MMM d, HH:mm:ss", Locale.getDefault())
-
-private const val MAX_RECENT_REQUESTS = 8

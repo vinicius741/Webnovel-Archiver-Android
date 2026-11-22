@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.tts
 
-import android.content.Context
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -11,7 +10,6 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
 import com.vinicius741.webnovelarchiver.narration.NarrationPack
-import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngines
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,19 +23,16 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 
 /**
- * Text-to-speech playback engine. It owns the session, the position and every command, and plays
- * through a [TtsOutput]: rendered audio when the speech engine can write files, live speech if not.
+ * Chapter narration playback. It owns the session, the position and every command, and plays a
+ * chapter only from its generated pack ([PackTtsOutput]); no speech engine or model is loaded.
  * All state mutations are serialized through the owner scope and mutex so callbacks cannot race
  * durable session updates. A pause stays a pause: only an explicit play or a resume after a brief
  * interruption starts audio, whatever else happens to the position or the process.
  */
 class TtsEngine(
-    private val context: Context,
     private val repository: AppRepository,
     private val awaitRepositoryReady: suspend () -> Unit = {},
-    /** The shared built-in models (see `AppContainer`). */
-    builtIns: BuiltInEngines = BuiltInEngines.none(),
-    /** Generated chapter audio; chapters play only from it. Null in tests that play descriptions. */
+    /** Generated chapter audio; chapters play only from it. */
     private val narration: NarrationCoordinator? = null,
     /**
      * Coroutine scope that owns all TTS state mutations (R8). Output callbacks and the public
@@ -64,50 +59,37 @@ class TtsEngine(
     private val sleepTimer =
         TtsSleepTimer(
             scope = scope,
-            onFade = { volume -> scope.launch { stateMutex.withLock { outputs.active?.setVolume(volume) } } },
+            onFade = { volume -> scope.launch { stateMutex.withLock { active?.setVolume(volume) } } },
             onTimerExpired = ::onSleepTimerFinished,
         )
 
     /** Lets the owner of audio focus drop any pending auto-resume when the sleep timer fires. */
     var onSleepTimerExpired: (() -> Unit)? = null
 
-    private var renderAheadStarted = false
-    private val speech =
-        TtsSpeechEngineHost(
-            context = context,
-            scope = scope,
-            stateMutex = stateMutex,
-            listeners = listeners,
-            builtIns = builtIns,
-            onReady = {
-                if (output == TtsOutputPhase.WaitingForEngine) loadOutputLocked()
-            },
-            onFailed = {
-                handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.InitFailed))
-            },
-        )
-    private val outputs =
-        TtsOutputs(
-            context = context,
-            host = speech,
-            scope = scope,
-            listener =
-                object : TtsOutput.Listener {
-                    override fun onItemStarted(item: Int) = onOutputItemStarted(item)
+    private val outputListener =
+        object : TtsOutput.Listener {
+            override fun onItemStarted(item: Int) = onOutputItemStarted(item)
 
-                    override fun onEnded() {
-                        if (output == TtsOutputPhase.Running) handleChapterFinished()
-                    }
+            override fun onEnded() {
+                if (output == TtsOutputPhase.Running) handleChapterFinished()
+            }
 
-                    override fun onUnavailable() = switchToLiveOutputLocked()
+            // Generated audio has no fallback output and no render plan.
+            override fun onUnavailable() = Unit
 
-                    override fun onError(error: TtsPlaybackError) = handlePlaybackErrorLocked(error)
+            override fun onError(error: TtsPlaybackError) = handlePlaybackErrorLocked(error)
 
-                    override fun onRenderPlanFinished() = renderNextChapterAheadLocked()
-                },
-            dispatch = { block -> scope.launch { stateMutex.withLock { block() } } },
-            packs = narration?.store,
-        )
+            override fun onRenderPlanFinished() = Unit
+        }
+    private var packOutput: PackTtsOutput? = null
+
+    /** The pack output with a chapter loaded, if any. */
+    private var active: TtsOutput? = null
+
+    private fun stopOutputLocked() {
+        active?.stop()
+        active = null
+    }
 
     /** Canonical observable playback state; authoritative `null` means playback explicitly stopped. */
     val playbackState: StateFlow<TtsPlaybackUpdate> get() = playbackPublisher.playbackState
@@ -115,15 +97,6 @@ class TtsEngine(
     fun addErrorListener(listener: (TtsPlaybackError) -> Unit) = listeners.addError(listener)
 
     fun removeErrorListener(listener: (TtsPlaybackError) -> Unit) = listeners.removeError(listener)
-
-    fun addVoiceAvailabilityListener(listener: (List<VoiceInfo>) -> Unit) {
-        listeners.addVoices(listener)
-        if (speech.initialized) listener(availableVoices())
-    }
-
-    fun removeVoiceAvailabilityListener(listener: (List<VoiceInfo>) -> Unit) = listeners.removeVoices(listener)
-
-    fun availableVoices(): List<VoiceInfo> = speech.availableVoices()
 
     fun play(
         story: Story,
@@ -229,7 +202,7 @@ class TtsEngine(
                 val updated = current.copy(rate = settings.rate)
                 loaded.session = updated
                 sessionStore.schedule(updated)
-                outputs.active?.setRate(settings.rate)
+                active?.setRate(settings.rate)
                 emitState(isPlaying = isAudibleLocked())
             }
         }
@@ -237,53 +210,23 @@ class TtsEngine(
 
     /**
      * Saved settings reach the loaded chapter in place. New pause lengths apply from the next pause
-     * heard and a new rate at once; a new engine, voice or pitch re-renders from where it is.
+     * heard and a new rate at once. A chapter keeps the voice its audio was generated in.
      */
     fun applySettings(settings: TtsSettings) {
         scope.launch {
             stateMutex.withLock {
                 val session = loaded.session ?: return@withLock
-                val previous = activeSettings
                 activeSettings = settings
                 loaded.applyPacing(settings)
                 if (session.rate != settings.rate) {
                     val updated = session.copy(rate = settings.rate)
                     loaded.session = updated
                     sessionStore.schedule(updated)
-                    outputs.active?.setRate(settings.rate)
+                    active?.setRate(settings.rate)
                 }
-                val newVoice = previous != null && TtsEnginePlanning.soundsDifferent(previous, settings)
-                // A chapter keeps the voice it was generated in; only a description speaks with the settings.
-                if (loaded.hasChapter && loaded.speaksLive && (newVoice || speech.needsRestart(settings))) {
-                    reloadVoiceLocked(settings)
-                } else {
-                    emitState(isPlaying = isAudibleLocked())
-                }
+                emitState(isPlaying = isAudibleLocked())
             }
         }
-    }
-
-    /**
-     * The chosen engine may have become able to speak (Kokoro finished downloading) while a stand-in
-     * spoke for it: move the loaded chapter over in place.
-     */
-    fun refreshEngine() {
-        scope.launch {
-            stateMutex.withLock {
-                val settings = activeSettings ?: return@withLock
-                if (loaded.hasChapter && loaded.speaksLive && speech.needsRestart(settings)) reloadVoiceLocked(settings)
-            }
-        }
-    }
-
-    /** Restarts the output from the current point so what follows is heard in the new voice. */
-    private fun reloadVoiceLocked(settings: TtsSettings) {
-        val point = pointLocked()
-        outputs.stopActive()
-        speech.selectEngine(settings)
-        loaded.currentItem = point.item
-        loaded.currentOffsetMs = point.offsetMs
-        if (output.wantsAudio) loadOutputLocked() else emitState(isPlaying = false)
     }
 
     /** Play after a pause: picks up in place, or from the saved session if nothing is loaded. */
@@ -395,18 +338,10 @@ class TtsEngine(
         /** False when only reloading a saved session: its record, and its age, stay as they were. */
         persistPaused: Boolean = true,
     ) {
-        TtsEngineLogging.sessionStart(prepared.story.id, prepared.chapter.id, prepared.chunks.size, prepared.startIndex, speech.initialized)
+        TtsEngineLogging.sessionStart(prepared.story.id, prepared.chapter.id, prepared.chunks.size, prepared.startIndex)
         activeSettings = prepared.settings
-        outputs.stopActive()
-        renderAheadStarted = false
+        stopOutputLocked()
         loaded.load(prepared)
-        if (loaded.speaksLive) {
-            speech.selectEngine(prepared.settings)
-            speech.ensureEngine()
-        } else {
-            // A chapter plays generated audio: no engine, and no model held in memory.
-            speech.shutdown()
-        }
         if (startPaused) {
             // Chapter skip while paused or a restore: move the position, stay silent.
             output = TtsOutputPhase.Silent
@@ -430,38 +365,7 @@ class TtsEngine(
      */
     private fun loadOutputLocked() {
         val timeline = loaded.timeline ?: return
-        if (!loaded.speaksLive) {
-            loadPackOutputLocked(timeline)
-            return
-        }
-        // Deferred until the speech engine has initialized.
-        speech.ensureEngine()
-        if (!speech.initialized) {
-            output = TtsOutputPhase.WaitingForEngine
-            speech.watchInit()
-            emitState(isPlaying = false)
-            return
-        }
-        // Set before applying settings: a failure there runs the error path, which goes Silent.
-        output = TtsOutputPhase.Running
-        val settings = activeSettings ?: repository.ttsSettings.get()
-        val synthesisRate = if (outputs.useLive) settings.rate else 1f
-        if (!speech.applySettings(settings, synthesisRate, ::handlePlaybackErrorLocked)) return
-        val target = outputs.prepare()
-        target.setVolume(1f)
-        target.load(
-            TtsOutputLoad(
-                timeline = timeline,
-                item = loaded.currentItem,
-                offsetMs = loaded.currentOffsetMs,
-                rate = loaded.session?.rate ?: settings.rate,
-                playWhenReady = true,
-                voiceKey = speech.voiceKey(settings),
-            ),
-        )
-        outputs.loaded = true
-        writePositionLocked(loaded.savePoint(loaded.currentPoint))
-        emitState(isPlaying = true)
+        loadPackOutputLocked(timeline)
     }
 
     /** Plays the chapter from its generated audio, or stays paused and queues it when there is none. */
@@ -475,7 +379,13 @@ class TtsEngine(
         }
         output = TtsOutputPhase.Running
         val settings = activeSettings ?: repository.ttsSettings.get()
-        val target = outputs.preparePack()
+        val store = checkNotNull(narration) { "Generated narration is not available" }.store
+        val target =
+            packOutput
+                ?: PackTtsOutput(store, outputListener, { block -> scope.launch { stateMutex.withLock { block() } } }).also {
+                    packOutput =
+                        it
+                }
         target.setVolume(1f)
         target.load(
             TtsOutputLoad(
@@ -488,7 +398,7 @@ class TtsEngine(
                 pack = pack,
             ),
         )
-        outputs.loaded = true
+        active = target
         writePositionLocked(loaded.savePoint(loaded.currentPoint))
         emitState(isPlaying = true)
         onPackPlaying(pack)
@@ -497,21 +407,6 @@ class TtsEngine(
     private fun onPackPlaying(pack: NarrationPack) {
         narration?.setListening(pack)
         narration?.onChapterPlaying(pack)
-    }
-
-    /** Rendering does not work on this device or voice, so speak live from the same place. */
-    private fun switchToLiveOutputLocked() {
-        if (outputs.useLive) return
-        if (speech.isBuiltin) {
-            // The built-in model has no live mode to fall back to.
-            handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.SynthesisFailed, detail = "Kokoro"))
-            return
-        }
-        val point = pointLocked()
-        outputs.switchToLive()
-        loaded.currentItem = point.item
-        loaded.currentOffsetMs = point.offsetMs
-        if (output.wantsAudio) loadOutputLocked() else emitState(isPlaying = false)
     }
 
     private fun onOutputItemStarted(item: Int) {
@@ -526,20 +421,7 @@ class TtsEngine(
         emitState(isPlaying = true)
     }
 
-    private fun renderNextChapterAheadLocked() {
-        val current = loaded.session ?: return
-        if (renderAheadStarted) return
-        renderAheadStarted = true
-        scope.launch {
-            val texts = runCatching { preparer.upcomingTexts(current) }.getOrDefault(emptyList())
-            if (texts.isEmpty()) return@launch
-            stateMutex.withLock {
-                if (loaded.session?.chapterId == current.chapterId) outputs.active?.prepareAhead(texts)
-            }
-        }
-    }
-
-    private fun pointLocked(): TtsTimelinePoint = outputs.active?.position() ?: loaded.currentPoint
+    private fun pointLocked(): TtsTimelinePoint = active?.position() ?: loaded.currentPoint
 
     private fun writePositionLocked(point: TtsChunkPoint) {
         loaded.writePosition(point, output.wantsAudio)?.let(sessionStore::schedule)
@@ -614,7 +496,7 @@ class TtsEngine(
         val wasPlaying = isAudibleLocked()
         loaded.currentItem = item
         loaded.currentOffsetMs = offsetMs
-        outputs.active?.seek(item, offsetMs)
+        active?.seek(item, offsetMs)
         writePositionLocked(loaded.savePoint(loaded.currentPoint))
         emitState(isPlaying = wasPlaying)
     }
@@ -631,7 +513,7 @@ class TtsEngine(
 
     fun cancelSleepTimer() {
         sleepTimer.setOff()
-        scope.launch { stateMutex.withLock { outputs.active?.setVolume(1f) } }
+        scope.launch { stateMutex.withLock { active?.setVolume(1f) } }
         emitCurrentStateAsync()
     }
 
@@ -663,8 +545,7 @@ class TtsEngine(
         val alreadyPaused = output == TtsOutputPhase.Silent && loaded.session?.isPaused == true
         val point = pointLocked()
         output = TtsOutputPhase.Silent
-        speech.cancelInitWatchdog()
-        outputs.active?.pause()
+        active?.pause()
         if (loaded.timeline != null) {
             loaded.currentItem = point.item
             loaded.currentOffsetMs = point.offsetMs
@@ -691,7 +572,7 @@ class TtsEngine(
         val moved = target != saved
         loaded.currentItem = if (moved) TtsNarrationPlanning.itemIndexForChunk(loaded.items, target.chunkIndex) else point.item
         loaded.currentOffsetMs = if (moved) target.offsetMs else point.offsetMs
-        val active = outputs.active
+        val active = active
         if (active == null) {
             loadOutputLocked()
             return
@@ -722,8 +603,7 @@ class TtsEngine(
     private fun stopLocked(): TtsSession? {
         if (loaded.timeline != null) loaded.writeFinalPosition(pointLocked())
         output = TtsOutputPhase.Silent
-        speech.cancelInitWatchdog()
-        outputs.stopActive()
+        stopOutputLocked()
         loaded.clearChapter()
         sleepTimer.setOff()
         narration?.setListening(null)
@@ -734,17 +614,13 @@ class TtsEngine(
         return lastSession
     }
 
-    /**
-     * Audio is actually coming out: the output is running and the listener has not paused. While
-     * the speech engine is still starting, playback is wanted but not audible.
-     */
+    /** Audio is actually coming out: the output is running and the listener has not paused. */
     private fun isAudibleLocked(): Boolean = output == TtsOutputPhase.Running && loaded.session?.isPaused != true
 
     /** In-memory snapshot for notification refreshes; never decodes the session JSON on main. */
     fun currentSnapshot(isPlaying: Boolean): TtsPlaybackSnapshot? = buildSnapshot(isPlaying && loaded.session?.isPaused != true)
 
-    private fun buildSnapshot(isPlaying: Boolean): TtsPlaybackSnapshot? =
-        loaded.snapshot(isPlaying, pointLocked(), outputs.isLiveActive, sleepTimer.mode)
+    private fun buildSnapshot(isPlaying: Boolean): TtsPlaybackSnapshot? = loaded.snapshot(isPlaying, pointLocked(), sleepTimer.mode)
 
     /** Publishes the live session; `isPlaying` distinguishes speaking from paused mid-chapter. */
     private fun emitState(isPlaying: Boolean) {
@@ -759,13 +635,12 @@ class TtsEngine(
     private fun handlePlaybackErrorLocked(error: TtsPlaybackError) {
         val point = pointLocked()
         output = TtsOutputPhase.Silent
-        speech.cancelInitWatchdog()
         if (error.kind == TtsPlaybackErrorKind.AudioNotGenerated) {
             // The pack cannot be read (a clip is missing, or it was replaced or deleted): unload it so
             // the next play looks the chapter's audio up again instead of resuming an empty player.
-            outputs.stopActive()
+            stopOutputLocked()
         } else {
-            outputs.active?.pause()
+            active?.pause()
         }
         loaded.currentItem = point.item
         loaded.currentOffsetMs = point.offsetMs
@@ -818,8 +693,7 @@ class TtsEngine(
 
     private fun finishPlaybackLocked() {
         output = TtsOutputPhase.Silent
-        speech.cancelInitWatchdog()
-        outputs.stopActive()
+        stopOutputLocked()
         loaded.clearChapter()
         sleepTimer.setOff()
         narration?.setListening(null)
@@ -836,8 +710,7 @@ class TtsEngine(
         // Stop playback, release the TTS engine, and cancel the engine scope so no lingering
         // callback continuation can mutate storage after the service is torn down.
         scope.cancel()
-        outputs.release()
-        speech.shutdown()
+        packOutput?.release()
         output = TtsOutputPhase.Silent
     }
 

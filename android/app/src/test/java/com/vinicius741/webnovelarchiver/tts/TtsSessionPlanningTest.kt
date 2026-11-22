@@ -188,20 +188,6 @@ class TtsSessionPlanningTest {
     }
 
     @Test
-    fun resolveStartPositionNeverConsultsPositionsForDescriptionSessions() {
-        val story = Story(id = "s1", chapters = mutableListOf(Chapter(id = "c1", downloaded = true)))
-
-        assertEquals(
-            TtsSessionPlanning.StartPosition(TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID, 0),
-            TtsSessionPlanning.resolveStartPosition(
-                story,
-                TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID,
-                TtsStoryPosition(storyId = "s1", chapterId = "c1", currentChunkIndex = 9),
-            ),
-        )
-    }
-
-    @Test
     fun storyPositionMirrorsChapterSessionsOnly() {
         val chapterSession =
             TtsSession(

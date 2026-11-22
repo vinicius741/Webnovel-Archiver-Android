@@ -5,11 +5,8 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
-import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.ai.CharacterJobKind
 import com.vinicius741.webnovelarchiver.ai.CharacterJobState
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.data.repository.deleteCharacterPortrait
 import com.vinicius741.webnovelarchiver.domain.model.CharacterPortrait
 import com.vinicius741.webnovelarchiver.domain.model.CharacterRole
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -34,8 +31,6 @@ import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.text
-import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.launch
 
 // One character's page inside the Characters tab: details, every portrait (tap for full size, with
 // its prompt and Delete), and "Generate portrait". System Back returns to the list.
@@ -47,11 +42,12 @@ private const val DELETE_ACTION = "delete"
 
 internal fun ScreenHost.addCharacterPage(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
     character: StoryCharacter,
     portraits: List<CharacterPortrait>,
     job: CharacterJobState?,
 ) {
+    val story = render.story
     val colors = ThemeManager.colors
     container.addView(
         makeText(app, "‹ All characters", Type.LABEL_LARGE, colors.primary).apply {
@@ -59,17 +55,17 @@ internal fun ScreenHost.addCharacterPage(
             background =
                 ripple(roundedBg(android.graphics.Color.TRANSPARENT, dp(Space.SM).toFloat()), dp(Space.SM).toFloat(), colors.onSurface)
             isClickable = true
-            setOnClickListener { closeCharacterPage(story.id) }
+            setOnClickListener { render.model.closeCharacterPage() }
         },
     )
-    addCharacterHeader(container, story, character, portraits)
-    if (portraits.isNotEmpty()) addPortraitStrip(container, story, character, portraits)
-    addNewPortraitCard(container, story, character, portraits, job)
+    addCharacterHeader(container, render.model, character, portraits)
+    if (portraits.isNotEmpty()) addPortraitStrip(container, render.model, character, portraits)
+    addNewPortraitCard(container, render, story, character, portraits, job)
 }
 
 private fun ScreenHost.addCharacterHeader(
     container: LinearLayout,
-    story: Story,
+    model: AiControlsScreenModel,
     character: StoryCharacter,
     portraits: List<CharacterPortrait>,
 ) {
@@ -79,7 +75,7 @@ private fun ScreenHost.addCharacterHeader(
             orientation = LinearLayout.HORIZONTAL
             addView(
                 portraitThumb(character, portraits.firstOrNull()?.image, HEADER_WIDTH_DP, HEADER_HEIGHT_DP).apply {
-                    if (portraits.isNotEmpty()) setOnClickListener { browsePortraits(story, character, portraits, 0) }
+                    if (portraits.isNotEmpty()) setOnClickListener { browsePortraits(model, character, portraits, 0) }
                 },
             )
             addView(
@@ -130,7 +126,7 @@ private fun ScreenHost.addCharacterHeader(
 
 private fun ScreenHost.addPortraitStrip(
     container: LinearLayout,
-    story: Story,
+    model: AiControlsScreenModel,
     character: StoryCharacter,
     portraits: List<CharacterPortrait>,
 ) {
@@ -142,7 +138,7 @@ private fun ScreenHost.addPortraitStrip(
                 loadImage(portrait.image, this)
                 (layoutParams as LinearLayout.LayoutParams).setMargins(0, dp(Space.SM), dp(Space.MD), dp(Space.SM))
                 contentDescription = "Portrait ${portraits.size - index} of ${character.name}. Tap to view it full size"
-                setOnClickListener { browsePortraits(story, character, portraits, index) }
+                setOnClickListener { browsePortraits(model, character, portraits, index) }
             },
         )
     }
@@ -156,6 +152,7 @@ private fun ScreenHost.addPortraitStrip(
 
 private fun ScreenHost.addNewPortraitCard(
     container: LinearLayout,
+    render: AiTabRender,
     story: Story,
     character: StoryCharacter,
     portraits: List<CharacterPortrait>,
@@ -165,7 +162,7 @@ private fun ScreenHost.addNewPortraitCard(
     container.section("New portrait")
     container.addView(
         container.card {
-            val settings = repository.aiSettings.get()
+            val settings = render.state.settings
             val usesCoverScan = character.role == CharacterRole.PROTAGONIST && story.aiCoverContextChapterIndices.isNullOrEmpty()
             val how =
                 if (usesCoverScan) {
@@ -199,24 +196,24 @@ private fun ScreenHost.addNewPortraitCard(
                 },
                 Btn.FILLED,
                 R.drawable.wna_auto_awesome,
-                enabled = !characterJobsBusy(),
+                enabled = !render.state.charactersBusy,
                 topMarginDp = Space.MD,
                 bottomMarginDp = 0,
-            ) { startPortrait(story, character, firstRun = portraits.isEmpty()) }
+            ) { startPortrait(render, character, firstRun = portraits.isEmpty()) }
             if (job != null && !mine) {
                 text("Wait for the current character job to finish.", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
                     setPadding(0, dp(Space.SM), 0, 0)
                 }
             }
-            addOtherNovelBusyNote(this, job)
-            if (mine) job?.let { addCharacterProgress(this, story.id, it) }
+            addOtherNovelBusyNote(this, render, job)
+            if (mine) job?.let { addCharacterProgress(this, render, it) }
         },
     )
 }
 
 /** Every portrait full screen, newest first, with its prompt and a Delete action. */
 private fun ScreenHost.browsePortraits(
-    story: Story,
+    model: AiControlsScreenModel,
     character: StoryCharacter,
     portraits: List<CharacterPortrait>,
     start: Int,
@@ -228,12 +225,6 @@ private fun ScreenHost.browsePortraits(
     showCoverViewer(items, start, actions = { listOf(CoverViewerAction(DELETE_ACTION, "Delete", R.drawable.wna_delete)) }) { _, viewer ->
         val portrait = portraits[viewer.index]
         viewer.close()
-        confirm("Delete this portrait of ${character.name}?", confirmLabel = "Delete") {
-            scope.launch {
-                runCatching { repository.deleteCharacterPortrait(story.id, character.id, portrait.id) }
-                    .onFailure { toast("Could not delete the portrait") }
-                if (frameIsAiControls(story.id)) showAiControls(story.id)
-            }
-        }
+        confirm("Delete this portrait of ${character.name}?", confirmLabel = "Delete") { model.deletePortrait(character.id, portrait.id) }
     }
 }

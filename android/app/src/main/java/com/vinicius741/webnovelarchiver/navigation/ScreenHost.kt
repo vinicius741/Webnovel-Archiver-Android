@@ -1,8 +1,6 @@
 package com.vinicius741.webnovelarchiver.navigation
 
-import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AppCompatActivity
 import com.vinicius741.webnovelarchiver.app.MainActivity
@@ -10,91 +8,14 @@ import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
-import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
-import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
-import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
+import com.vinicius741.webnovelarchiver.feature.settings.BackupExports
+import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncs
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
+import com.vinicius741.webnovelarchiver.operations.StoryOperations
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-
-enum class StoryOperationKind {
-    EPUB,
-    CLEANUP,
-    SYNC,
-    AI_DESCRIPTION,
-    AI_COVER,
-}
-
-data class StoryOperationState(
-    val storyId: String,
-    val kind: StoryOperationKind,
-    val message: String,
-    val progress: Float? = null,
-)
-
-/**
- * Transient UI state for the Add Story screen. Kept on [ScreenHost] so it survives the in-place
- * re-renders the screen performs while a fetch is in flight (mirroring [storyOperation] for the
- * Details screen). `status` is `null` when idle; a non-null value means a fetch is running.
- *
- * A mutable holder rather than two `var`s on the interface because the Add Story screen reads and
- * writes both fields together and Kotlin `var` interface properties backed by `MainActivity` fields
- * are clearer bundled into one owner.
- */
-class AddStoryScreenState {
-    var status: String? = null
-    var urlText: String? = null
-}
-
-enum class BackupExportKind {
-    FULL,
-}
-
-/**
- * In-flight settings export state, retained across configuration-driven screen rebuilds. Holds the
- * running export [Job] so a stale `activeKind` flag (coroutine dead with the scope cancelled or
- * killed mid-run) can be told apart from a live export — see [reconcile].
- */
-class BackupExportState {
-    var activeKind: BackupExportKind? = null
-    var activeJob: Job? = null
-
-    /** Latest full-backup progress message; patched into [progressSlot] between renders. */
-    var progressMessage: String? = null
-
-    /** The progress card's message view, captured at render so progress ticks skip full re-renders. */
-    var progressSlot: TextView? = null
-
-    /** Clears a run whose job is no longer alive; called on Data & Backup entry so stuck flags cannot eat taps. */
-    fun reconcile() {
-        if (activeKind != null && activeJob?.isActive != true) {
-            activeKind = null
-            progressMessage = null
-            progressSlot = null
-        }
-    }
-}
-
-/**
- * Library view memory so returning to the Library (back navigation, config re-render, process
- * restore) reopens it where the user left it: the active search query, selected tag chips, and
- * each tab's scroll offset (keyed by [com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection.memoryKey]).
- * Tab choice and sort re-enter through DisplayPreferences and are not duplicated here.
- */
-class LibraryScreenState {
-    var query: String = ""
-    var selectedTags: Set<String> = emptySet()
-    var filtersExpanded: Boolean = false
-
-    /** Library multi-select. Non-empty means selection mode is active; it is not saved across process death. */
-    var selectedStoryIds: Set<String> = emptySet()
-
-    /** Rebinds every rendered card of one story (it shows on its tab's page and on All), or all for null. Set per render. */
-    var refreshStoryCards: (String?) -> Unit = {}
-    val tabScrollPositions: MutableMap<String, Int> = mutableMapOf()
-}
 
 /**
  * The contract between [MainActivity] and the screen/action extension functions split across
@@ -123,30 +44,12 @@ interface ScreenHost {
     val ttsEngine: TtsEngine
     var activeStory: Story?
 
-    /**
-     * The in-flight content operation (sync / cleanup / EPUB) — the only slot that gates the
-     * Details content actions, since those operations read or rewrite the same story files.
-     */
-    var storyOperation: StoryOperationState?
+    /** Sync / cleanup / EPUB and AI work in flight on a story, observed by every screen that shows it. */
+    val operations: StoryOperations
 
-    /**
-     * The in-flight AI job (cover / description). Kept apart from [storyOperation]: AI jobs only
-     * produce drafts, so they never block sync, cleanup, downloads, or EPUB generation.
-     */
-    var aiOperation: StoryOperationState?
+    /** One [ScreenModel] per history entry; see android/AGENTS.md, "Screen architecture". */
+    val screenModels: ScreenModelStore
 
-    /**
-     * Direct reference to the Details in-flight operation progress slot (sync / cleanup / EPUB).
-     * Captured at [com.vinicius741.webnovelarchiver.feature.details.showDetails] render time so
-     * subsequent [storyOperation] ticks can patch the message/bar in place instead of rebuilding
-     * the whole Details tree (same pattern as the download banner slot). May be null when no
-     * operation is active, or when Details is not on screen. Cleared/reassigned on each Details
-     * render.
-     */
-    var detailsOperationSlot: ViewGroup?
-
-    /** Details progress slot for [aiOperation], patched in place like [detailsOperationSlot]. */
-    var detailsAiOperationSlot: ViewGroup?
     val navigator: AppNavigator
 
     /** Per-history-entry scroll, list, and search memory, keyed by [AppRoute.stableKey] (see [RouteViewMemory]). */
@@ -165,32 +68,11 @@ interface ScreenHost {
         navigator.back()?.let(::renderRoute)
     }
 
-    /**
-     * Transient state for the Add Story screen's inline fetch flow (status line + URL draft). See
-     * [AddStoryScreenState]; lives here so it survives the screen's status-driven re-renders.
-     */
-    val addStoryScreenState: AddStoryScreenState
+    /** The full-backup export, which outlives Data & backup (see [BackupExports]). */
+    val backupExports: BackupExports
 
-    val backupExportState: BackupExportState
-
-    /** Pending AI-description drafts for the AI Controls screen (see [AiControlsScreenState]). */
-    val aiControlsScreenState: AiControlsScreenState
-
-    /** Library view memory (query/tags/per-tab scroll) surviving navigation; see [LibraryScreenState]. */
-    val libraryScreenState: LibraryScreenState
-
-    val cleanupScreenState: CleanupScreenState
-
-    /** Updates sync progress ("Sync all" batch, per-novel syncs, filter); outlives the screen's re-renders. */
-    val updatesSyncState: UpdatesSyncState
-
-    /**
-     * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by
-     * `storyId`. A story absent from the map defaults to expanded when it has active work or
-     * failures, collapsed otherwise. Survives the screen's periodic re-renders (which rebuild the
-     * whole tree) so a user's manual collapse isn't undone 30s later.
-     */
-    val storyExpandOverride: MutableMap<String, Boolean>
+    /** The Updates syncs (a row's sync, "Sync all") and the forecast cache, which outlive the Updates screen. */
+    val updatesSyncs: UpdatesSyncs
 
     /**
      * What system Back does on the current screen, set by [com.vinicius741.webnovelarchiver.ui.screen]
@@ -218,9 +100,6 @@ interface ScreenHost {
      */
     var rerender: (() -> Unit)?
 
-    /** Observer owned by the currently rendered screen. [screen] cancels it on navigation/rebuild. */
-    var screenObserver: Job?
-
     /**
      * Invoked at the end of every [com.vinicius741.webnovelarchiver.ui.screen] build so app-level
      * chrome that depends on the current route (the TTS mini-player) can refresh without owning a
@@ -233,3 +112,9 @@ interface ScreenHost {
     val importFullBackupLauncher: ActivityResultLauncher<Array<String>>
     val notificationPermissionLauncher: ActivityResultLauncher<String>
 }
+
+/** The running content operation (sync / cleanup / EPUB), read-only; change it through [ScreenHost.operations]. */
+val ScreenHost.storyOperation: StoryOperationState? get() = operations.content.value
+
+/** The running AI job (cover / description), read-only; change it through [ScreenHost.operations]. */
+val ScreenHost.aiOperation: StoryOperationState? get() = operations.ai.value

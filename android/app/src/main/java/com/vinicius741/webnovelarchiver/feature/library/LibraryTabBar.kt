@@ -9,7 +9,6 @@ import android.widget.TextView
 import androidx.core.view.doOnLayout
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
-import com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -24,20 +23,13 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.text
 
 /**
- * Tab bar for the Library. Holds the [view] to add to the screen plus hooks the pager uses to stay
- * in two-way sync with it:
- *  - [selectVisual] restyles the active tab indicator in place (no rebuild) when a *swipe* changes
- *    the active tab.
- *  - [onSelectFromBar] is invoked (when set) when the user *taps* a tab, so the caller can animate a
- *    bound [androidx.viewpager2.widget.ViewPager2] to the matching page. Left null in the
- *    single-grid (no-pager) path.
+ * Tab bar for the Library: the [view] to add to the screen, and [selectVisual], which restyles the
+ * active tab indicator in place (no rebuild) when the selection changes elsewhere (a swipe).
  */
 internal class LibraryTabBar(
     val view: View,
     private val applySelection: (String?) -> Unit,
 ) {
-    var onSelectFromBar: ((String?) -> Unit)? = null
-
     fun selectVisual(id: String?) = applySelection(id)
 }
 
@@ -95,15 +87,9 @@ internal fun ScreenHost.makeLibraryTabBar(
         if (scroll.isLaidOut) revealSelection(animated = true)
     }
 
-    // Invoke both the bar's selection callback (persist + filter) and, when set, the pager hook that
-    // animates to the tapped tab's page. Order matters only visually; both are idempotent. The holder
-    // is assigned after it is constructed below; fireSelect reads it at click time, never at setup time.
-    var holderRef: LibraryTabBar? = null
-
     fun fireSelect(id: String?) {
         applySelection(id)
         onSelect(id)
-        holderRef?.onSelectFromBar?.invoke(id)
     }
 
     fun addTab(
@@ -166,9 +152,7 @@ internal fun ScreenHost.makeLibraryTabBar(
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1).coerceAtLeast(1)),
             )
         }
-    return LibraryTabBar(bar, ::applySelection).also { holder ->
-        holderRef = holder
-    }
+    return LibraryTabBar(bar, ::applySelection)
 }
 
 private const val TAB_INDICATOR_HEIGHT_DP = 3

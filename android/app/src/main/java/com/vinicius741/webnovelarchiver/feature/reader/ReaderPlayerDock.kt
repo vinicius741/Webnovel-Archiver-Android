@@ -13,7 +13,6 @@ import com.vinicius741.webnovelarchiver.feature.player.PlayerProgressLine
 import com.vinicius741.webnovelarchiver.feature.player.playbackFraction
 import com.vinicius741.webnovelarchiver.feature.player.playbackTimeLeft
 import com.vinicius741.webnovelarchiver.feature.player.rateLabel
-import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Spacing
@@ -25,7 +24,6 @@ import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundCorners
 import com.vinicius741.webnovelarchiver.ui.roundedBg
-import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
@@ -164,23 +162,26 @@ internal fun LinearLayout.bottomDock(child: View): View =
     }
 
 /** The gold "Back to current sentence" pill shown while the reader has scrolled away from it. */
-internal fun ScreenHost.followPill(onClick: () -> Unit): View {
+internal fun followPill(
+    context: Context,
+    onClick: () -> Unit,
+): View {
     val colors = ThemeManager.colors
-    val radius = dp(PILL_HEIGHT_DP).toFloat() / 2
-    return makeText(app, "Back to current sentence", Type.LABEL_LARGE, colors.onPrimary).apply {
+    val radius = context.dp(PILL_HEIGHT_DP).toFloat() / 2
+    return makeText(context, "Back to current sentence", Type.LABEL_LARGE, colors.onPrimary).apply {
         gravity = Gravity.CENTER_VERTICAL
         setCompoundDrawablesRelativeWithIntrinsicBounds(
-            app.tintedIcon(R.drawable.wna_my_location, colors.onPrimary)?.apply {
-                setBounds(0, 0, dp(18), dp(18))
+            context.tintedIcon(R.drawable.wna_my_location, colors.onPrimary)?.apply {
+                setBounds(0, 0, context.dp(18), context.dp(18))
             },
             null,
             null,
             null,
         )
-        compoundDrawablePadding = dp(6)
-        setPadding(dp(Spacing.LG), 0, dp(Spacing.LG), 0)
+        compoundDrawablePadding = context.dp(6)
+        setPadding(context.dp(Spacing.LG), 0, context.dp(Spacing.LG), 0)
         background = ripple(roundedBg(colors.primary, radius), radius, colors.onPrimary)
-        elevation = dp(Spacing.SM).toFloat()
+        elevation = context.dp(Spacing.SM).toFloat()
         isClickable = true
         isFocusable = true
         visibility = View.GONE

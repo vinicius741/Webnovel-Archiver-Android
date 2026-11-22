@@ -14,7 +14,8 @@ import com.vinicius741.webnovelarchiver.feature.story.shareAll
 import com.vinicius741.webnovelarchiver.feature.story.showEpubConfigDialog
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
+import com.vinicius741.webnovelarchiver.navigation.storyOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.sync.StorySyncMode
 import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle

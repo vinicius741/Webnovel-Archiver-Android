@@ -57,10 +57,6 @@ internal fun ScreenHost.screen(
     block: LinearLayout.() -> Unit,
 ) {
     val perfBuildStartedNanos = if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) System.nanoTime() else 0L
-    aiControlsScreenState.binding = null
-    aiControlsScreenState.characterProgress = null
-    screenObserver?.cancel()
-    screenObserver = null
     navigator.navigate(route)
     shell.onRoute(navigator.history)
     // A screen that did not set its own rerender inherits the previous screen's, which on a fold
@@ -74,6 +70,7 @@ internal fun ScreenHost.screen(
     captureScreenViewState()
     routeMemory.trackedList = null
     routeMemory.retainOnly(navigator.viewMemoryKeys)
+    screenModels.retainOnly(navigator.viewMemoryKeys)
     val savedScrollY = if (scrollable) routeMemory.scrollPositions[screenKey] ?: 0 else 0
     // Destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
     // activity references; without explicit destroy() they leak across navigation.

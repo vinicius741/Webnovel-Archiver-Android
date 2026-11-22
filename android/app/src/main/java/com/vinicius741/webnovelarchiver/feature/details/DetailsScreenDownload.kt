@@ -8,18 +8,12 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
-import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
-import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
 import com.vinicius741.webnovelarchiver.feature.downloads.StorySourceCheck
-import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
-import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -31,42 +25,6 @@ import com.vinicius741.webnovelarchiver.ui.makeText
 
 /** Avoid replacing the RecyclerView hierarchy while a touch/fling gesture is still active. */
 internal const val DETAILS_SCROLL_RETRY_MS = 250L
-
-/** Whether the live download banner should show; shared by initial render and in-place refresh. */
-internal fun shouldShowDetailsBanner(summary: DownloadDetailsPlanning.StoryDownloadSummary): Boolean =
-    summary.total > 0 &&
-        (summary.isActive || summary.isPaused || (summary.isFinished && (summary.failed > 0 || summary.cancelled > 0)))
-
-/**
- * Patches the Details download UI (header summary, chapter rows, actions, banner slot) in place instead of
- * a full re-render. The banner slot must be the reference captured at render time — a tree lookup
- * misses it once the RecyclerView header is recycled/detached.
- */
-internal fun ScreenHost.refreshDetailsDownload(
-    storyId: String,
-    bindings: DetailsBindings,
-    snapshot: DownloadUiSnapshot? = null,
-) {
-    val isBusy = storyOperation?.storyId == storyId
-    val story = snapshot?.library?.firstOrNull { it.id == storyId } ?: repository.story(storyId) ?: return
-    val queue = snapshot?.queue ?: repository.queue()
-    val jobsForStory = queue.filter { it.storyId == storyId }
-    val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
-    val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
-    val pacingSnapshots = app.appContainer.downloadPacer.snapshots.value.values
-    val waitingChapterIds = waitingChapterIds(jobsForStory, pacingSnapshots, app.appContainer.time.nowMillis())
-
-    val pacingStatus =
-        detailsPacingStatus(
-            storyId = storyId,
-            storySourceUrl = story.sourceUrl,
-            jobsForStory = jobsForStory,
-            snapshots = pacingSnapshots,
-            nowMillis = app.appContainer.time.nowMillis(),
-            allJobs = queue,
-        )
-    bindings.patchDownloadStatus(this, story, summary, chapterStatuses, waitingChapterIds, pacingStatus, isBusy)
-}
 
 /** Sync and AI round-trips have no fraction; cleanup/EPUB go determinate once progress is set. */
 internal fun storyOperationIndeterminate(operation: StoryOperationState): Boolean =
@@ -219,52 +177,4 @@ internal fun makeDownloadProgressBanner(
             },
         )
     }
-}
-
-internal fun detailsPacingStatus(
-    storyId: String,
-    storySourceUrl: String,
-    jobsForStory: List<DownloadJob>,
-    snapshots: Collection<DownloadPacingSnapshot>,
-    nowMillis: Long,
-    allJobs: List<DownloadJob> = jobsForStory,
-): DownloadPacingUiStatus? =
-    DownloadPacingUiPlanning.storyStatus(
-        storyId = storyId,
-        providerName =
-            SourceRegistry.getProvider(jobsForStory.firstOrNull()?.sourceId, storySourceUrl)?.name,
-        storyJobs = jobsForStory,
-        snapshots = snapshots,
-        nowMillis = nowMillis,
-        allJobs = allJobs,
-    )
-
-/** Chapters held only by the configured request delay, not yet fetching their content. */
-internal fun waitingChapterIds(
-    jobs: List<DownloadJob>,
-    snapshots: Collection<DownloadPacingSnapshot>,
-    nowMillis: Long,
-): Set<String> {
-    val waitingJobIds = DownloadPacingUiPlanning.waitingJobs(snapshots, jobs, nowMillis).keys
-    return jobs
-        .asSequence()
-        .filter { it.id in waitingJobIds }
-        .map { it.chapter.id }
-        .toSet()
-}
-
-internal fun ScreenHost.refreshDetailsPacingBanner(
-    storyId: String,
-    bindings: DetailsBindings,
-    snapshots: Collection<DownloadPacingSnapshot>,
-    nowMillis: Long,
-) {
-    val story = repository.story(storyId) ?: return
-    val queue = repository.queue()
-    val jobsForStory = queue.filter { it.storyId == storyId }
-    val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
-    if (!shouldShowDetailsBanner(summary)) return
-    val pacingStatus = detailsPacingStatus(storyId, story.sourceUrl, jobsForStory, snapshots, nowMillis, queue)
-    // Only the banner's pacing line ticks; actions and rows follow download events.
-    bindings.hero?.let { renderHeroDownloadBanner(it.bannerSlot, story, summary, pacingStatus) }
 }

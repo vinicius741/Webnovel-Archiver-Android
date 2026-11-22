@@ -6,7 +6,10 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -14,6 +17,7 @@ import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
@@ -27,43 +31,67 @@ import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.launch
 import java.util.UUID
 
+/** Manage tabs' reads and saves, from the repository. */
+private class RepositoryTabsData(
+    private val repository: AppRepository,
+) : TabsData {
+    override fun tabs(): List<Tab> = repository.tabs.get()
+
+    override fun novelCounts(): Map<String, Int> =
+        repository
+            .library()
+            .mapNotNull { it.tabId }
+            .groupingBy { it }
+            .eachCount()
+
+    override suspend fun saveTabs(tabs: List<Tab>) = repository.tabs.save(tabs)
+
+    override suspend fun unassign(tabId: String) {
+        repository.library().forEach { story ->
+            if (story.tabId == tabId) {
+                story.tabId = null
+                repository.addOrUpdateStory(story)
+            }
+        }
+    }
+
+    override fun newTabId(): String = "tab_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(4)}"
+
+    override fun now(): Long = System.currentTimeMillis()
+}
+
+/** Manage tabs' model, kept while it is in the history. */
+private fun ScreenHost.tabsModel(): TabsScreenModel =
+    screenModels.get(AppRoute.Tabs.stableKey) {
+        TabsScreenModel(RepositoryTabsData(repository))
+    }
+
+/** Manage tabs, built from [TabsScreenModel]'s state; a change of the tabs or their counts rebuilds it. */
 internal fun ScreenHost.showTabs() {
-    rerender = { showTabs() }
-    val tabs = TabPlanning.normalizeOrders(repository.tabs.get())
     val colors = ThemeManager.colors
+    // The subtitle counts the tabs, so the state is read before screen(). The model is kept: screen()
+    // puts this route in the history before it prunes the store.
+    val model = tabsModel()
+    val state = model.refresh()
+    val tabs = state.tabs
     screen(route = AppRoute.Tabs, title = "Manage tabs", subtitle = SettingsHubPlanning.plural(tabs.size, "tab"), scrollable = true) {
         capSettingsWidth(this)
         settingsNote("Tabs group your library. Novels in a deleted tab become Unassigned.")
         spacer(Space.MD)
         row {
-            val name = makeField(context, "", "New tab name", InputType.TYPE_CLASS_TEXT)
+            val name = makeField(context, model.newTabName, "New tab name", InputType.TYPE_CLASS_TEXT)
+            name.doAfterTextChanged { model.setNewTabName(it?.toString().orEmpty()) }
             addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             button("Add", Btn.FILLED, R.drawable.wna_add) {
-                val next =
-                    TabPlanning.create(
-                        tabs,
-                        name.text.toString(),
-                        "tab_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(4)}",
-                        System.currentTimeMillis(),
-                    )
-                if (next.size > tabs.size) {
-                    scope.launch {
-                        repository.tabs.save(next)
-                        showTabs()
-                    }
-                } else {
-                    toast("Type a new tab name first")
-                }
+                if (!model.addTab()) toast("Type a new tab name first")
             }
         }
         spacer(Space.SM)
         if (tabs.isEmpty()) settingsNote("No tabs yet.")
-        val library = repository.library()
         tabs.forEachIndexed { index, tab ->
-            val novelCount = library.count { it.tabId == tab.id }
+            val novelCount = state.novelCounts[tab.id] ?: 0
             addView(
                 card {
                     setPadding(dp(Space.LG), dp(Space.SM), dp(Space.XS), dp(Space.SM))
@@ -86,44 +114,21 @@ internal fun ScreenHost.showTabs() {
                         },
                         LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
                     )
-                    tabActionButton(R.drawable.wna_up, "Move ${tab.name} up", enabled = index > 0) {
-                        scope.launch {
-                            repository.tabs.save(TabPlanning.move(tabs, index, index - 1))
-                            showTabs()
-                        }
-                    }
+                    tabActionButton(R.drawable.wna_up, "Move ${tab.name} up", enabled = index > 0) { model.move(index, index - 1) }
                     tabActionButton(R.drawable.wna_down, "Move ${tab.name} down", enabled = index < tabs.lastIndex) {
-                        scope.launch {
-                            repository.tabs.save(TabPlanning.move(tabs, index, index + 1))
-                            showTabs()
-                        }
+                        model.move(index, index + 1)
                     }
                     tabActionButton(R.drawable.wna_edit, "Rename ${tab.name}") {
-                        showRenameTabPrompt(tab.name) { renamed ->
-                            scope.launch {
-                                repository.tabs.save(TabPlanning.rename(tabs, tab.id, renamed))
-                                showTabs()
-                            }
-                        }
+                        showRenameTabPrompt(tab.name) { renamed -> model.rename(tab.id, renamed) }
                     }
                     tabActionButton(R.drawable.wna_delete, "Delete ${tab.name}") {
                         val novels = SettingsHubPlanning.plural(novelCount, "novel")
-                        confirm("Delete \"${tab.name}\"? $novels will become Unassigned.", confirmLabel = "Delete") {
-                            scope.launch {
-                                repository.library().forEach { story ->
-                                    if (story.tabId == tab.id) {
-                                        story.tabId = null
-                                        repository.addOrUpdateStory(story)
-                                    }
-                                }
-                                repository.tabs.save(TabPlanning.delete(tabs, tab.id))
-                                showTabs()
-                            }
-                        }
+                        confirm("Delete \"${tab.name}\"? $novels will become Unassigned.", confirmLabel = "Delete") { model.delete(tab.id) }
                     }
                 }.apply { (layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(Space.SM) },
             )
         }
+        bindWhileAttached(scope, model.state) { next -> if (next != state) showTabs() }
     }
 }
 

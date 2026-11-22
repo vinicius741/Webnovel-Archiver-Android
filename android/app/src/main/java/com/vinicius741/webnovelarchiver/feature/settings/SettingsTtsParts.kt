@@ -7,10 +7,10 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
-import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.narration.NarrationServer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsSampleFailure
@@ -42,8 +42,6 @@ import kotlinx.coroutines.launch
 
 // The Listening page's "Try it" sample card.
 
-private var sampleTextDraft: String? = null
-
 private val DEFAULT_SAMPLE_TEXT =
     """
     Mara pushed the door open, held her breath, and listened. Nothing moved in the hall. She took one step, then another.
@@ -59,16 +57,16 @@ private val DEFAULT_SAMPLE_TEXT =
  * Editable text played with the values above, so they can be judged by ear. A
  * built-in model that is not on this phone is generated on the chosen computers first, then played.
  */
-internal fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
+internal fun ScreenHost.ttsSampleCard(
+    model: TtsSettingsScreenModel,
+    page: TtsSettingsUiState,
+): View {
     var preview: TtsSamplePreview? = null
     var state: TtsSampleState = TtsSampleState.Idle
     lateinit var playButton: Button
     val colors = ThemeManager.colors
-    val narrationState = narration.queueState.value
-    val servers = narrationState.servers
-    val chosen = {
-        TtsSamplePlanning.chosenComputers(servers, sampleComputerIds, narrationState.generateOnIds)
-    }
+    val chosen = { model.chosenSampleComputers() }
+    val draft = { model.state.value.settings }
     val status =
         makeText(app, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
             setPadding(dp(Spacing.XS), dp(Spacing.SM), 0, 0)
@@ -78,7 +76,7 @@ internal fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
         val sample =
             makeField(
                 context,
-                sampleTextDraft ?: DEFAULT_SAMPLE_TEXT,
+                model.sampleText ?: DEFAULT_SAMPLE_TEXT,
                 "Sample text",
                 InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
             ).apply {
@@ -87,6 +85,7 @@ internal fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
                 maxLines = SAMPLE_MAX_LINES
                 contentDescription = "Sample text"
                 scrollTextInsideParent()
+                doAfterTextChanged { model.setSampleText(it?.toString()) }
             }
         addView(sample, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         addView(
@@ -99,14 +98,13 @@ internal fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
                 setPadding(dp(Spacing.XS), dp(Spacing.SM), 0, 0)
             },
         )
-        addSampleComputers(this, draft(), servers, chosen)
+        addSampleComputers(this, model, page, chosen)
         playButton =
             makeButton(context, "Play sample", Btn.FILLED, R.drawable.wna_play) {
                 if (state != TtsSampleState.Idle) {
                     preview?.stop()
                     return@makeButton
                 }
-                sampleTextDraft = sample.text.toString()
                 val player =
                     preview ?: TtsSamplePreview(
                         context = app,
@@ -126,8 +124,8 @@ internal fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
                 addView(playButton)
                 addView(
                     makeButton(context, "Reset text", Btn.TEXT) {
-                        sampleTextDraft = null
                         sample.setText(DEFAULT_SAMPLE_TEXT)
+                        model.setSampleText(null)
                     },
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                         marginStart =
@@ -155,22 +153,19 @@ internal fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
     }
 }
 
-/** The computers a sample is generated on, kept while the app runs; null follows Listen's Generate on. */
-private var sampleComputerIds: Set<String>? = null
-
 /**
  * For a built-in model that is not on this phone: which computers generate the sample (one or
  * several, which share its sentences), or how to make one available.
  */
-private fun ScreenHost.addSampleComputers(
+private fun addSampleComputers(
     card: LinearLayout,
-    settings: TtsSettings,
-    servers: List<NarrationServer>,
+    screen: TtsSettingsScreenModel,
+    page: TtsSettingsUiState,
     chosen: () -> List<NarrationServer>,
 ) {
-    val model = KokoroVoices.model(settings.enginePackage) ?: return
-    val builtIns = app.appContainer.builtIns
-    if (builtIns.isInstalled(model) && KokoroModelFiles.isDeviceSupported(model)) return
+    val servers = page.narration.servers
+    val model = KokoroVoices.model(page.settings.enginePackage) ?: return
+    if (page.installed(model) && KokoroModelFiles.isDeviceSupported(model)) return
     val colors = ThemeManager.colors
     val context = card.context
     val hint =
@@ -184,7 +179,7 @@ private fun ScreenHost.addSampleComputers(
     card.addView(
         makeText(context, hint, Type.BODY_SMALL, colors.onSurfaceVariant),
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(Spacing.MD)
+            topMargin = context.dp(Spacing.MD)
         },
     )
     if (servers.isEmpty()) return
@@ -199,7 +194,7 @@ private fun ScreenHost.addSampleComputers(
         val ids = chosen().map { it.id }.toSet()
         servers.forEach { server ->
             chips.chip(server.name, selected = server.id in ids) {
-                sampleComputerIds = TtsSamplePlanning.toggle(chosen(), server.id)
+                screen.toggleSampleComputer(server.id)
                 bind()
             }
         }
@@ -208,7 +203,7 @@ private fun ScreenHost.addSampleComputers(
     card.addView(
         chips,
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(Spacing.SM)
+            topMargin = context.dp(Spacing.SM)
         },
     )
 }

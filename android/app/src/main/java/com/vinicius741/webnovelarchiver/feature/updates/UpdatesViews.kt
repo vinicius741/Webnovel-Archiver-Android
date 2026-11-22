@@ -43,8 +43,7 @@ import java.util.Locale
 internal fun ScreenHost.makeUpdatesRow(
     entry: Entry,
     section: Section,
-    now: () -> Long,
-    jobsFor: (String) -> List<DownloadJob>,
+    rows: UpdatesRowSource,
     rowBinders: MutableMap<String, UpdatesRowBinder>,
 ): View {
     val colors = ThemeManager.colors
@@ -94,7 +93,7 @@ internal fun ScreenHost.makeUpdatesRow(
 
     val binder =
         UpdatesRowBinder(entry) { latest ->
-            bindUpdatesRow(latest, section, status, trailing, now(), jobsFor(latest.story.id))
+            app.bindUpdatesRow(latest, section, status, trailing, rows)
         }
     binder.bind(entry)
     rowBinders[rowKey(section, entry.story.id)] = binder
@@ -106,18 +105,34 @@ internal fun rowKey(
     storyId: String,
 ): String = "${section.name}:$storyId"
 
-private fun ScreenHost.bindUpdatesRow(
+/** What a row binds from the screen's current state, and the actions it starts. */
+internal interface UpdatesRowSource {
+    /** The time status lines read the forecasts at. */
+    fun now(): Long
+
+    fun jobsFor(storyId: String): List<DownloadJob>
+
+    /** The sync's latest status line while Updates syncs the novel, else null. */
+    fun syncingFor(storyId: String): String?
+
+    fun onSync(storyId: String)
+
+    fun onDownloadMissing(storyId: String)
+}
+
+private fun Context.bindUpdatesRow(
     entry: Entry,
     section: Section,
     status: TextView,
     trailing: FrameLayout,
-    now: Long,
-    jobs: List<DownloadJob>,
+    rows: UpdatesRowSource,
 ) {
+    val app = this
+    val now = rows.now()
     val colors = ThemeManager.colors
     val story = entry.story
-    val syncStatus = updatesState.syncing[story.id]
-    val download = DownloadDetailsPlanning.summarizeStoryDownload(jobs).takeIf { it.isActive }
+    val syncStatus = rows.syncingFor(story.id)
+    val download = DownloadDetailsPlanning.summarizeStoryDownload(rows.jobsFor(story.id)).takeIf { it.isActive }
     trailing.removeAllViews()
     when {
         syncStatus != null -> {
@@ -133,7 +148,7 @@ private fun ScreenHost.bindUpdatesRow(
         section == Section.TO_DOWNLOAD -> {
             status.text = UpdatesCopy.statusLine(entry, section, now)
             status.setTextColor(colors.onSurfaceVariant)
-            trailing.addView(compactDownloadButton(app, entry.missingChapters) { downloadMissingFromUpdates(story) })
+            trailing.addView(compactDownloadButton(app, entry.missingChapters) { rows.onDownloadMissing(story.id) })
         }
         else -> {
             status.text = UpdatesCopy.statusLine(entry, section, now)
@@ -146,7 +161,7 @@ private fun ScreenHost.bindUpdatesRow(
             )
             trailing.addView(
                 app.iconButton(R.drawable.wna_sync, "Sync ${story.title}", colors.onSurface, IconButtonStyle.Standard) {
-                    syncFromUpdates(story)
+                    rows.onSync(story.id)
                 },
             )
         }

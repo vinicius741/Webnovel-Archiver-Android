@@ -5,6 +5,8 @@ checklist; tick items as they land and record the commit next to the item.
 
 Baseline: commit `9131e1f8` on `main`. All numbers below were measured on that commit.
 
+> Phases 4–6 are superseded by `architecture-plan-2026-11-21.md` (proposal).
+
 ## Verdict
 
 The code is careful (consistent style, ~22k lines of tests, deliberate locking and crash recovery)

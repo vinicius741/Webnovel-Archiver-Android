@@ -15,10 +15,13 @@ import com.vinicius741.webnovelarchiver.ai.AiModelSelection
 import com.vinicius741.webnovelarchiver.ai.AiReasoningPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.settings.AiReasoningEffort
+import com.vinicius741.webnovelarchiver.feature.settings.AiSettingsScreenModel
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
@@ -28,6 +31,8 @@ import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /*
@@ -44,9 +49,13 @@ import kotlinx.coroutines.launch
 internal fun ScreenHost.addAiModelsCard(
     container: LinearLayout,
     advancedContainer: LinearLayout,
+    model: AiSettingsScreenModel,
 ) {
     val modelRefreshers = mutableListOf<() -> Unit>()
-    aiControlsScreenState.refreshModels = { modelRefreshers.forEach { it() } }
+    // Picker callbacks can outlive a fold-triggered render, so they poke the model, and whichever
+    // render of these rows is attached then refreshes.
+    container.bindWhileAttached(scope, model.state.map { it.modelsRevision }.distinctUntilChanged()) { modelRefreshers.forEach { it() } }
+    val settings = { model.state.value.settings }
 
     /** One row per global model choice; [save] applies the picked id (+ reasoning effort) to settings. */
     class ModelRow(
@@ -60,7 +69,7 @@ internal fun ScreenHost.addAiModelsCard(
         listOf(
             ModelRow(
                 label = "Description model",
-                current = { repository.aiSettings.get().descriptionModel },
+                current = { settings().descriptionModel },
                 save = { settings, id, effort ->
                     settings.copy(
                         descriptionModel = id,
@@ -71,13 +80,13 @@ internal fun ScreenHost.addAiModelsCard(
             ),
             ModelRow(
                 label = "Cover image model",
-                current = { repository.aiSettings.get().imageModel },
+                current = { settings().imageModel },
                 save = { settings, id, _ -> settings.copy(imageModel = id) },
                 kind = AiModelRowKind.IMAGE,
             ),
             ModelRow(
                 label = "Chapter selection model",
-                current = { repository.aiSettings.get().decisionModel },
+                current = { settings().decisionModel },
                 save = { settings, id, _ -> settings.copy(decisionModel = id) },
                 kind = AiModelRowKind.DECISIONS,
             ),
@@ -91,28 +100,31 @@ internal fun ScreenHost.addAiModelsCard(
                     container = this,
                     label = row.label,
                     currentModel = row.current,
+                    settings = settings,
                     kind = row.kind,
-                ) { picked ->
-                    val settings = repository.aiSettings.get()
-                    repository.aiSettings.save(row.save(settings, picked.modelId, picked.reasoningEffort))
-                    refreshAiModelFields()
-                }
+                ) { picked -> model.saveModelChoice { row.save(it, picked.modelId, picked.reasoningEffort) } }
         }
     val (advancedRows, mainRows) = rows.partition { it.kind == AiModelRowKind.DECISIONS }
     container.addView(container.card { addRows(mainRows) })
     advancedContainer.addView(advancedContainer.card { addRows(advancedRows) })
     scope.launch {
         loadAiModelCatalog()
-        refreshAiModelFields()
+        model.modelsChanged()
     }
 }
 
 internal enum class AiModelRowKind { TEXT, IMAGE, DECISIONS }
 
+/** Refreshes the model rows of the AI Settings render on screen, which a fold may have replaced while a picker stayed open. */
+internal fun ScreenHost.refreshAiModelFields() {
+    screenModels.find<AiSettingsScreenModel>(AppRoute.AiSettings.stableKey)?.modelsChanged()
+}
+
 private fun ScreenHost.addAiModelRow(
     container: LinearLayout,
     label: String,
     currentModel: () -> String,
+    settings: () -> AiSettings,
     kind: AiModelRowKind = AiModelRowKind.TEXT,
     onPicked: suspend (AiModelSelection) -> Unit,
 ): () -> Unit {
@@ -149,7 +161,7 @@ private fun ScreenHost.addAiModelRow(
         detailView.visibility =
             if (kind == AiModelRowKind.TEXT && AiReasoningPlanning.allowedEfforts(model).isNotEmpty()) View.VISIBLE else View.GONE
         detailView.text =
-            "Reasoning: " + AiReasoningEffort.shortLabel(AiReasoningPlanning.effortFor(repository.aiSettings.get(), modelId, model))
+            "Reasoning: " + AiReasoningEffort.shortLabel(AiReasoningPlanning.effortFor(settings(), modelId, model))
     }
     refresh()
     return refresh

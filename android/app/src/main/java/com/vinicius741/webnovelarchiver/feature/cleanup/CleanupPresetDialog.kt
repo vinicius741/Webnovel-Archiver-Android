@@ -8,7 +8,6 @@ import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.cleanup.RegexCleanupPresets
-import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
@@ -28,17 +27,16 @@ import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.showBottomSheet
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-internal fun ScreenHost.showCleanupPresetPicker() {
+internal fun ScreenHost.showCleanupPresetPicker(model: CleanupScreenModel) {
     val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     var sheet: BottomSheetHandle? = null
     RegexCleanupPresets.Preset.values().forEach { preset ->
         body.addView(
             makeSheetRow(app, preset.title, preset.description, R.drawable.wna_filter) {
                 sheet?.dismiss()
-                showCleanupPresetDialog(preset)
+                showCleanupPresetDialog(model, preset)
             },
         )
     }
@@ -46,6 +44,7 @@ internal fun ScreenHost.showCleanupPresetPicker() {
 }
 
 internal fun ScreenHost.showCleanupPresetDialog(
+    model: CleanupScreenModel,
     preset: RegexCleanupPresets.Preset,
     existing: RegexCleanupRule? = null,
     initialCount: Int = preset.defaultCount,
@@ -94,11 +93,9 @@ internal fun ScreenHost.showCleanupPresetDialog(
             return
         }
         val sample = before.text.toString()
-        scope.launch(Dispatchers.Default) {
-            val output = RegexRuleCleanup.previewRegexRule(generated.pattern, generated.flags, sample)
-            app.runOnUiThread {
-                if (generation == previewGeneration) after.text = output?.ifEmpty { "Empty text" } ?: "Enter text to preview."
-            }
+        scope.launch {
+            val output = model.previewRule(generated.pattern, generated.flags, sample)
+            if (generation == previewGeneration) after.text = output?.ifEmpty { "Empty text" } ?: "Enter text to preview."
         }
     }
     count.doAfterTextChanged { updatePreview() }
@@ -114,33 +111,11 @@ internal fun ScreenHost.showCleanupPresetDialog(
     dialog.setOnShowListener {
         updatePreview()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val generated = RegexCleanupPresets.generate(preset, count.text.toString().toIntOrNull() ?: 0)
-            if (generated == null) {
-                count.error = "Enter a count from 1 to ${RegexCleanupPresets.MAX_COUNT}"
-                return@setOnClickListener
-            }
-            val appliesTo = targets[target.selectedItemPosition]
-            val rules = repository.regexRules.get().toMutableList()
-            if (RegexRuleCleanup.hasSimilarRegexRule(rules, existing?.id, generated.pattern, generated.flags, appliesTo)) {
-                toast("This rule already exists for the selected target")
-                return@setOnClickListener
-            }
-            val rule =
-                RegexCleanupRule(
-                    id = existing?.id ?: "rule_${System.currentTimeMillis()}",
-                    name = generated.name,
-                    pattern = generated.pattern,
-                    flags = generated.flags,
-                    enabled = existing?.enabled ?: true,
-                    appliesTo = appliesTo,
-                )
-            val index = rules.indexOfFirst { it.id == rule.id }
-            if (index >= 0) rules[index] = rule else rules.add(rule)
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-            scope.launch {
-                repository.regexRules.save(rules)
-                dialog.dismiss()
-                showCleanupRules()
+            val value = count.text.toString().toIntOrNull() ?: 0
+            when (model.savePresetRule(preset, value, targets[target.selectedItemPosition], existing)) {
+                PresetSave.BAD_COUNT -> count.error = "Enter a count from 1 to ${RegexCleanupPresets.MAX_COUNT}"
+                PresetSave.DUPLICATE -> toast("This rule already exists for the selected target")
+                PresetSave.SAVED -> dialog.dismiss()
             }
         }
     }

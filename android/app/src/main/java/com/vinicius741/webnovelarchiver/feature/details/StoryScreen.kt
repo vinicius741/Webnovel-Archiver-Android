@@ -44,16 +44,15 @@ internal class StoryFrame(
     val hero: StoryHero?,
     /** Docked under the tab body, outside its scroller (the description player bar). */
     val footer: LinearLayout,
+    /** The story page's model and the state this render draws. */
+    val model: StoryPageScreenModel,
+    val state: StoryPageUiState,
 ) {
     /** The Chapters tab, so live download events can refresh its rows, chips and count. */
     var chaptersTab: ChaptersTab? = null
-}
 
-/** The inner screen's hero pane; [bindings] lets a rebuilt hero take over the live download patches. */
-internal class HeroPane(
-    context: Context,
-) : NestedScrollView(context) {
-    var bindings: DetailsBindings? = null
+    /** The About part's AI description progress slot, on the Overview. */
+    var aboutAiSlot: LinearLayout? = null
 }
 
 /** One-shot and remembered choices the story page carries between its tab renders. */
@@ -86,10 +85,9 @@ internal fun ScreenHost.storyScreen(
     if (current.stableKey != route.stableKey && StoryTabPlanning.storyIdOf(current) == story.id) navigator.replace(route)
     activeStory = story
     val twoPane = currentScreenLayout().isTwoPane
-    // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
-    detailsOperationSlot = null
-    detailsAiOperationSlot = null
     var frameRef: StoryFrame? = null
+    var heroPane: NestedScrollView? = null
+    var strip: LinearLayout? = null
     screen(
         route = route,
         title = title ?: story.title,
@@ -102,14 +100,18 @@ internal fun ScreenHost.storyScreen(
     ) {
         // The tab strip sits flush under the app bar, so the scaffold's own body padding is dropped.
         setPadding(0, 0, 0, 0)
-        val hero = if (StoryTabPlanning.showsHero(tab, twoPane)) buildStoryHero(story, tab, twoPane) else null
+        // Read inside the scaffold, once the route is in the history the model store keeps.
+        val model = storyPageModel(story.id)
+        val state = model.refresh()
+        val pageStory = state.story ?: story
+        val hero = if (StoryTabPlanning.showsHero(tab, twoPane)) buildStoryHero(pageStory, tab, twoPane, state) else null
         val footer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val frame = StoryFrame(tab, twoPane, hero, footer)
+        val frame = StoryFrame(tab, twoPane, hero, footer, model, state)
         frameRef = frame
         val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         column.addView(buildStoryTabStrip(story, tab, twoPane))
         // Without the hero, a running sync / cleanup / EPUB shows in a slim slot under the strip.
-        if (hero == null) column.addView(buildOperationStrip(story.id))
+        if (hero == null) column.addView(buildOperationStrip(context, state.content).also { strip = it })
         val body = storyTabBody(scrollable, hero.takeIf { !twoPane }) { block(frame) }
         // Dragging the body sideways moves to the neighbouring tab, like the Library's pager.
         val swipe =
@@ -122,11 +124,11 @@ internal fun ScreenHost.storyScreen(
         column.addView(footer)
         if (twoPane && hero != null) {
             val pane =
-                HeroPane(context).apply {
-                    tag = HERO_PANE_TAG
+                NestedScrollView(context).apply {
                     isVerticalScrollBarEnabled = false
                     addView(hero.view)
                 }
+            heroPane = pane
             addView(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -152,11 +154,18 @@ internal fun ScreenHost.storyScreen(
             if (saved > 0) scroller.post { scroller.scrollTo(0, saved) }
         }
     }
-    if (frame.hero != null || frame.chaptersTab != null) {
-        val bindings = DetailsBindings(this.frame.getChildAt(0), frame.chaptersTab, frame.hero)
-        this.frame.findViewWithTag<HeroPane>(HERO_PANE_TAG)?.bindings = bindings
-        observeDetailsDownload(story.id, bindings)
-    }
+    StoryPageRenderer(
+        host = this,
+        model = frame.model,
+        root = this.frame.getChildAt(0),
+        tab = tab,
+        hero = frame.hero,
+        heroPane = heroPane,
+        chapters = frame.chaptersTab,
+        strip = strip,
+        aboutAiSlot = frame.aboutAiSlot,
+        applied = frame.state,
+    ).start()
 }
 
 /** The tab's body: a scroller (the hero leads it on the compact Overview), or a plain column for a list tab. */
@@ -287,7 +296,10 @@ internal fun ScreenHost.storyAppBarActions(story: Story): List<AppBarAction> =
                 switchStoryTab(story.id, StoryTab.CHAPTERS)
             }
         },
-        AppBarAction(R.drawable.wna_more_vert, "More options") { showDetailsOverflow(story) },
+        // The page patches download progress in place without a re-render, so read the story as it is now.
+        AppBarAction(R.drawable.wna_more_vert, "More options") {
+            showDetailsOverflow(storyPageModel(story.id).refresh().story ?: story)
+        },
     )
 
 /** Opens [tab] in place of the current tab, so Back leaves the story instead of walking its tabs. */

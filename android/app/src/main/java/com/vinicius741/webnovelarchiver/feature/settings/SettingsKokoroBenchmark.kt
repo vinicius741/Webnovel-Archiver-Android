@@ -1,9 +1,11 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.view.WindowManager
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroBenchmark
@@ -15,38 +17,81 @@ import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
 
 /** Each model keeps its last report; Kokoro v0.19's keeps the name it always had. */
-private fun ScreenHost.speedTestFile(model: BuiltInModel): File =
-    File(app.filesDir, if (model == BuiltInModel.KOKORO_V019) "kokoro_speed_test.txt" else "${model.dirName}_speed_test.txt")
+internal fun speedTestFile(
+    context: Context,
+    model: BuiltInModel,
+): File = File(context.filesDir, if (model == BuiltInModel.KOKORO_V019) "kokoro_speed_test.txt" else "${model.dirName}_speed_test.txt")
 
-/** Whether a finished speed test of [model] can be opened again from its card. */
-internal fun ScreenHost.hasKokoroSpeedTest(model: BuiltInModel): Boolean = speedTestFile(model).isFile
+/**
+ * Times [model] on this phone with narration stopped (so the test measures the model alone), saves
+ * the report next to the app's files and returns it. Runs for [TtsSettingsScreenModel.startSpeedTest].
+ */
+internal suspend fun runKokoroSpeedTest(
+    host: ScreenHost,
+    model: BuiltInModel,
+    settings: TtsSettings,
+    shouldStop: () -> Boolean,
+    onProgress: (String) -> Unit,
+): String {
+    val app = host.app
+    val container = app.appContainer
+    // Stopping, not pausing: a paused chapter keeps rendering ahead, which would share the CPU.
+    host.ttsEngine.stop()
+    val voice = KokoroVoices.voiceFor(model, settings.voiceIdentifier)
+    // Generation shares the model and the CPU: stop it so the test measures Kokoro alone.
+    val resumeNarration = container.narration.pauseForSpeedTest()
+    val result =
+        try {
+            KokoroBenchmark(app, KokoroModelFiles(app, model)).run(
+                voice = voice,
+                listeningRate = settings.rate,
+                narrationModelLoaded = container.builtIns.runtime(model).isLoaded,
+                shouldStop = shouldStop,
+                onProgress = onProgress,
+            )
+        } finally {
+            if (resumeNarration) withContext(Dispatchers.IO + NonCancellable) { runCatching { container.narration.resume() } }
+        }
+    val report = KokoroBenchmarkReport.report(result)
+    Timber.i("Kokoro speed test\n%s", report)
+    withContext(Dispatchers.IO) { runCatching { speedTestFile(app, model).writeText(report) } }
+    return report
+}
 
-internal fun ScreenHost.confirmKokoroSpeedTest(model: BuiltInModel) {
+internal fun ScreenHost.confirmKokoroSpeedTest(
+    model: TtsSettingsScreenModel,
+    builtIn: BuiltInModel,
+) {
     confirm(
-        "Times how fast ${model.family} makes speech on this phone at several settings and how much of the " +
+        "Times how fast ${builtIn.family} makes speech on this phone at several settings and how much of the " +
             "phone it uses. It takes a few minutes. Narration stops while it runs; your place is " +
             "saved. Keep this screen open.",
         "Start",
-    ) { runKokoroSpeedTest(model) }
+    ) {
+        model.startSpeedTest(builtIn)
+        showKokoroSpeedTestProgress(model, builtIn)
+    }
 }
 
-private fun ScreenHost.runKokoroSpeedTest(model: BuiltInModel) {
-    // Stopping, not pausing: a paused chapter keeps rendering ahead, which would share the CPU.
-    ttsEngine.stop()
-    val settings = repository.ttsSettings.get()
-    val voice = KokoroVoices.voiceFor(model, settings.voiceIdentifier)
-    val stopRequested = AtomicBoolean(false)
+/**
+ * The progress dialog of the running speed test. It follows the model's [TtsSettingsScreenModel.speedTest]
+ * on its own (it outlives a fold's rebuild of the page) and shows the report when the test ends.
+ */
+private fun ScreenHost.showKokoroSpeedTestProgress(
+    model: TtsSettingsScreenModel,
+    builtIn: BuiltInModel,
+) {
     val dialog =
         AlertDialog
             .Builder(app)
-            .setTitle("${model.family} speed test")
+            .setTitle("${builtIn.family} speed test")
             .setMessage("Starting")
             .setCancelable(false)
             .setNegativeButton("Stop", null)
@@ -55,37 +100,36 @@ private fun ScreenHost.runKokoroSpeedTest(model: BuiltInModel) {
     dialog.applyAppTheme()
     dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { button ->
-        stopRequested.set(true)
         button.isEnabled = false
-        dialog.setMessage("Stopping after the current sentence")
+        model.stopSpeedTest()
     }
-    scope.launch {
-        // Generation shares the model and the CPU: stop it so the test measures Kokoro alone.
-        val resumeNarration = app.appContainer.narration.pauseForSpeedTest()
-        val result =
-            KokoroBenchmark(app, KokoroModelFiles(app, model)).run(
-                voice = voice,
-                listeningRate = settings.rate,
-                narrationModelLoaded =
-                    app.appContainer.builtIns
-                        .runtime(model)
-                        .isLoaded,
-                shouldStop = stopRequested::get,
-            ) { progress -> app.runOnUiThread { if (dialog.isShowing && !stopRequested.get()) dialog.setMessage(progress) } }
-        if (resumeNarration) withContext(Dispatchers.IO) { runCatching { app.appContainer.narration.resume() } }
-        val report = KokoroBenchmarkReport.report(result)
-        Timber.i("Kokoro speed test\n%s", report)
-        withContext(Dispatchers.IO) { runCatching { speedTestFile(model).writeText(report) } }
-        if (dialog.isShowing) dialog.dismiss()
-        showKokoroSpeedTestReport(report)
-        showTtsSettings()
-    }
+    val follow =
+        scope.launch {
+            model.speedTest.collect { run ->
+                if (run == null) {
+                    dialog.dismiss()
+                    return@collect
+                }
+                val report = run.report
+                if (report == null) {
+                    dialog.setMessage(run.message)
+                } else {
+                    dialog.dismiss()
+                    model.speedTestShown()
+                    showKokoroSpeedTestReport(report)
+                }
+            }
+        }
+    dialog.setOnDismissListener { follow.cancel() }
 }
 
 /** The last speed test's results, if one has finished. */
-internal fun ScreenHost.showLastKokoroSpeedTest(model: BuiltInModel) {
+internal fun ScreenHost.showLastKokoroSpeedTest(
+    model: TtsSettingsScreenModel,
+    builtIn: BuiltInModel,
+) {
     scope.launch {
-        val report = withContext(Dispatchers.IO) { runCatching { speedTestFile(model).readText() }.getOrNull() }
+        val report = model.lastSpeedTest(builtIn)
         if (report == null) toast("No speed test results yet") else showKokoroSpeedTestReport(report)
     }
 }

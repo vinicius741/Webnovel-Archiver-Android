@@ -1,33 +1,25 @@
 package com.vinicius741.webnovelarchiver.feature.story
 
-import com.vinicius741.webnovelarchiver.cleanup.CleanupEngine
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubConfigPlanning
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
-import com.vinicius741.webnovelarchiver.feature.details.refreshStoryHero
-import com.vinicius741.webnovelarchiver.feature.details.refreshStoryOperationStrip
-import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
-import com.vinicius741.webnovelarchiver.feature.details.showStoryScreen
-import com.vinicius741.webnovelarchiver.feature.reader.showReader
-import com.vinicius741.webnovelarchiver.feature.updates.isSyncingFromUpdates
+import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.details.storyTabShowing
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
-import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.navigation.storyOperation
+import com.vinicius741.webnovelarchiver.operations.StoryWork
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.confirm
-import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 internal fun ScreenHost.applyCleanup(story: Story) {
-    if (storyOperation != null || isSyncingFromUpdates(story.id)) {
+    if (storyOperation != null || operations.isSyncingFromUpdates(story.id)) {
         toast("Please wait for the current operation to finish")
         return
     }
@@ -45,100 +37,31 @@ internal fun ScreenHost.applyCleanup(story: Story) {
     }
 }
 
-@Suppress(
-    "TooGenericExceptionCaught",
-    "InstanceOfCheckForException",
-)
+@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException")
 // E1: route non-cancellation failures through the user-facing error path.
 private fun ScreenHost.runCleanup(
     story: Story,
     downloaded: List<Chapter>,
 ) {
-    setStoryOperation(story.id, StoryOperationKind.CLEANUP, "Processing...")
-    scope.launch(Dispatchers.IO) {
+    if (storyOperation != null || operations.isSyncingFromUpdates(story.id)) {
+        toast("Please wait for the current operation to finish")
+        return
+    }
+    // Undispatched, so the operation slot is taken before this returns and a second tap is refused.
+    scope.launch(start = CoroutineStart.UNDISPATCHED) {
         try {
-            val sentenceRemoval = repository.sentenceRemovalList.get()
-            val regexRules = repository.regexRules.get()
-            val noticeMarker = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.insertedNoticeMarker
-            var processed = 0
-            var errors = 0
-            var changed = 0
-            var sentencesRemoved = 0
-            var regexMatchesRemoved = 0
-            val startedAt = System.nanoTime()
-            downloaded.forEachIndexed { index, chapter ->
-                withContext(Dispatchers.Main) {
-                    setStoryOperation(
-                        story.id,
-                        StoryOperationKind.CLEANUP,
-                        "Processing ${index + 1}/${downloaded.size}: ${chapter.title}",
-                        (index + 1).toFloat() / downloaded.size,
-                    )
-                }
-                try {
-                    val html = repository.readChapter(chapter) ?: error("Downloaded chapter file is missing")
-                    val result = CleanupEngine.shared.applyDownloadWithStats(html, sentenceRemoval, regexRules, noticeMarker)
-                    // Skip writes whose cleaned HTML equals the original.
-                    if (result.html != html) {
-                        // Persist the stale marker before the first chapter modification:
-                        // cancellation, process death, or a later failure must never leave modified
-                        // chapter files under an EPUB still marked current. A run that changes
-                        // nothing leaves the EPUB's freshness untouched.
-                        if (changed == 0) markCleanupAppliedOrAbort(story.id)
-                        check(repository.overwriteChapter(chapter, result.html)) { "Downloaded chapter file is missing" }
-                        changed += 1
-                    }
-                    processed += 1
-                    sentencesRemoved += result.sentencesRemoved
-                    regexMatchesRemoved += result.regexMatchesRemoved
-                } catch (error: Exception) {
-                    // The per-chapter boundary must rethrow cancellation, not count it as an error, and
-                    // a deleted story aborts the whole run rather than failing chapter by chapter.
-                    if (error is CancellationException || error is CleanupStoryRemovedException) throw error
-                    errors += 1
-                }
-            }
-            Timber.i(
-                "Text cleanup of %d chapters (%d changed) took %d ms",
-                downloaded.size,
-                changed,
-                (System.nanoTime() - startedAt) / NANOS_PER_MILLI,
-            )
-            withContext(Dispatchers.Main) {
-                clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
-                showStoryScreen(story.id)
-                val summary =
-                    CleanupSummaryPlanning.summarize(
-                        CleanupRunStats(
-                            totalChapters = downloaded.size,
-                            processedChapters = processed,
-                            failedChapters = errors,
-                            changedChapters = changed,
-                            sentencesRemoved = sentencesRemoved,
-                            regexMatchesRemoved = regexMatchesRemoved,
-                        ),
-                    )
-                alert(summary.title, summary.message)
-            }
+            val stats = storyWork.cleanup(story, downloaded)
+            showStoryPage(story.id)
+            val summary = CleanupSummaryPlanning.summarize(stats)
+            alert(summary.title, summary.message)
         } catch (error: Throwable) {
             // E1: structured-concurrency safety — never swallow cancellation.
             if (error is CancellationException) throw error
             Timber.w(error, "Cleanup failed for %s", story.id)
-            withContext(Dispatchers.Main) {
-                clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
-                toast(error.message ?: "Cleanup failed")
-                showStoryScreen(story.id)
-            }
+            toast(error.message ?: "Cleanup failed")
+            showStoryPage(story.id)
         }
     }
-}
-
-private const val NANOS_PER_MILLI = 1_000_000L
-
-private class CleanupStoryRemovedException : IllegalStateException("Story was removed while cleanup was running")
-
-private suspend fun ScreenHost.markCleanupAppliedOrAbort(storyId: String) {
-    if (repository.markCleanupApplied(storyId) == null) throw CleanupStoryRemovedException()
 }
 
 internal fun ScreenHost.generateConfiguredEpub(story: Story) {
@@ -186,96 +109,33 @@ internal fun ScreenHost.generateEpub(
     config: EpubConfig = EpubConfigPlanning.resolve(story, repository.settings.get().maxChaptersPerEpub),
     originalChapterNumbers: List<Int>? = null,
 ) {
-    if (storyOperation != null || isSyncingFromUpdates(story.id)) {
+    if (storyOperation != null || operations.isSyncingFromUpdates(story.id)) {
         toast("Please wait for the current operation to finish")
         return
     }
-    scope.launch {
+    scope.launch(start = CoroutineStart.UNDISPATCHED) {
         try {
-            setStoryOperation(story.id, StoryOperationKind.EPUB, "Preparing...")
-            val results =
-                epubEngine.generate(story, chapters, config, originalChapterNumbers) { msg ->
-                    app.runOnUiThread {
-                        setStoryOperation(story.id, StoryOperationKind.EPUB, msg, epubProgressFromMessage(msg))
-                    }
-                }
-            clearStoryOperation(story.id, StoryOperationKind.EPUB, rerender = false)
-            toast("Generated ${results.size} EPUB file(s)")
-            showStoryScreen(story.id)
+            val files = storyWork.epub(story, chapters, config, originalChapterNumbers)
+            toast("Generated $files EPUB file(s)")
+            showStoryPage(story.id)
         } catch (error: Throwable) {
             // E1: structured-concurrency safety — never swallow cancellation.
             if (error is CancellationException) throw error
             Timber.w(error, "EPUB generation failed for %s", story.id)
-            clearStoryOperation(story.id, StoryOperationKind.EPUB, rerender = false)
             toast(error.message ?: "EPUB failed")
-            showStoryScreen(story.id)
+            showStoryPage(story.id)
         }
     }
 }
 
-internal fun ScreenHost.navigateChapter(
-    story: Story,
-    chapter: Chapter,
-    delta: Int,
-) {
-    // Walk from the current chapter toward delta and open the first downloaded chapter, skipping
-    // gaps. Non-downloaded chapters aren't readable (no reader placeholder), so prev/next should land
-    // on real content rather than a dead end. If there is no downloaded chapter in that direction,
-    // do nothing — matching the previous `?: return` behavior at the end of the list.
-    val startIndex = story.chapters.indexOfFirst { it.id == chapter.id }
-    if (startIndex < 0) return
-    var i = startIndex + delta
-    while (i in story.chapters.indices) {
-        if (story.chapters[i].downloaded) {
-            showReader(story.id, story.chapters[i].id)
-            return
-        }
-        i += delta
-    }
-}
+/** The story work (sync, cleanup, EPUB), which publishes its progress to [ScreenHost.operations]. */
+internal val ScreenHost.storyWork: StoryWork
+    get() = StoryWork.create(operations, repository, syncEngine, epubEngine)
 
-internal fun ScreenHost.setStoryOperation(
-    storyId: String,
-    kind: StoryOperationKind,
-    message: String,
-    progress: Float? = null,
-) {
-    val previous = storyOperation
-    val next = StoryOperationState(storyId, kind, message, progress)
-    storyOperation = next
-    if (activeStory?.id != storyId) return
-    // First tick for this operation (or kind change): full Details rebuild so buttons disable and
-    // the progress slot is allocated. Subsequent ticks only swap the slot's message/bar — a full
-    // rebuild per chapter was the cleanup flicker (blank frame + scroll restore on every update).
-    val canPatchInPlace =
-        previous?.storyId == storyId &&
-            previous.kind == kind &&
-            detailsOperationSlot != null
-    if (canPatchInPlace) {
-        renderStoryOperationProgress(detailsOperationSlot!!, next)
-    } else {
-        refreshStoryHero(storyId)
-    }
-}
-
-internal fun ScreenHost.clearStoryOperation(
-    storyId: String,
-    kind: StoryOperationKind,
-    rerender: Boolean = true,
-) {
-    if (storyOperation?.storyId == storyId && storyOperation?.kind == kind) {
-        storyOperation = null
-        detailsOperationSlot = null
-        if (activeStory?.id == storyId) {
-            // Without a re-render the caller redraws the page itself; only the strip under the tabs is cleared now.
-            if (rerender) refreshStoryHero(storyId) else refreshStoryOperationStrip(storyId)
-        }
-    }
-}
-
-private fun epubProgressFromMessage(message: String): Float? {
-    val match = Regex("""Generating EPUB\s+(\d+)/(\d+)""").find(message) ?: return null
-    val current = match.groupValues[1].toFloatOrNull() ?: return null
-    val total = match.groupValues[2].toFloatOrNull()?.takeIf { it > 0f } ?: return null
-    return (current / total).coerceIn(0f, 1f)
+/**
+ * Brings the user back to the story after its operation ended. A story tab already on screen
+ * redraws itself from the cleared operation, so only another screen navigates to the Overview.
+ */
+internal fun ScreenHost.showStoryPage(storyId: String) {
+    if (!storyTabShowing(storyId)) showDetails(storyId)
 }

@@ -1,186 +1,203 @@
 # Native Android Instructions
 
-These instructions apply to the active Kotlin application under `android/`. Commands below run from the repository root.
+These instructions apply to the Kotlin app under `android/`. Commands run from the repository root.
+This file holds current rules only, never history. Git and `docs/` hold history. Detail about one
+subsystem goes in that package's `AGENTS.md` (below), not here. `ArchitectureRulesTest` fails when
+this file grows past its size budget.
 
-## Project Map
+## Package instructions
 
-All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarchiver/`.
+Before editing a package listed here, read its `AGENTS.md`. Paths are under
+`app/src/main/java/com/vinicius741/webnovelarchiver/`.
 
-- `app/` owns Android lifecycle and process-wide dependency wiring (`WebnovelArchiverApp`, `MainActivity`, `AppContainer`, `RepositoryStartup`). `WebnovelArchiverApp` constructs the shared container on its IO scope; `MainActivity` shows startup UI and awaits it before wiring engines. `AppContainer` holds the single process-wide instances of repository, network, sync/epub/tts engines.
-- `navigation/` defines route-based navigation: `AppRoute` (stable destination identity with persisted ids), `AppNavigator`, `ScreenBack`, `RouteViewMemory`, and the `ScreenHost` contract. `ShellNavigationPlanning` maps routes to the five top-level destinations (Library, Updates, Listen = `AppRoute.Narration`, Downloads = `AppRoute.Queue`, Settings), decides which routes hide the navigation (Reader, ChapterSelection, Player, AddStory, Working) or the mini player (Reader, Player, Listen), and starts a destination tap's history over the Library root; `ShellBadgePlanning` feeds the nav badges. New full-screen destinations need a route, an `AppRoute.parent`, and a `ScreenHost` entry — do not key screens off mutable display titles.
-- `feature/browser/` launches third-party sites in a browser-powered Custom Tab and receives import URLs through `MainActivity`; do not move third-party OAuth back into a WebView. It also hosts `CloudflareSolveActivity`, a narrow in-app WebView that solves interactive Cloudflare challenges in the shared `android.webkit.CookieManager` session. The visible solver preserves existing clearance and verifies loaded source content before automatically retrying. `source/network/CloudflareBypassInterceptor.kt` normally uses OkHttp, but after a challenge it switches that host to a persistent, serialized Chromium-rendered transport for the active passage window instead of replaying a browser token through a different TLS fingerprint. A source that declares `browserTransportOnly` (Scribble Hub) never uses OkHttp for pages, and with `SourceUserAgentMode.WEBVIEW` it keeps the WebView's own User-Agent and navigation headers. A render that stalls with no challenge showing is retried once in a fresh WebView and never opens the manual circuit; solver scripts run through `GuardedJavascript` so an unanswered one cannot stop the polling. Form POSTs and JSON GETs (an `Accept: application/json` request, e.g. the Patreon API) use same-origin browser `fetch` to preserve AJAX headers and return the raw response text. `SourceReliabilityCoordinator` owns the process-wide request budget, adaptive pacing, cooldown, and manual-verification circuit shared by sync and downloads. That CF path is distinct from OAuth — third-party login/credential flows still go through Custom Tabs, never the in-app WebView.
-- `feature/` groups browser, cleanup, details, downloads, library, updates, player, reader, settings, AI controls, and shared story-action UI by user-facing flow. The UI follows the v3 "Restructured" design (`docs/architecture/ui-v3-design.md`, prototype in `design/prototypes/v3-restructured/`).
-- "The download screen" is ambiguous: `feature/downloads/QueueScreen.kt` (`showQueue`) is the global queue across all stories; `feature/details/DetailsScreenDownload.kt` is the per-story download banner on the details page. The top-level `download/` package is the engine/planning layer (`DownloadEngine`, `DownloadForegroundService`, scheduler) and contains no screen — confirm which surface a change targets before editing.
-- The Downloads screen lists novels in real download order: the scheduler takes pending jobs first-in-first-out per site, so queue list position *is* priority. `download/DownloadQueueSectionPlanning` splits the queue into Needs attention (one card per Cloudflare-blocked site, plus retryable failures), Downloading now, Up next, Paused, and a folded Finished section; `DownloadQueueOrderPlanning` rewrites list order for drag-to-reorder, "Download now" (also a drop onto the Downloading now card), and "Move to bottom"; `DownloadQueueStatusCopy` owns the plain-language status lines. `feature/downloads/QueueItems.kt` flattens the plan into rows (chapter rows are separate items so countdown ticks rebind one row), `QueueListAdapter` renders them with an `ItemTouchHelper` limited to collapsed Up next cards, which may drop among Up next or onto Downloading now (a drop there runs "Download now"), and `QueueMenus.kt` holds the app-bar/novel/chapter menus. A passed check in `CloudflareSolveActivity` calls `resumeDownloadsAfterSourceCheck`, which requeues that site's blocked chapters without spending retries; `SourceCheckOutcomes` (in-memory) drives the card's Verified / Still blocked states.
-- `domain/model/` contains persisted/application models; `domain/archive/` (ZIP/percent-encoding helpers), `domain/story/`, and `domain/metrics/` contain pure domain rules (including publication-status/source-availability lifecycles, removed-from-source chapter placement (`RemovedChapterPlanning`), the legacy archive-snapshot fold (`LegacyArchiveFoldPlanning`), and per-novel metric-trend snapshot planning/retention). `domain/metrics/MetricSnapshotPlanning.kt` is the single owner of same-day coalescing + downsampling + series extraction + trend direction for the Trends feature; `domain/metrics/TrendAxisPlanning.kt` owns the data-fitted chart Y-range math; `domain/metrics/TrendFilterPlanning.kt` owns the Trends range/metric-family filters (offered ranges, range windows with a carry-in point, LTTB chart downsampling). `domain/download/DownloadJobTransitions.kt` is the single owner of a download job's lifecycle fields (status, retry deadline, retry count, error fields): every move names its legal source statuses, a worker result applies only while the row is still `downloading`, and `DownloadJobTransitionOwnershipTest` fails if other production code assigns those fields. `download/DownloadProcessLoop` and `DownloadSourceReliability` read and write the queue through `DownloadQueueStore` (production wraps `AppStorage`), so `DownloadProcessLoopTest` drives the real scheduling loop on virtual time against an in-memory queue.
-- `feature/details/TrendsScreen.kt` (`showTrends`) is the per-novel metric Trends screen, shown as the story page's Trends tab and also reached from the Overview's score pill and Patreon card. `TrendSeriesModel.kt` extracts all series once per open off the main thread; range and metric-family chips rebuild only the card list, and charts attach one per animation frame with no draw-in animation (MPAndroidChart rasterizes in software, so animating every card dropped frames). Charts are built in `feature/details/TrendChart.kt` via MPAndroidChart's `MPChartLib` Android Views module (JitPack, see `settings.gradle`) with Y axes fitted to the data (not pinned to the full metric domain) and a fixed chart height set by the screen. MPAndroidChart 4 uses Kotlin properties and `IAxisValueFormatter`; use its Views module for this app. The details header also patches a small trend arrow beside the score once the history loads (`DetailsHeader.observeScoreTrend`).
-- `feature/ai/AiControlsScreenState.kt` owns activity-lifetime drafts, the per-story Cover/Characters/Description tab, the open character page, and the job chip's in-memory failures/dismissals. Its `AiControlsBinding` holds only the attached AI Controls views; `screen()` and activity destruction clear it. Message-only AI updates use `updateAiControlsProgress`; job transitions and new results rebuild controls. Model pickers live in AI Settings; their callbacks use `refreshAiModelFields` (backed by `AiControlsScreenState.refreshModels`), since a fold transition can replace the tree while the picker remains open. The app-wide AI job chip (`feature/ai/AiJobChip.kt`, attached once per activity like the TTS mini-player) reads the cover coordinator, the description `aiOperation`, and the repository's persisted `aiCoverUnseen` set. Model and reasoning edits stay in `AiModelSelectionDraft` until Use model commits both together. Keep background coordinators independent of these Views. AI jobs live in `ScreenHost.aiOperation`, separate from `storyOperation` (sync / cleanup / EPUB): only `storyOperation` gates the Details content actions, and only `aiOperation` gates AI starts.
-- `feature/story/ManualStorySync.kt` owns the common manual lookup/fetch/download-plan sequence. URL import and existing-story actions retain their own UI callbacks. The Updates destination (`feature/updates/`, `AppRoute.Updates`) replaced the removed threshold-based bulk Updates / Follow Updates screens: `domain/story/UpdatesPlanning` groups every novel from `ReleaseCadencePlanning` forecasts (May be out, To download, Expected soon, Running late, Recently synced, a 7-day calendar, and the nav badge count), and its per-novel sync and "Sync all that may be out" run one novel at a time through the same `ManualStorySync` path as Details.
-- `data/repository/` is the single owner of library, download-queue, and settings mutations (`AppRepository` + cached `StateFlow`s). Screens and services should go through the repository rather than opening parallel storage write paths.
-- `perf/` owns the debug-gated performance recorder (`PerfRecorder`, session state machine, FrameMetrics collector; see `docs/architecture/performance-tracking.md`). It activates only when a launch intent carries `perf_session 1` (the `scripts/perf/perf_runner.py` host runner does this); every hook call site is behind `BuildConfig.DEBUG`, so release behavior is unchanged. Don't route new timings around it — add events via `PerfInstrumentation` when a screen or phase needs measuring.
-- `data/storage/` owns file-based JSON persistence (`AppStorage`), atomic writes, library-index recovery, and backup orchestration helpers. Full-restore crash recovery is the decision table in `RestoreStartupRecovery` (journal phase × live root × snapshot); any change to the swap, rollback or recovery must keep `RestoreCrashRecoveryTest`, which kills each at every filesystem step, passing. `data/backup/` owns backup/restore planning and validation. `data/diagnostics/` owns local diagnostic export and the persistent activity log (`ActivityLog`, `docs/architecture/activity-log.md`): record an `ActivityLog.record` event with story ids, titles, and counts at each new library-, sync-, download-, or backup-changing decision point, never chapter text, cookies, or keys.
-- `feature/player/` is the podcast-style TTS player UI: the app-level mini-player bar (`attachTtsMiniPlayer`, docked in the app shell's bottom shelf above the navigation bar while a session is loaded, hidden on Reader, Now Playing and Listen; the Reader docks its own `ReaderPlayerDock` in place of chapter nav while that chapter is read aloud, with a "Back to current sentence" pill when the user scrolls away; the highlight, following and chapter auto-follow live in one per-page `feature/reader/ReaderReadAlong` controller, bound to the WebView's attachment, with rules in `ReadAlongPlanning` and a render-only page script that also pulls the state as a safety net) and the Now Playing screen (`showPlayer`, `AppRoute.Player`). Playback state comes from `TtsEngine.playbackState`; per-story resume positions persist in `tts_positions.json` (see `docs/tts/tts-podcast-player.md`).
-- `tts/` renders sentences to `cacheDir/tts_audio/` (`TtsAudioRenderer`, `TtsAudioCache`) with the user-chosen engine (`TtsSettings.enginePackage`): an Android TTS app or a built-in model (`tts/kokoro/BuiltInModels.kt`: Kokoro v1.0 through sherpa-onnx (Kokoro v0.19 is `retired`: not offered, its settings load as v1.0 via `TtsEnginePlanning.withoutRetiredEngine`, its packs still play and servers still run it), Phonon 31M through `tts/phonon/PhononTTS.kt`, JNA over `src/main/jniLibs/*/libptts_ffi.so` rebuilt by `scripts/phonon/build-android-lib.sh`; each downloaded on demand by its `KokoroModelInstaller` and loaded only while in use in its `KokoroRuntime`, both held by `BuiltInEngines` in `AppContainer`, on one thread per fast core (`KokoroThreads`; chapter generation on the phone runs Phonon two sentences at a time on phones with 6+ fast cores and memory to spare, `PhononCopies`); Phonon offers all 37 English catalog voices, listed identically in `BuiltInModels.kt` and `scripts/narration-server/setup.sh` (a test checks), and an older Phonon install downloads only voices added since; a built-in model needs no download when computers generate (live speech then falls back to the phone's engine, `TtsEnginePlanning.standIn`), and the Listening settings sample generates on the computers instead; story-description read-aloud was removed in November 2026 and an old saved description session is never resumed (`TtsSessionPlanning.isResumeEligible`); see `docs/tts/built-in-models.md`; Settings' Kokoro **Test speed** (`KokoroBenchmark`, UI in `feature/settings/SettingsKokoroBenchmark.kt`, debug builds only) times generation on the device and exports a shareable report; see `docs/tts/kokoro-built-in-voices.md`) and plays them as one stream (`TtsPcmPlayer`), falling back to live speech (`LiveTtsOutput`) if rendering fails; see `docs/tts/tts-audiobook-playback.md`. `TtsEngine` tracks its output as one `TtsOutputPhase` (Silent / WaitingForEngine / Running), separate from the persisted pause, and reports playing only when the output is running and not paused. A pause is the listener's decision: only an explicit play or recovery from a brief interruption may start audio, so moves, restores and restarts must keep it. Saved places resolve by their text anchor (`TtsPositionPlanning.resolve`), so bump `TtsTextPreparation.CHUNKING_VERSION` when sentence numbering changes. Do not read repository settings on the main thread before `awaitRepositoryReady`: a restarted service can run ahead of startup, and the first read can deadlock against it.
-- `narration/` owns pre-generated chapter audio (see `docs/tts/narration-pregeneration-plan.md`). A chapter plays **only** from its complete pack: `TtsEngine.loadOutputLocked` is the single start point and gates on `NarrationCoordinator.readyPack` (matching text fingerprint), playing through `tts/PackTtsOutput` with no speech engine or model loaded; otherwise the session stays paused with `TtsPlaybackErrorKind.AudioNotGenerated` and the chapter is queued first. Audio made from text that has since changed (a cleanup rule, a re-download) still plays: `TtsPlaybackPreparer` prepares the pack's own `recipe.sentences` (same chunking version) instead of the current text, so its fingerprint matches. The Listening settings sample keeps the real-time rendered path, except a sample in a built-in model that is not on the phone: it generates on the chosen computers first (`NarrationSampleRenderer`, chips in the Try it card via `TtsSamplePlanning`) and never borrows a stand-in voice. `NarrationCoordinator` (one instance in `AppContainer`) owns `NarrationStore` (packs in `filesDir/narration/packs/<sha story>/<sha chapter>/`, immutable `v-<id>` version folders with `recipe.json`, per-sentence clips (AAC-LC 64k through `AacNarrationCodec` in the `NarrationClipFormat` layout with the measured codec delay stored per clip; reused clips are copied, never re-encoded; packs from before 2026-11-20 hold PCM `.pcm` clips that still play and `NarrationRecompressor` converts in the background while the generator is idle, publishing only if the pack is unchanged, pausing with growing waits after codec failures instead of stopping, and publishing its progress as `NarrationCoordinator.compression`, shown in Settings and Listen › Generated by `CompressionStatusView`; see `docs/tts/narration-audio-compression.md`), `index.json` written last and an atomically replaced `current` pointer; playback `retain`s its version; the startup sweep never deletes a published pack, and packs of stories no longer in the library show as detached), `NarrationQueue` (`queue.json`: jobs with the voice resolved at enqueue, pause, keep-ahead count, measured speed), `NarrationGenerator` (one worker; Kokoro converts directly to PCM without a temporary WAV; `KokoroRuntime.refitThreads` keeps the native thread count within the cores Android allows (`KokoroThreads.forNow`); yields at the next sentence when another job is moved first, keeping its clips; resumes at the first missing clip, reuses identical clips of the same voice, re-checks job, text fingerprint and `libraryGeneration` before publishing, pauses the queue when storage runs out) and keep-ahead (`NarrationPlanning.keepAheadChapters`: a fixed window after the playing chapter, add-only). Generation never substitutes another engine (`NarrationSynthesizers`). Built-in-model jobs (Kokoro v0.19, v1.0, Phonon; the server runs each installed model and is told which per request) can generate on the owner's computers (`NarrationQueueDocument.servers`/`generateOnIds`/`phoneFallback`; several chosen computers share each chapter's sentences through `NarrationPlacePool`, which sets aside one that fails or stops for memory, probes it back, waits up to 15 minutes while none can be reached (a Wi-Fi change) and pauses only after that or for a problem waiting cannot fix, unless the phone stands in; `NarrationServerClient` over a plain socket, `scripts/narration-server`; see `docs/tts/remote-narration-servers.md`). Each computer has a local-network and a Tailscale address; `reachServer` tries the local one first, and `NarrationServerMonitor` checks every 30 s, while Settings › Listening is visible, whether each computer is online (`/v1/status`, which neither loads the model nor keeps the computer awake; Setup shows it per computer): the remote synthesizer shares the phone's `KokoroVoices.voiceKey`, the generator keeps `parallelism` sentences unanswered, starts up to three per slot ahead of the one being written so a finished clip never holds a slot (`ClipsAhead`), and writes clips in order, a place change switches at the next sentence, and a `NarrationServerProblem` from the pool pauses the queue (`pausedForServer`) instead of failing jobs. The client keeps connections alive; a `503` (the server short of memory) is `NarrationServerBusy`, which the pool waits out (`Retry-After`) on that computer while others keep generating, and `NarrationProgress.waitingFor` explains the wait when none can. The server is Rust and runs on both of the owner's computers, the Bazzite handheld (systemd user unit) and the MacBook (launchd agent): `cargo test` in `scripts/narration-server`; build needs `SHERPA_ONNX_LIB_DIR`, which `setup.sh` provides; a change to it must keep both systems working (the macOS notes are in `docs/tts/remote-narration-servers.md`). `NarrationForegroundService` (`specialUse`, wake lock leases) keeps the process alive while runnable jobs exist; the worker waits until this service enters the foreground and suspends between clips if the service stops. A refused background start leaves jobs queued. Queue deduplication skips only packs matching the current text and chunking version, so outdated audio can be generated again; screen statuses key cached text fingerprints by the chapter file's size and modification time, download time, cleanup rules and chunking version, while playback always checks the text it prepared. Publication and job removal share the queue lock so cancellation or a voice replacement cannot lose the newer request. Doze needs the battery-optimization exemption the Narration screen offers. UI: `feature/narration/` (`AppRoute.Narration` is the Listen destination: a Now playing / Continue listening card over Queue (the cross-story generation queue grouped by story, with reordering, Clear queue and the live `NarrationLiveStatus` banner driven by `NarrationScreenPlanning.banner`) and Generated (each story's audio, storage once, restore leftovers in one row)); where audio generates (Generate on, computers) and the keep-ahead "Chapters ahead" stepper live in Settings › Listening (`feature/settings/SettingsTts.kt` hosts `setupSection`). A chapter's audio lives on the story page's Chapters tab (`feature/details/ChapterAudio.kt`: row labels from the queue and published packs, an Audio filter, long-press actions, the story audio menu); Select (`ChapterSelectionScreen`) is one selection for Download / Generate audio / Delete audio. The former Audio tab route (`narration_story`) decodes to the Chapters tab. Every "listen" entry point goes through `playIfGenerated`, which plays generated audio or queues the chapter at the front and starts it once ready; `playChapter` plays the tapped chapter itself (from the saved place only when that place is in it). The story page's Listen button uses `continueListening`, which resumes the story's listening place (never the bookmark's chapter unless the story has no place). Any start away from the saved place adds that place to the listening history first (`TtsPositionPlanning.historyForStart`), so it is never silently lost. Pure rules live in `NarrationPlanning` and `feature/narration/NarrationScreenPlanning` with JUnit tests. Generation speed and ETA use wall time; `narration_published` records audio/generation/render milliseconds, native inference threads, allowed CPUs and process importance.
-- `source/` owns network/source providers and Cloudflare detection/solving; `sync/`, `download/`, `epub/`, `cleanup/`, `tts/`, and `ai/` own their respective engines and planning logic. The `ai/` package contains the OpenRouter generation and decision-model layers (client on a plain OkHttp stack — deliberately not the Cloudflare-intercepted `NetworkClient` — plus description and cover-art planning/engines); cover generation runs as a process-lifetime background job (`AiCoverJobCoordinator`, a thin wrapper over the generic `AiJobCoordinator`, kept alive by `AiJobForegroundService`), persisting each result before announcing it. The former Chapter polish (rewrite/verifier) feature was removed in October 2026: startup deletes its leftover `chapter_rewrites/` tree, and full-backup restore still validates but discards that tree from older backups. The per-novel AI UI is `feature/ai/AiControlsScreen.kt` (the story page's AI tab; tapping a cover opens the full-screen `showCoverViewer` to compare and choose), which saves cover experiments locally and changes the displayed cover only when the user chooses "Use this cover" in the full-screen viewer (opened from its cover strip) or taps Use new cover — see `docs/ai/`. The AI screen's Characters tab (`feature/ai/AiCharactersTab.kt`, `AiCharacterPage.kt`) runs on its own process-wide `CharacterJobCoordinator` (also kept alive by `AiJobForegroundService`): `CharacterEngine` counts names on the device (`CharacterMining`), makes one text-model call for the list (`CharacterRosterPlanning`), and paints portraits from a per-character decision scan (`CharacterAppearanceRubric`; the lead reuses the cover scan). The list and portraits live in `CharacterStore` (`ai_characters/<story>/`, device-local, not in backups, deleted with the novel); see `docs/ai/ai-characters.md`.
-- `appupdate/` owns update checks against GitHub Releases (`docs/release/in-app-updates.md`): `AppUpdateCoordinator` (process-wide state in `AppContainer`), `GitHubReleaseClient` on a plain OkHttp stack (not `NetworkClient`), and pure `AppUpdatePlanning`. The app never downloads or installs APKs itself: *Download update* opens the release APK in the browser and Android's installer takes it. Do not re-add `REQUEST_INSTALL_PACKAGES`, `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, or a `PackageInstaller` self-update; together with sideloading they get the release app flagged as harmful by Google Play Protect. The UI is `feature/settings/SettingsAppUpdate.kt` (`AppRoute.AppUpdate`) plus the startup prompt in `AppUpdateActions.kt`. Only the published builds (release and beta, `AppContainer.PUBLISHED_BUILD_TYPES`) offer the download; the offline simulation passes no client. Each published app follows its own `UpdateChannel` (`BuildConfig.UPDATE_CHANNEL`): stable reads `releases/latest`, beta takes the newest prerelease marked `channel=beta`, and neither is ever offered the other's APK. The release workflow's `<!-- app-update versionCode=N -->` release-notes marker is how the app orders releases, so keep it.
-- `notification/` owns notification channel definitions and Android 13+ permission helpers used by download/TTS services and the Settings hub's single Notifications row (it requests the permission or opens Android's settings).
-- `ui/` contains the programmatic View DSL, the single Obsidian theme (`ThemeManager`, v3 palette), responsive/foldable behavior, and reusable widgets. `AppShell` frames every screen: `frame` ends above a solid bottom shelf that docks the TTS mini player and the bottom navigation, or a right-hand rail on screens at least 600dp wide; the shelf owns the gesture-bar inset, and `setNavigationSuppressed` hides the navigation while a screen shows its own selection bar. Menus are bottom sheets (`showBottomSheet`, `showStyledOptionsDialog`), numeric settings use `makeStepper`/`stepperRow` (tap to type, hold to repeat), and covers use `CoverImageView`, which never crops; `ui/layout/` contains pure layout planning.
-- Automatic cover and description context use one `ChapterEvidenceSelector` and `DecisionClient` to score downloaded passages with the user-chosen OpenRouter decision model (`AiSettings.decisionModel`, default Jev) through the shared `OpenRouterClient` and device-local OpenRouter key. Each generator supplies an `EvidenceRubric` — `CoverEvidencePlanning` (visual evidence over whole-chapter passages: first 10 chapters then a book-spanning scan with a 60-chapter floor, per-passage main-character-appearance Nouls whose flagged passages reach the prompt writer verbatim, plus chapter-level `age_shown`/`life_stage` questions that `CoverPhasePlanning` turns into story phases so the cover paints one phase (default the main one, `Story.aiCoverPhase` overrides; scoping lives in `CoverEvidenceSelection.kt`); requests stay under ~30 KB to avoid OpenRouter's long-context switch) and `DescriptionEvidencePlanning` (premise without spoilers, opening chapters in reading order) — while `ChapterEvidencePlanning` owns sampling, scan orders and the final choice. Changing a rubric's questions changes its cache keys and rescores. `ChapterEvidenceStore` stores disposable content-addressed score responses and the last automatic chapter selection per `EvidenceSelectionKind` (plus the last cover scan's story phases) under app cache, outside library/backup storage; never put source text or keys in it. Construct it during IO container setup so UI selection reads use its cached snapshot without disk access or cache-maintenance locks. Manual chapter selections bypass the scan. Text-model pickers list only text-output models (`OpenRouterClient.fetchModels` drops image/audio outputs); the decision picker uses `fetchDecisionModels`.
-- Unit tests mirror production package paths under `app/src/test/java/`. Instrumentation tests live under `app/src/androidTest/` and use the separate `instrumentation` application id so they do not share the debug library sandbox.
+| Package `AGENTS.md` | Covers |
+|---|---|
+| `source/` | Source providers, Cloudflare detection, solving and Chromium transport, `feature/browser/`, Patreon early access, Royal Road notices |
+| `download/` | Download engine, scheduler and service, and the global queue screen (`feature/downloads/`) |
+| `domain/` | Models, story and metric rules, download job transitions |
+| `data/` | JSON storage, restore crash recovery, backups, activity log, removed-from-source chapters |
+| `tts/` | Speech engines, built-in models (Kokoro, Phonon), playback, player UI, the Reader and its read-along |
+| `narration/` | Pre-generated chapter audio, generation queue, computers (narration servers), the Listen screen |
+| `ai/` | OpenRouter, evidence selection, covers, characters, descriptions, AI Controls |
+| `appupdate/` | GitHub Releases update checks and the update UI |
+| `feature/details/` | Story page tabs and Trends |
+| `feature/library/` | The Library root, Add story and the author page |
+| `feature/updates/` | The Updates destination and the shared manual sync path |
+| `feature/settings/` | The Settings hub and its pages, autosave, the backup export |
+| `feature/cleanup/` | Text cleanup rules and their saved state |
 
-## Architecture Rules
+## Project map
 
-- Build UI programmatically with Android Views. Do not add XML layout files. Screen architecture decision (2026-10-06 roadmap, Phase 4): screens migrate to per-screen controller/state classes (option B) — each screen owns its state and a single render path, and `ScreenHost` shrinks toward shared dependencies + navigation. Jetpack Compose (option A) stays a possible later migration once the structural debt is paid; do not add it ad hoc.
-- Put non-trivial deterministic decisions and transformations in pure planning functions; keep Android, network, storage, and other I/O in engines or orchestration code. Trivial one-line decisions stay inline at their call site — do not create a `*Planning` file for them.
-- Add or update the matching JUnit test when changing planning logic.
-- Use the existing `AppContainer` for process-wide dependencies and explicit constructor dependencies elsewhere. Do not add a dependency-injection framework without an explicit architectural request.
-- Prefer `AppRepository` transactions and its cached flows for library, queue, and settings reads/writes. Do not instantiate additional `AppStorage` owners that race the same JSON files; the activity and foreground services must share the single repository/storage lock.
-- Navigation is route-based (`AppRoute` / `AppNavigator`). Process recreation restores by route identity (persisted ids), not by mutable titles.
-- Back (app-bar arrow and system gesture) always pops the history; screens do not declare their own back target. Keep the history duplicate-free through `AppNavigator`: opening a route already in the stack returns to it, `Working` is replaced by the next screen, a finished form uses `navigator.replace(...)`, and deep entry points (cold-start resume, notification taps on cold start, dev launch) use `navigator.resetTo(route)` so Back walks up `AppRoute.parent` to the Library. In-screen state Back should clear first (an active search/filter) goes through `screen(backIntercept = ...)`; call `refreshBackCallback()` when it changes on a root screen.
-- Scroll offsets, main-list positions (`rememberListPosition`), and in-screen search text live in `RouteViewMemory`, keyed by `AppRoute.stableKey` and dropped once the route leaves the history. Notification tap actions use `openAppPendingIntent(requestCode, route)` with a request code unique to that notification.
-- Keep file-based JSON storage compatible with existing data. Treat migrations, backup formats, chapter paths, and archive IDs as compatibility-sensitive.
-- New novel sites implement `SourceProvider`, declare stable identity/capabilities/network/UI policy
-  in `SourceDescriptor`, and must be registered in `SourceRegistry`. SpaceBattles and Sufficient
-  Velocity share `XenForoProvider` for main threadmarks, RSS, and reader pages; keep their stable
-  ID prefixes and descriptors separate. SpaceBattles alone owns Story Library enrichment.
-  Do not add source-name or host
-  switches outside the provider descriptor; follow `docs/sources/adding-a-source.md`. Source
-  metadata parsing also discovers Patreon links; `StorySyncEngine` refreshes Patreon statistics by
-  default without creator-specific mappings. Only measured data is persisted (`PatreonRawStats`,
-  USD-converted at capture, tier ladder delta-encoded on metric snapshots); every displayed dollar
-  figure is derived at render by `PatreonEarningsPlanning`, so formula changes apply retroactively.
-  Callers can pass `refreshPatreonStats = false` to skip the Patreon refresh while preserving
-  existing saved stats (Updates' "Sync all that may be out" and the offline simulator do). Patreon data belongs to the creator: live stories whose
-  `patreonUrl` resolves to the same `PatreonCreatorPlanning.creatorKey` share stats (a fresh
-  refresh is copied to siblings in `commitSyncedStory`, startup reconciles to the freshest), and
-  Trends charts their merged Patreon history. Per-story metric files are not rewritten.
-- Patreon early-access chapters (`docs/sources/patreon-early-access.md`) supplement a source story;
-  Patreon is not a `SourceProvider`. A link targets one collection or, with a blank `collectionId`,
-  every post on the campaign (creators without collections), which selects posts more strictly. Copies carry `Chapter.patreonPostId`, always sit after every
-  source chapter, are split off before the source merge (so they never read as removed source
-  chapters), are stored by sync from the post list (`sync/PatreonChapterSync`), and are never
-  queued for download. `domain/story/PatreonCopyPlanning` owns title matching and retiring a copy
-  once its public chapter has downloaded (sync and download commits both reconcile). The user's
-  Patreon `session_id` lives only in `CookieManager` (`source/PatreonSession`): never persist,
-  back up, log, or display it, and never enter it on the user's behalf during QA. Sign-in is the
-  `AppRoute.PatreonAccount` guide (`feature/settings/PatreonAccountScreen.kt`, Firefox handoff via
-  `feature/browser/FirefoxLauncher`); in QA never tap its Sign out or paste into it.
-- Royal Road marks its injected anti-piracy notices with a recognizable `<span>` (`source/RoyalRoadNoticeMarker`, see `docs/sources/royal-road-notices.md`). Providers declare this through `SourceProvider.insertedNoticeMarker`. Stripping empties the marker instead of removing it, so later cleanups still recognize the chapter. The marker only removes the notice: the sentence list still runs on every chapter because it also holds non-notice entries. `cleanup/SentenceMatching` keeps that cheap: `SentenceList.candidatesIn` checks every entry's ASCII anchors in one pass over the raw HTML, and only chapters with a candidate are parsed. Do not go back to one regex (or one substring search) per entry per chapter, which made cleanup 6–30x slower on a real novel.
-- Downloaded chapters a source stops listing stay in the story flagged by `Chapter.removedFromSourceAt`, at their old reading position (`docs/sources/removed-from-source-chapters.md`). Never create a separate story copy for them; full sync flags, keeps, and un-flags them, and JSON backup merges must not drop them. Legacy `isArchived` snapshot stories are folded into their live story at startup and after restore/import (`data/storage/LegacyArchiveFold.kt`); an unfolded leftover stays read-only for sync and download. Every sync commit runs `RemovedChapterPlanning.restoreLostDownloads`, so downloaded text is never dropped implicitly. Do not add a bulk delete for removed-from-source chapters: a former "Discard" button on the Details notice was mistaken for dismissing it and destroyed the only copy. Backups are full ZIPs only (Create / Restore in Data & backup); JSON export/import and Recover chapters from backup were removed in November 2026 (the JSON importer stays for instrumentation seeding). Clear local storage keeps the `backups` folder.
+- `app/`: Android lifecycle and process-wide wiring. `WebnovelArchiverApp` builds `AppContainer`, the
+  manual DI container, on its IO scope. `MainActivity` shows startup UI, awaits the container, and
+  hosts the shell.
+- `navigation/`: route-based navigation (`AppRoute` with persisted ids, `AppNavigator`, `ScreenBack`,
+  `RouteViewMemory`, `ScreenHost`, `ScreenModelStore`). `ShellNavigationPlanning` maps routes to the
+  five destinations (Library, Updates, Listen = `AppRoute.Narration`, Downloads = `AppRoute.Queue`,
+  Settings) and decides which routes hide the navigation or the mini player.
+- `operations/`: app-level work that several screens start and observe: `StoryOperations` (typed
+  progress flows for sync, cleanup, EPUB and AI jobs, and the novels syncing from Updates), `StoryWork`, which runs sync, cleanup and EPUB, and
+  `ListenStarts`, which every "listen" request goes through.
+- `feature/<flow>/`: screens grouped by user flow. See "Screen architecture" below. The UI follows the
+  v3 design (`docs/architecture/ui-v3-design.md`).
+- `domain/`: models and pure rules. `data/`: repository, JSON storage, backup, diagnostics.
+- `source/`, `sync/`, `download/`, `epub/`, `cleanup/`, `tts/`, `narration/`, `ai/`, `appupdate/`:
+  engines and their planning logic.
+- `ui/`: programmatic View DSL, the single Obsidian theme (`ThemeManager`), `AppShell` (bottom shelf
+  with mini player and navigation, or a right-hand rail at ≥ 600dp), bottom sheets, steppers,
+  `CoverImageView`, and pure layout planning under `ui/layout/`.
+- `notification/`: notification channels and Android 13+ permission helpers.
+- `perf/`: debug-gated performance recorder (`docs/architecture/performance-tracking.md`). It is
+  active only when a launch carries `perf_session 1`, and every hook sits behind `BuildConfig.DEBUG`.
+  Add new timings through `PerfInstrumentation`.
+- "The download screen" is ambiguous. It can mean `feature/downloads/QueueScreen.kt` (the global queue)
+  or `feature/details/DetailsScreenDownload.kt` (the per-story banner). Confirm which one a change targets.
+- Unit tests mirror production packages under `app/src/test/java/`. Instrumentation tests live in
+  `app/src/androidTest/` and use the separate `instrumentation` application id.
+
+## Architecture rules
+
+- **Layering** (enforced by `ArchitectureRulesTest`):
+  - `domain/` imports nothing from Android or other app packages.
+  - Engines and `data/` do not import `feature/` or `ui/`.
+  - `feature/` does not import `data.storage`.
+  - The test's allowlist records the remaining known seams, and its ratchets may only go down.
+- **Screen architecture**: a screen is a `ScreenModel` plus a View renderer.
+  - The model is a plain Kotlin class with constructor dependencies. It exposes a `StateFlow` of
+    immutable UI state and action methods, and it never touches `View` or `Context`.
+  - The model lives in `ScreenModelStore`, keyed by `AppRoute.stableKey`. It is disposed, and its
+    scope cancelled, when its route leaves the history.
+  - The renderer builds Views from state, rebuilds or rebinds on state changes, and forwards events
+    to the model. It launches no business work and does not call repositories or engines.
+  - Lists use `ListAdapter`/`DiffUtil` over immutable row models.
+  - New screens must use this pattern. Changing an old `ScreenHost.showXxx()` screen's state means
+    migrating that screen first.
+  - Jetpack Compose is a separate, later decision. Do not add it ad hoc.
+- **Cross-screen work** (sync, cleanup, EPUB, AI starts) goes through `operations/`, which publishes
+  typed progress. Screens observe it and never store operation state on `ScreenHost`/`MainActivity`.
+- Build UI programmatically with Android Views. Do not add XML layouts.
+- Put non-trivial deterministic decisions in pure planning functions with JUnit tests. Keep I/O in
+  engines and orchestration. Trivial decisions stay inline; do not create a `*Planning` file for them.
+- Use `AppContainer` for process-wide dependencies and constructor injection elsewhere. Do not add a
+  DI framework without an explicit architectural request.
+- `AppRepository` is the single owner of library, queue and settings mutations, through its
+  transactions and cached flows. Do not create additional `AppStorage` owners that race the same JSON
+  files. The activity and foreground services share one repository and storage lock. Do not read
+  repository settings on the main thread before `awaitRepositoryReady`.
+- Navigation is route-based. Process recreation restores by route identity (persisted ids), not by
+  titles. New full-screen destinations need a route, an `AppRoute.parent`, and a dispatch entry.
+- **Back** (app-bar arrow and system gesture) always pops the history. Screens do not declare their
+  own back target. Keep the history free of duplicates through `AppNavigator`:
+  - Opening a route that is already in the stack returns to it.
+  - `Working` is replaced by the next screen.
+  - A finished form uses `navigator.replace(...)`.
+  - Deep entry points use `navigator.resetTo(route)`.
+  - State that Back should clear first, such as a search, goes through
+    `screen(backIntercept = ...)`. Call `refreshBackCallback()` when it changes on a root screen.
+- Scroll offsets, list positions (`rememberListPosition`), and search text live in `RouteViewMemory`,
+  keyed by `AppRoute.stableKey`. Notification taps use `openAppPendingIntent(requestCode, route)`
+  with a request code unique to that notification.
+- Keep file-based JSON storage compatible with existing data. Migrations, backup formats, chapter
+  paths, and archive ids are compatibility-sensitive.
+- Record an `ActivityLog.record` event at each new library-, sync-, download- or backup-changing
+  decision point (`docs/architecture/activity-log.md`). Never include chapter text, cookies or keys.
 
 ## UI spacing and copy
 
-- Follow the v3 design rules in `docs/architecture/ui-v3-design.md`: no floating buttons for navigation (the shell has it), menus and pickers as bottom sheets, steppers instead of sliders for numeric settings (only seek bars stay sliders), whole covers (never `CENTER_CROP`), the ivory `bookmark` color for the reading bookmark, and story-page tabs that switch with `navigator.replace` so Back leaves the story.
+- Follow `docs/architecture/ui-v3-design.md`:
+  - No floating buttons for navigation.
+  - Menus and pickers are bottom sheets (`showBottomSheet`, `showStyledOptionsDialog`).
+  - Numeric settings use steppers (`makeStepper`/`stepperRow`); only seek bars stay sliders.
+  - Covers are shown whole, never `CENTER_CROP`.
+  - The reading bookmark uses the ivory `bookmark` color.
+  - Story-page tabs switch with `navigator.replace`.
+- Spacing:
+  - Use the `ui/Spacing` scale: 8dp from a label to its control, 16dp between related controls,
+    24dp between groups.
+  - Screen side padding (16dp, `SCREEN_SIDE_PADDING_DP`) comes from `screen()`; do not add it again.
+    A body whose content must reach the display's sides passes `fullWidthBody = true`.
+- Forms and buttons:
+  - Build forms with `ui/FormLayout` and `addItem(control, label)`. Use `FormLayout(app, dialog = true)`
+    in dialogs, then call `applyFormStyle()`. Do not stack manual spacers on top of its defaults.
+  - Add buttons with the DSL builders (`button`, `fullButton`, `row`/`flow`). They own the 16dp gap
+    above an action.
+- Mind first-frame layout cost:
+  - `screen()` runs `dropUnusedBaselineAlignment()`. A body rebuilt outside `screen()` calls it again.
+  - Keep destination builds free of main-thread planning.
+- Keep titles and labels concise. Add helper copy only for a necessary choice or consequence.
+- For spacing changes, inspect settled screenshots on both displays, including a live fold
+  (`docs/architecture/ui-spacing.md`).
 
-- Use the shared `ui/Spacing` scale for new padding and gaps. Use 8dp between a label and its control, 16dp between related controls/actions, and 24dp between independent groups. Screen side padding is 16dp (`SCREEN_SIDE_PADDING_DP`) and comes from `screen()`; do not add it again inside the body. A screen with content that must reach the display's sides, such as the Library's tab bar, passes `fullWidthBody = true` and insets its other children by that constant.
-- Build new or substantially revised forms with `ui/FormLayout` and `addItem(control, label)`. It owns full-width controls, accessible label associations, an 8dp label gap, and a 24dp group gap. Use `FormLayout(app, dialog = true)` for dialog content; it also supplies 24dp horizontal and 16dp vertical padding. After showing a form dialog, call `applyFormStyle()` to theme it and resize above the keyboard, keeping its actions reachable. Do not stack manual spacers or child margins on top of those defaults.
-- Add buttons with the DSL builders (`button`, `fullButton`, or inside `row`/`flow`). They own the 16dp gap above an action, so do not add a top margin to separate one from the field or text above it. Pass `topMarginDp` or add a `spacer` only for a deliberately different gap.
-- Mind first-frame layout cost on nested rows. A horizontal `LinearLayout` is baseline-aligned by default, which measures each weighted child an extra time at unbounded width; nested rows multiply that. `screen()` runs `ui/LayoutPerformance.dropUnusedBaselineAlignment()` over each build, turning it off where no direct child has a text baseline. A screen that rebuilds its body outside `screen()` (Updates' filters) calls it again. Top-level destination switches defer the build one frame after the tapped item highlights and play the enter motion in `ui/DestinationMotion`; keep destination builds free of main-thread planning (Updates reuses the overview `MainActivity` plans in the background for its badge).
-- Keep titles and control labels concise. Add helper copy only when it explains a necessary choice or consequence that the label cannot convey. Show validation errors when needed rather than permanent instructions beside every field.
-- For spacing changes, inspect settled screenshots on the cover and inner emulator displays, including a live fold transition, before considering the UI verified. Check field/label separation, group gaps, scrolling, and access to the dialog actions with the keyboard open. See `docs/architecture/ui-spacing.md` for examples.
+## Build and validation
 
-## Build and Validation
+- **File size**: production Kotlin files are capped at 1,000 lines by `checkKotlinFileSize` (baseline:
+  `config/kotlin-file-size-baseline.txt`; runs in `:app:releaseCheck`). Complexity is guarded by
+  detekt, so keep cohesive code in one file rather than splitting it to dodge a budget.
+- **Commands**:
+  - Debug build: `android/gradlew -p android :app:assembleDebug`
+  - Targeted test: `android/gradlew -p android :app:testInstrumentationUnitTest --tests "com.vinicius741.webnovelarchiver.cleanup.TextCleanupTest"` (append `.method` or use `"*.Class.method"`)
+  - Formatting: `:app:formatKotlin`; check: `:app:lintKotlin`
+  - Static analysis: `:app:detekt`. `app/detekt-baseline.xml` lists the existing findings, so anything
+    printed is new and fails the build. Fix it rather than baselining it, and delete a baselined
+    `<ID>` once fixed. The file-shape rules (`TooManyFunctions`, `LongParameterList`, `ThrowsCount`,
+    `SpreadOperator`, `MatchingDeclarationName`) are off on purpose. Do not re-enable them or suppress them.
+  - Android lint: `:app:lintDebug`
+  - Per-change gate: `android/gradlew -p android :app:lintKotlin :app:ci` (formatting, unit tests
+    including `ArchitectureRulesTest`, detekt, debug build).
+  - Release gate: `android/gradlew -p android :app:lintKotlin :app:releaseCheck` (`ci` plus
+    `lintDebug` and `checkKotlinFileSize`). The Quality Gate workflow runs it on every push to `main`
+    and files a `quality-gate` issue on failure.
+- **Choose validation by change**:
+  - Planning logic: run the narrowest relevant tests.
+  - Kotlin production changes: run relevant tests, `lintKotlin` and `detekt`.
+  - Broad changes: run `:app:ci`.
+  - UI, navigation, lifecycle, foldable or service changes: also exercise the flow on the emulator.
+  - Docs only: no build.
+- **Release artifacts**: run `:app:assembleRelease`/`:app:assembleBeta` only when the user asks for a
+  release or beta artifact. Release, beta and publishing rules are in
+  `docs/release/build-and-publish.md`. Follow the release preflight in the `build-and-install-apk`
+  skill before publishing. Keep the literal `versionCode N` / `versionName '…'` lines in
+  `defaultConfig`, because the workflows parse them.
+- **Gson**: every class Gson reads or writes needs a keep rule (`<init>(...)` and `<fields>`) in
+  `app/proguard-rules.pro`. R8 full mode otherwise renames fields and drops generic signatures, and
+  only the minified release shows it.
+- **sherpa-onnx**: it comes from GitHub release assets via the `exclusiveContent` Ivy repository in
+  `settings.gradle`, and its JNI reads Kotlin fields by name (keep the `com.k2fsa.sherpa.onnx.**`
+  rule). Native code ships for `arm64-v8a` and `armeabi-v7a` in every build type. `debug` and
+  `instrumentation` add `x86_64`. Never drop a phone ABI. Recheck `packaging.jniLibs` after a
+  sherpa-onnx upgrade.
+- **Dependencies** are lockfile-pinned. A dependency change needs
+  `android/gradlew -p android :app:<config> --update-locks` for the affected compile and runtime
+  configurations.
+- **Kotlinter** rejects a `//` comment directly above a declaration with no blank line between them,
+  and treats a file-level `/** */` header as dangling KDoc. `formatKotlin` does not fix either.
+- **Offline simulator**: default AI, source import, download and Cloudflare QA to it
+  (`python3 scripts/simulate.py list`; `docs/qa/offline-simulation.md`). Live OpenRouter or site checks
+  must be requested explicitly; keep paid checks to 1–2 cheap calls.
 
-- File-size policy: production Kotlin files are capped at 1,000 lines by `checkKotlinFileSize` (baseline in `config/kotlin-file-size-baseline.txt`; runs in `:app:releaseCheck`, not `:app:ci`). Complexity is guarded by detekt (`LongMethod`, `CyclomaticComplexMethod`, `ComplexCondition`), so keep cohesive code in one file rather than splitting along arbitrary lines to dodge a budget; a deliberate baseline entry is the escape hatch for genuinely large owners.
-- Debug build: `android/gradlew -p android :app:assembleDebug`
-- Targeted test class: `android/gradlew -p android :app:testInstrumentationUnitTest --tests "com.vinicius741.webnovelarchiver.cleanup.TextCleanupTest"`
-- Targeted test method: `android/gradlew -p android :app:testInstrumentationUnitTest --tests "*.TextCleanupTest.cleanupRemovesScripts"`
-- Kotlin formatting: `android/gradlew -p android :app:formatKotlin`
-- Kotlin format check: `android/gradlew -p android :app:lintKotlin`
-- Static analysis: `android/gradlew -p android :app:detekt`. Existing findings are listed in `app/detekt-baseline.xml`, so any finding detekt prints is new and fails the build. Fix it rather than adding it to the baseline; when you fix a baselined finding, delete its `<ID>` line. Regenerate the baseline (`:app:detektBaseline`) only by deliberate decision. The file-shape rules (`TooManyFunctions`, `LongParameterList`, `ThrowsCount`, `SpreadOperator`, `MatchingDeclarationName`) are off on purpose: they produced file shuffling and `@Suppress` lines, not fixes. Don't re-enable them or add suppressions for them.
-- Android lint: `android/gradlew -p android :app:lintDebug`
-- Per-change gate: `android/gradlew -p android :app:lintKotlin :app:ci` (formatting, unit tests, detekt, debug build).
-- Release gate: `android/gradlew -p android :app:lintKotlin :app:releaseCheck` (`ci` plus `lintDebug` and `checkKotlinFileSize`). The Quality Gate workflow (`.github/workflows/quality-gate.yml`) runs it on every push to `main` and opens or updates a `quality-gate` GitHub issue when it fails. Releases do not wait on it. Run it locally after changing manifests, resources, or Android API usage.
+## Emulator workflow
 
-Choose validation based on the change:
+- The emulator is `webnovel_api36`, a Galaxy Z Fold7 approximation. Profile, initialization and
+  multi-display screenshot details are in `docs/qa/dev-launch.md`.
+- Fold QA:
+  - Check both `emu fold` (cover) and `emu unfold` (inner), plus a transition while the screen is open.
+  - Leave the emulator unfolded on Library.
+  - Screenshots must follow settled UI.
+- Reuse a running emulator. Start it with `scripts/emulator/start_emulator.sh` and stop it with
+  `adb -s emulator-5554 emu kill`. If it won't boot, use the `emulator-recovery` skill.
+- `scripts/redeploy.sh [screen]` rebuilds, installs and cold-starts the debug app. Use
+  `scripts/watch-redeploy.sh` for iterative UI work. Both target an `emulator-` serial and fail closed.
+- Debug package: `com.vinicius741.webnovelarchiver.nativeapp.debug`. Activity:
+  `com.vinicius741.webnovelarchiver.app.MainActivity`. Redeploy is a cold restart.
+- **Reach a screen for QA by cold-starting onto it** (`dev-launch-screen` skill;
+  `--es dev_start_screen <token>`, details in `docs/qa/dev-launch.md`), never by tapping through the UI.
+  For remote-dependent flows, start a `scripts/simulate.py` session first.
+- Performance: `scripts/perf/perf_runner.py` (`perf-suite` skill). Its numbers come from a debug build
+  on the emulator and are advisory only.
 
-- Planning/core logic: run the narrowest relevant unit tests first.
-- Kotlin production changes: run relevant tests, `:app:lintKotlin`, and `:app:detekt`.
-- Broad or cross-cutting changes: run the per-change gate (`:app:ci`).
-- UI, navigation, lifecycle, foldable, or service changes: also build and exercise the affected flow on the emulator.
-- Documentation-only changes do not require a Gradle build.
-
-Run `:app:assembleRelease` or `:app:assembleBeta` only when the user explicitly requests a release or beta artifact. Both use the release signing credentials and are not routine validation steps.
-
-The `beta` build type (`initWith release`) is a separate app: application id suffix `.beta`, name and icon overrides in `app/src/beta/res`, release-only sources from `app/src/release/java`, its own deep-link scheme, and `UPDATE_CHANNEL` `beta`. Its `versionName` is the stable one plus `-beta.<n>` and its `versionCode` is `1000000 + n` (independent of the branch's stable code, so betas from any branch keep increasing), where `n` is `WEBNOVEL_BETA_NUMBER` (the beta workflow's run number; 0 locally). Keep the literal `versionCode N` / `versionName '…'` lines in `defaultConfig`, because both publish workflows parse them. When the stable launcher mark changes, update the beta copies in `app/src/beta/res/drawable/` too.
-
-The manual `Publish Android Beta APK` workflow (`.github/workflows/android-beta.yml`) builds the signed beta from any branch and publishes it as a GitHub prerelease (never *latest*) tagged `v<versionName>-beta.<run number>`; it needs no version bump. The manual `Publish Android APK` GitHub Actions workflow builds a signed release on `main`. It does not run the release gate. It only warns when the Quality Gate run for that commit failed or is still pending. Check open `quality-gate` issues before releasing. It reads `versionName` and `versionCode` from `app/build.gradle`; increase both before a new release. It publishes tag `v<versionName>` and refuses to overwrite existing tags. Signing secrets must use the original release key; setup is in the root `README.md`. The workflow does not install onto devices.
-
-Before publishing or retrying a GitHub release, follow the release preflight in `.agents/skills/build-and-install-apk/SKILL.md`: inspect recent workflow runs, remote tags, and published releases before choosing a version. A local APK rebuild alone does not require a version bump. For a new published release, use an unused `versionName` and a `versionCode` greater than previous releases, then verify the authorized changes are on remote `main` before dispatching. Re-running an old workflow uses its original commit, not a later version bump. An existing tag is a safety check, not a reason to delete a release or suppress failure notifications. Commit, push, and workflow dispatch still require the user's authorization; this checklist grants none.
-
-- Every class Gson reads or writes needs a keep rule (`<init>(...)` and `<fields>`) in `app/proguard-rules.pro`. Release builds use R8 full mode, which renames the fields of unkept classes and drops their generic signatures even with `-keepattributes Signature`: lists of objects then load as `LinkedHashMap`, and `List<Long>` loads as `Double`. Only the minified release shows this. Releases 1.0.18 and 1.0.19 wrote the narration files this way; `narration/NarrationLegacyJson` still reads them.
-- sherpa-onnx comes from its GitHub release assets through the `exclusiveContent` Ivy repository in `settings.gradle`; its JNI reads Kotlin config fields by name, so keep the `com.k2fsa.sherpa.onnx.**` ProGuard rule. Native code (almost all of the APK's size) ships for `arm64-v8a` and `armeabi-v7a` in every build type; only `debug` and `instrumentation`, which run on the x86_64 emulator, add `x86_64` (`abiFilters` per build type, since AGP unions them with `defaultConfig`'s). An APK with native code will not install on a device matching none of its ABIs, so do not drop a phone ABI. `packaging.jniLibs` leaves out sherpa-onnx's unused C/C++ API libraries (only `libsherpa-onnx-jni.so` is loaded) and stores the libraries compressed (`useLegacyPackaging`, so `extractNativeLibs=true`); recheck both after a sherpa-onnx upgrade.
-- Dependencies are lockfile-pinned. Adding or changing a dependency requires refreshing the locks for both compile and runtime configurations (`android/gradlew -p android :app:<config> --update-locks` on the affected configurations); a plain build will fail on out-of-date locks.
-- Kotlinter (`:app:lintKotlin`) rejects a `//` comment placed directly above a declaration with no blank line between them, and treats a file-level `/** */` header as dangling KDoc. Use blank lines around commented declarations and `//` for file headers; `:app:formatKotlin` does not fix these.
-- Default AI, source import, download, and Cloudflare QA to the offline simulator (`python3 scripts/simulate.py list`; guide: `docs/qa/offline-simulation.md`). It runs real engines against scripted responses in a disposable library. Use `--manual` for UI interactions, `--hold` for lifecycle checks, and `--until completed` for terminal assertions. No valid key or internet is needed. Live OpenRouter/site checks are separate and must be explicitly requested; keep paid checks to 1-2 cheap calls.
-
-## Emulator Workflow
-
-- Default hardware is a **Galaxy Z Fold7 approximation** on the existing `webnovel_api36` AVD: inner 1968×2184, cover 1080×2520, logical density 420 dpi. It uses the supported `pixel_9_pro_fold` base and Google's API 36 image, not Samsung One UI. Density/font scaling are approximations, not measurements from the owner's phone.
-- Apply the checked-in profile to a **stopped** AVD with `python3 scripts/emulator/configure_fold7.py`. It backs up the original config and preserves all data images. Never use `-wipe-data` when changing profiles. Cold boot after hardware changes.
-- After converting an existing phone AVD, run `python3 scripts/emulator/initialize_fold7.py` once it has booted. It installs the SDK's fold/display XMLs into the emulator's system configuration and reboots if needed, preserving the app/library. Hardware config alone leaves Android in `DEFAULT` state and stretches the inner framebuffer into the cover window. Verify `dumpsys device_state` reports `CLOSED`/`OPENED`, and `wm size` changes to the corresponding dimensions.
-- For UI QA, check both `adb -s "$EMULATOR_SERIAL" emu fold` (cover) and `adb -s "$EMULATOR_SERIAL" emu unfold` (inner), plus transitions while a screen is open. Leave the emulator unfolded on Library when finished. Screenshots must follow settled UI, not a fixed sleep alone.
-- Foldables expose multiple physical displays. For `screencap`, use an explicit active physical display ID from `dumpsys SurfaceFlinger --display-id`, cross-checked against `dumpsys display`. Pass `screencap -d <id> -p`; an unqualified display capture can select the inactive screen, and stderr warnings can corrupt a redirected `exec-out` PNG.
-- Reuse a running `webnovel_api36` emulator; do not start another unnecessarily.
-- Start `webnovel_api36` with `scripts/emulator/start_emulator.sh` (detached: a systemd user unit on Linux, `nohup` on the Mac; headless, waits for boot; `--window` shows it). It works on both dev machines: the SDK comes from `ANDROID_HOME`/`ANDROID_SDK_ROOT`, else `sdk.dir` in `android/local.properties` (Homebrew's on the Mac), else `~/Android`. It passes `-dns-server 8.8.8.8,1.1.1.1` so the emulator does not inherit stale host DNS, and `-gpu host`: on the Linux dev host, `-gpu auto` and `-gpu swiftshader_indirect` segfault in the bundled `libGLESv2` during boot. A device panel that boots the AVD itself uses `-gpu auto` and crashes, so start the emulator with the script first; the panel attaches to the running `emulator-5554`. Stop it with `adb -s emulator-5554 emu kill`. If the emulator will not boot or crashes, use the `emulator-recovery` skill.
-- Use `scripts/redeploy.sh` for a one-shot debug rebuild/install/relaunch and `scripts/watch-redeploy.sh` for iterative UI work.
-- Both scripts must target an `emulator-` serial explicitly and fail closed rather than selecting a physical device.
-- Debug package: `com.vinicius741.webnovelarchiver.nativeapp.debug`
-- Main activity: `com.vinicius741.webnovelarchiver.app.MainActivity`
-- Redeploy is a cold restart. Persisted `AppStorage` state survives; in-memory state does not.
-
-### Dev launch screen (agent testing)
-
-For remote-dependent flows, first start a session with `scripts/simulate.py`. The debug-only
-enable marker selects the session before `Application` constructs `AppContainer`, including
-service-only startup. Session storage, evidence caches, settings, usage receipts, and recovery
-files are isolated. The same dev-launch extras below then address the simulation library.
-Unknown requests fail closed, including Coil images; reader WebViews block network loads,
-and source verification uses local UI. `scripts/simulate.py stop` explicitly returns to the
-normal library without clearing it. Never remove just the configuration or use `pm clear`.
-The scenario implementation/assets live in `src/debug/`, shared with `instrumentation` by
-source sets. Release has an inert factory and no scenario catalog/control activity. Add new
-external transports to the simulation guard when introducing them. Scheduling time belongs
-to `AppContainer.time`; persisted billing timestamps remain real wall time.
-
-The debug variant cold-starts directly into a chosen screen via an `am start --es dev_start_screen <token>` intent extra, so you can test a feature in place (e.g. TTS in the reader, the download manager) without navigating there by hand. The feature is gated on `BuildConfig.DEBUG` and is a complete no-op in the release variant — it never affects phone releases.
-
-**This is the required way to reach a screen for agent QA.** When you have built/installed the debug app and need to verify a change that lives on a screen (reader transport, settings, queue, etc.), cold-start onto that screen via the `dev-launch-screen` skill or the commands below — do NOT launch the app and tap through the UI by hand to get there. Tap/swipe only for interactions *after* you've landed on the target screen. Manual navigation wastes a session and is error-prone (you can end up on the wrong chapter, the wrong story, or fumbling the overflow menu). Skill triggering is heuristic; if the skill isn't auto-loaded for a post-build verification step, invoke it explicitly or run the cold-start command here directly.
-
-Tokens: `library`, `updates`, `queue` (download manager), `settings`, `aisettings`, `aicontrols` (first story's AI Controls), `cleanup`, `patreon` (Patreon Account sign-in guide), `appupdate` (App Updates), `reader`, `details`, `trends` (a story's Trends screen), `addstory`.
-
-- No-arg screens (`library`, `updates`, `queue`, `settings`, `aisettings`, `cleanup`, `patreon`, `appupdate`, `addstory`) need nothing else.
-- `reader`, `details`, `trends`, and `aicontrols` auto-pick the first story in the persisted library (and the first chapter for `reader`); supply `--es dev_start_story <id>` and (reader only) `--es dev_start_chapter <id>` to target a specific one. If the library is empty or the ids don't resolve, the app falls back to the normal library start rather than rendering a blank screen.
-- To discover ids or open a specific novel/chapter without hand-editing the `am start` line, use `scripts/dev_library.sh`: `list`/filter (`--status`, `--source`, `--tag`, `--jq '<expr>'`, …) the installed novels; `open <row|id|title> [--chapter <row|id|title>]` cold-starts onto that novel's details or that chapter's reader (add `--rebuild` to build+install+open in one shot, `--dry-run` to preview the resolved ids). It is emulator-only and fails closed on a phone serial.
-- The dev target takes precedence over browser-import and TTS-resume, so it reliably lands where asked.
-
-Shorthand — `scripts/redeploy.sh <token>` rebuilds and relaunches straight into the screen:
-
-```bash
-scripts/redeploy.sh reader   # rebuild + cold-start in the reader
-scripts/redeploy.sh queue    # rebuild + cold-start in the download manager
-```
-
-Cold-start without rebuild (app already installed):
-
-```bash
-adb -s <emulator-serial> shell am force-stop com.vinicius741.webnovelarchiver.nativeapp.debug
-adb -s <emulator-serial> shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.app.MainActivity --es dev_start_screen reader
-```
-
-For the full launch command set (reader with explicit story/chapter, library-id discovery), use the `dev-launch-screen` skill. Planning logic lives in `app/DevLaunchPlanning.kt` with unit tests under `app/src/test/.../app/`.
-
-**Dev library report (restore/import verification).** Adding `--es dev_library_report 1` to a cold start makes the debug app write what it actually hydrated from storage to `cache/dev_library_report.json` (readable via `run-as <pkg> cat`): library size, a sha256 over the loaded story-id list, per-tab counts, downloaded-chapter total, and any documents the storage layer quarantined as corrupt. This is the deterministic way to verify a backup restore/library seed (used by the `restore-library-backup` skill) — a matching `storyIdsSha256` proves the app loaded exactly the intended stories in order, and a non-empty `storageIssues` exposes a malformed seeded file that would otherwise vanish silently. Planning lives in `app/DevLibraryReportPlanning.kt`; same `BuildConfig.DEBUG` gating, no-op in release. Poll for the file rather than fixed-sleeping — hydrating a large library can take several seconds.
-
-**Dev full-backup restore.** Adding `--es dev_restore_full_backup <path-relative-to-cacheDir>` to a cold start restores a `webnovel_full_backup_*.zip` staged inside the app's own cache (adb push + `run-as cp` to `cache/dev_restore_source.zip`) through the production `FullBackupRestorer` pipeline — extraction, manifest/ZIP-index validation, staging, verification, atomic root swap, and repository refresh, identical to the in-app Settings picker but without the SAF file picker. The path is resolved by `app/DevRestorePlanning.kt`, which rejects absolute and `..` paths; the staged zip is deleted after the attempt so relaunching never re-restores, and the dev library report is written automatically afterwards. Debug-only, no-op in release. Expect minutes, not seconds: a 113 MB / 10,808-chapter ZIP measured ~7-8 minutes on the emulator. Expectations for verification come from `scripts/full_backup_expectations.py <zip>`.
-
-### Local performance tracking (perf-suite)
-
-`scripts/perf/perf_runner.py run --suite short` drives repeatable emulator scenarios (cold library/settings/queue/details/reader, warmed navigation, scrolls) against the debug app and writes a JSON + Markdown report with in-app monotonic timing, frame/jank stats, memory snapshots, and crash/ANR/StrictMode evidence into gitignored `perf-runs/`. Comparisons against explicitly saved baselines are advisory regression signals — debug/emulator numbers are never release or device claims. The app side is the debug-gated `perf/` recorder (design + metric definitions: `docs/architecture/performance-tracking.md`; agent workflow: the `perf-suite` skill). Baselines are dataset-fingerprint-locked and created only via `baseline save`; `selftest` runs the pure-logic tests without a device.
-
-## Completion Expectations
+## Completion expectations
 
 - Report the validation commands actually run and any checks not run.
 - Do not claim emulator or device verification based only on a successful build.
-- Keep this file focused on stable, non-obvious rules. Read Gradle files and the manifest for current dependency versions, SDK levels, permissions, and artifact configuration.
+- Read Gradle files and the manifest for current dependency versions, SDK levels, permissions and
+  artifact configuration.

@@ -16,10 +16,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.ai.AiCoverContextPlanning
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
 import com.vinicius741.webnovelarchiver.ai.CoverPhasePlanning
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.data.repository.setAiCoverContextChapters
-import com.vinicius741.webnovelarchiver.data.repository.setAiCoverPhase
-import com.vinicius741.webnovelarchiver.data.storage.EvidenceSelectionKind
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.LifeStage
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -41,19 +37,18 @@ import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.launch
 
 // Independent persisted chapter selectors for descriptions and covers.
 
 /** Context-chapter selector row: which downloaded chapters are sent to OpenRouter. */
 internal fun ScreenHost.addAiContextChaptersRow(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
     forCover: Boolean = false,
 ) {
-    var valueView: TextView? = null
-    val automaticSelection = automaticSelection(story, forCover)
-    val (selectorView, textVal) =
+    val story = render.story
+    val automaticSelection = automaticSelection(render.state, forCover)
+    val (selectorView, _) =
         container.context.makeSelectorField(
             iconRes = com.vinicius741.webnovelarchiver.R.drawable.wna_menu_book,
             label = if (forCover) "Cover context chapters" else "Description context chapters",
@@ -64,19 +59,9 @@ internal fun ScreenHost.addAiContextChaptersRow(
                     AiDescriptionPlanning.contextChaptersLabel(story, automaticSelection)
                 },
         ) {
-            showAiContextChapterDialog(story, forCover) { saved ->
-                valueView?.text =
-                    if (forCover) {
-                        AiCoverContextPlanning.contextChaptersLabel(saved, automaticSelection)
-                    } else {
-                        AiDescriptionPlanning.contextChaptersLabel(saved, automaticSelection)
-                    }
-                // Re-render so the captured story (and this dialog's next open) sees the
-                // saved selection instead of the pre-save snapshot.
-                if (frameIsAiControls(story.id)) showAiControls(story.id)
-            }
+            // Saving changes the story, which redraws the tab with the new selection.
+            showAiContextChapterDialog(render, forCover)
         }
-    valueView = textVal
     selectorView.layoutParams =
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     container.addView(selectorView)
@@ -91,10 +76,11 @@ internal fun ScreenHost.addAiContextChaptersRow(
  */
 internal fun ScreenHost.addAiCoverPhaseRow(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
 ) {
+    val story = render.story
     val manual = !story.aiCoverContextChapterIndices.isNullOrEmpty()
-    val phases = app.appContainer.chapterEvidence.phases(story.id)
+    val phases = render.state.coverPhases
     val savedStage = LifeStage.fromKey(story.aiCoverPhase)
     val main = CoverPhasePlanning.mainPhase(phases).takeIf { phases.size > 1 }
     val saved = savedStage?.let { stage -> CoverPhasePlanning.resolve(phases, stage.key).takeIf { it?.stage == stage } }
@@ -114,7 +100,7 @@ internal fun ScreenHost.addAiCoverPhaseRow(
             value = value,
         ) {
             when {
-                manual -> offerAutomaticCoverChapters(story)
+                manual -> offerAutomaticCoverChapters(render.model)
                 main == null && savedStage == null ->
                     toast(
                         if (phases.size == 1) {
@@ -123,7 +109,7 @@ internal fun ScreenHost.addAiCoverPhaseRow(
                             "Phases are found the next time a cover is made with automatic chapters."
                         },
                     )
-                else -> showCoverPhasePicker(story, phases, main, savedStage)
+                else -> showCoverPhasePicker(render.model, phases, main, savedStage)
             }
         }
     selectorView.layoutParams =
@@ -134,16 +120,12 @@ internal fun ScreenHost.addAiCoverPhaseRow(
 }
 
 private fun ScreenHost.showCoverPhasePicker(
-    story: Story,
+    model: AiControlsScreenModel,
     phases: List<StoryPhase>,
     main: StoryPhase?,
     savedStage: LifeStage?,
 ) {
-    fun choose(stageKey: String?) {
-        scope.launch {
-            if (repository.setAiCoverPhase(story.id, stageKey) != null && frameIsAiControls(story.id)) showAiControls(story.id)
-        }
-    }
+    fun choose(stageKey: String?) = model.setCoverPhase(stageKey)
     val auto = "Auto (main phase)" + (main?.let { ": ${it.label}" } ?: "") + if (savedStage == null) " ✓" else ""
     val stages =
         CoverPhasePlanning.choices(phases).map { phase ->
@@ -153,47 +135,32 @@ private fun ScreenHost.showCoverPhasePicker(
 }
 
 /** Manual cover chapters bypass the scan that finds phases; one tap returns to automatic selection. */
-private fun ScreenHost.offerAutomaticCoverChapters(story: Story) {
+private fun ScreenHost.offerAutomaticCoverChapters(model: AiControlsScreenModel) {
     showStyledOptionsDialog(
         "Story phase",
         listOf(
             OptionsDialogItem.Section("Phases need automatic chapter selection"),
-            OptionsDialogItem.Option("Use automatic chapters") {
-                scope.launch {
-                    if (repository.setAiCoverContextChapters(story.id, null) != null) {
-                        val found =
-                            app.appContainer.chapterEvidence
-                                .phases(story.id)
-                                .size > 1
-                        toast(if (found) "Automatic chapters on" else "Automatic chapters on. Phases are found on the next cover.")
-                        if (frameIsAiControls(story.id)) showAiControls(story.id)
-                    }
-                }
-            },
+            OptionsDialogItem.Option("Use automatic chapters") { model.useAutomaticCoverChapters() },
         ),
     )
 }
 
 /** Chapters the decision model kept on the story's last automatic scan for this generator, if any. */
-private fun ScreenHost.automaticSelection(
-    story: Story,
+private fun automaticSelection(
+    state: AiControlsUiState,
     forCover: Boolean,
-): List<Int>? =
-    app.appContainer.chapterEvidence.selection(
-        story.id,
-        if (forCover) EvidenceSelectionKind.COVER else EvidenceSelectionKind.DESCRIPTION,
-    )
+): List<Int>? = if (forCover) state.automaticCoverChapters else state.automaticDescriptionChapters
 
 /** Multi-select dialog over the story's downloaded chapters, with a Reset-to-automatic action. */
 private fun ScreenHost.showAiContextChapterDialog(
-    story: Story,
+    render: AiTabRender,
     forCover: Boolean,
-    onChanged: (Story) -> Unit,
 ) {
+    val story = render.story
     val colors = ThemeManager.colors
     val shapes = ThemeManager.shapes
     val downloaded = story.chapters.withIndex().filter { it.value.downloaded }
-    val config = contextPickerConfig(story, forCover)
+    val config = contextPickerConfig(render, forCover)
     val checked = config.checked
 
     val dialogView =
@@ -259,13 +226,7 @@ private fun ScreenHost.showAiContextChapterDialog(
     renderRows()
 
     fun applySelection(indices: List<Int>?) {
-        scope.launch {
-            val saved = config.save(indices)
-            if (saved != null) {
-                toast("Chapters sent to AI updated")
-                onChanged(saved)
-            }
-        }
+        config.save(indices)
         dialogRef?.dismiss()
     }
 
@@ -384,15 +345,16 @@ private data class ContextPickerConfig(
     val checked: MutableSet<Int>,
     val hint: String,
     val resetLabel: String,
-    val save: suspend (List<Int>?) -> Story?,
+    val save: (List<Int>?) -> Unit,
 )
 
-private fun ScreenHost.contextPickerConfig(
-    story: Story,
+private fun contextPickerConfig(
+    render: AiTabRender,
     forCover: Boolean,
 ): ContextPickerConfig {
+    val story = render.story
     val saved = (if (forCover) story.aiCoverContextChapterIndices else story.aiContextChapterIndices)?.takeIf { it.isNotEmpty() }
-    val automatic = automaticSelection(story, forCover).orEmpty()
+    val automatic = automaticSelection(render.state, forCover).orEmpty()
     // Automatic mode has no persisted manual selection — the picker shows the chapters the
     // decision model kept on the last scan, or nothing before the first scan ever runs.
     return ContextPickerConfig(
@@ -415,7 +377,7 @@ private fun ScreenHost.contextPickerConfig(
             // checked, and turning them into a fixed selection would silently switch off later scans
             // (and with them, cover story phases).
             val indices = picked?.takeUnless { saved == null && it.toSet() == automatic.toSet() }
-            if (forCover) repository.setAiCoverContextChapters(story.id, indices) else repository.setAiContextChapters(story.id, indices)
+            render.model.saveContextChapters(forCover, indices)
         },
     )
 }

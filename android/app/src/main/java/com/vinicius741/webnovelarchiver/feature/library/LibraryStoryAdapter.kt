@@ -25,6 +25,7 @@ internal class LibraryStoryAdapter(
     private val grid: LibraryGridSpec,
     private val tabId: String?,
     stories: List<Story>,
+    private val events: LibraryCardEvents,
 ) : RecyclerView.Adapter<LibraryStoryAdapter.Holder>() {
     private var stories = stories
     private var visible: List<Story> = emptyList()
@@ -146,7 +147,11 @@ internal class LibraryStoryAdapter(
         val card = holder.card
         if (card != null) {
             val story = visible[position - HEADER_ROWS]
-            if (grid.viewMode == LibraryViewMode.COVERS) host.bindLibraryCoverTile(card, story) else host.bindLibraryStoryCard(card, story)
+            if (grid.viewMode == LibraryViewMode.COVERS) {
+                host.bindLibraryCoverTile(card, story, events)
+            } else {
+                host.bindLibraryStoryCard(card, story, events)
+            }
             return
         }
         holder.root.removeAllViews()
@@ -178,7 +183,7 @@ internal class LibraryStoryAdapter(
                     title = "Nothing here yet",
                     iconRes = R.drawable.wna_menu_book,
                     actionLabel = "Add a story",
-                    onAction = { host.showAddStory() },
+                    onAction = events.onAddStory,
                 )
             }
         holder.root.addView(state)

@@ -6,6 +6,7 @@ import android.net.Network
 import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
+import com.vinicius741.webnovelarchiver.ai.AiDescriptionJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.ChapterEvidenceSelector
 import com.vinicius741.webnovelarchiver.ai.CharacterEngine
 import com.vinicius741.webnovelarchiver.ai.CharacterJobCoordinator
@@ -24,8 +25,11 @@ import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
+import com.vinicius741.webnovelarchiver.feature.ai.AiAttention
 import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
+import com.vinicius741.webnovelarchiver.operations.AppListenStartData
+import com.vinicius741.webnovelarchiver.operations.ListenStarts
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
@@ -155,6 +159,12 @@ class AppContainer internal constructor(
     /** Process scope so jobs survive navigation/exit; drafts persist before listeners are notified. */
     val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)
 
+    /** AI description drafts, on the same process scope as cover jobs. */
+    val aiDescriptionJobs: AiDescriptionJobCoordinator = AiDescriptionJobCoordinator(applicationScope, aiDescriptionEngine::draft)
+
+    /** AI results and failures waiting for the user; the AI tab, the story page and the job chip read them. */
+    internal val aiAttention = AiAttention()
+
     /** Characters tab: character list and portraits, on the same process scope as cover jobs. */
     val characterJobCoordinator: CharacterJobCoordinator =
         CharacterJobCoordinator(applicationScope, CharacterEngine(repository, openRouter, chapterEvidenceSelector, chapterEvidence))
@@ -241,24 +251,19 @@ class AppContainer internal constructor(
 
     val ttsEngine: TtsEngine =
         TtsEngine(
-            context = appContext,
             repository = repository,
             awaitRepositoryReady = {
                 repositoryStartup.awaitReady()
                 narration.awaitLoaded()
             },
-            builtIns = builtIns,
             narration = narration,
         )
 
+    /** Every "listen" request: plays generated audio, or queues the chapter and plays it once ready. */
+    val listenStarts: ListenStarts = ListenStarts(AppListenStartData(narration, ttsEngine, repository))
+
     /** Starts load/recovery/hydration on the process IO scope without blocking Application. */
     fun init() {
-        // A chapter that started while a built-in model was still downloading switches to it once installed.
-        modelInstallers.values.forEach { installer ->
-            applicationScope.launch {
-                installer.state.collect { if (it is KokoroModelState.Installed) ttsEngine.refreshEngine() }
-            }
-        }
         runCatching {
             (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
                 .registerDefaultNetworkCallback(networkCallback)

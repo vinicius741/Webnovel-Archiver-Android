@@ -1,30 +1,28 @@
 package com.vinicius741.webnovelarchiver.feature.ai
 
 import android.graphics.Color
+import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
-import com.vinicius741.webnovelarchiver.data.repository.markAiCoverResultSeen
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.details.refreshStoryHero
-import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
+import com.vinicius741.webnovelarchiver.feature.details.makeStoryOperationProgress
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.details.storyScreen
-import com.vinicius741.webnovelarchiver.feature.details.storyTabShowing
 import com.vinicius741.webnovelarchiver.feature.settings.showAiSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
+import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.SegmentedControl.Segment
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
@@ -42,85 +40,154 @@ import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
-import timber.log.Timber
 
 /**
  * The per-novel AI screen, split into Cover, Characters and Description tabs. Global model choices
  * live in AI Settings; each tab only names the model it uses and links there. [tab] switches the
- * remembered tab (job chip and notifications open the tab their result belongs to).
+ * open tab (job chip and the story hero open the tab their result belongs to).
+ *
+ * The tab is built from its [AiControlsScreenModel]'s state, and an [AiControlsRenderer] keeps the
+ * render in step: a layout change re-renders the tab, progress messages patch their lines, and the
+ * cover strip and character list fill their slots when they load.
  */
 internal fun ScreenHost.showAiControls(
     storyId: String,
     tab: AiControlsTab? = null,
 ) {
     val story = repository.story(storyId) ?: return showDetails(storyId)
-    tab?.let { aiControlsScreenState.tabs[story.id] = it }
-    val shownTab = aiControlsTab(story.id)
-    val generating = aiOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_DESCRIPTION }
-    // Cover jobs run on the process-wide coordinator so one that outlived a recreated activity still gates the UI.
-    val generatingCover = aiCoverOperationFor(story.id)
-    hydrateAiCoverDraftFromStorage(story.id)
-    markAiResultsSeen(story.id, shownTab)
+    val key = AppRoute.AiControls(story.id).stableKey
+    var render: AiTabRender? = null
     storyScreen(
         route = AppRoute.AiControls(story.id),
         story = story,
         scrollable = true,
-        backIntercept = BackIntercept(isActive = { characterPageOpen(story.id) }, clear = { closeCharacterPage(story.id) }),
+        backIntercept =
+            BackIntercept(
+                isActive = {
+                    screenModels
+                        .find<AiControlsScreenModel>(key)
+                        ?.state
+                        ?.value
+                        ?.characterPageOpen == true
+                },
+                clear = { screenModels.find<AiControlsScreenModel>(key)?.closeCharacterPage() },
+            ),
     ) {
-        val binding = AiControlsBinding(story.id, this, aiOperation?.takeIf { it.storyId == story.id }?.kind)
-        aiControlsScreenState.binding = binding
-        addAiTabBar(this, story.id, shownTab)
-        when (shownTab) {
-            AiControlsTab.COVER -> addAiCoverTab(this, story, generatingCover)
-            AiControlsTab.CHARACTERS -> addAiCharactersTab(this, story)
+        // Read inside the scaffold, once the route is in the history the model store keeps.
+        val model = aiControlsModel(story.id)
+        tab?.let(model::selectTab)
+        val state = model.refresh()
+        val shown = AiTabRender(model, state, state.story ?: story)
+        render = shown
+        addAiTabBar(this, shown)
+        when (state.tab) {
+            AiControlsTab.COVER -> addAiCoverTab(this, shown)
+            AiControlsTab.CHARACTERS -> addAiCharactersTab(this, shown)
             AiControlsTab.DESCRIPTION -> {
-                addAiDescriptionCard(this, story, generating)
-                aiControlsScreenState.drafts[story.id]?.let { draft -> addAiDraftPreviewCard(this, story, draft) }
-                addAiModelFooter(this, "Text model" to repository.aiSettings.get().descriptionModel)
+                addAiDescriptionCard(this, shown)
+                state.descriptionDraft?.let { draft -> addAiDraftPreviewCard(this, shown, draft) }
+                addAiModelFooter(this, "Text model" to state.settings.descriptionModel)
             }
         }
     }
     rerender = { showAiControls(storyId) }
+    render?.let { AiControlsRenderer(this, it, frame.getChildAt(0)).start() }
 }
 
-internal fun ScreenHost.aiControlsTab(storyId: String): AiControlsTab = aiControlsScreenState.tabs[storyId] ?: AiControlsTab.COVER
-
-/** Opening a tab is looking at its result: clears the unseen marker, chip, and stale failure. */
-private fun ScreenHost.markAiResultsSeen(
-    storyId: String,
-    tab: AiControlsTab,
+/** One render of the AI tab: the model, the state it was built from, and the views its renderer patches. */
+internal class AiTabRender(
+    val model: AiControlsScreenModel,
+    val state: AiControlsUiState,
+    val story: Story,
 ) {
-    aiControlsScreenState.clearChipHistory(storyId, tab)
-    when (tab) {
-        AiControlsTab.COVER -> if (storyId in repository.aiCoverUnseen.value) scope.launch { repository.markAiCoverResultSeen(storyId) }
-        AiControlsTab.DESCRIPTION -> aiControlsScreenState.unseenDescriptions.remove(storyId)
-        AiControlsTab.CHARACTERS -> aiControlsScreenState.unseenCharacters.remove(storyId)
+    /** Progress lines of the running AI job, by kind. */
+    val progress = mutableMapOf<StoryOperationKind, TextView>()
+
+    /** The running character job's progress line. */
+    var characterProgress: TextView? = null
+
+    /** The cover strip's slot, filled once the saved versions load. */
+    var coverStrip: CoverStripSlot? = null
+
+    /** The Characters tab's slot, filled once the list loads. */
+    var charactersSlot: LinearLayout? = null
+
+    /** Adds the operation's progress block to [container], the card whose action started it. */
+    fun addProgress(
+        container: LinearLayout,
+        operation: StoryOperationState,
+    ) {
+        container.addView(makeStoryOperationProgress(container.context, operation, indeterminate = true) { progress[operation.kind] = it })
+    }
+}
+
+/**
+ * Keeps one render of the AI tab in step with its model while the render's root is attached. A
+ * change of layout (see [AiControlsUiState.layoutKey]) re-renders the tab; otherwise loaded parts
+ * fill their slots and progress messages patch their lines. Model messages become toasts.
+ */
+private class AiControlsRenderer(
+    private val host: ScreenHost,
+    private val render: AiTabRender,
+    private val root: View,
+) {
+    private var applied = render.state
+
+    fun start() {
+        root.bindWhileAttached(host.scope, render.model.state) { apply(it) }
+        root.bindWhileAttached(host.scope, render.model.messages) { host.toast(it) }
+    }
+
+    private fun apply(next: AiControlsUiState) {
+        val previous = applied
+        if (!root.isAttachedToWindow || next == previous) return
+        applied = next
+        if (next.layoutKey() != previous.layoutKey()) {
+            host.showAiControls(render.model.storyId)
+            return
+        }
+        if (next.characters != previous.characters) {
+            val slot = render.charactersSlot
+            // A list already on screen re-renders the tab, so it keeps its scroll position.
+            val shown = previous.characters?.takeIf { it.openId == next.openCharacterId }
+            if (slot != null && shown != null) {
+                host.showAiControls(render.model.storyId)
+                return
+            }
+            slot?.let { host.fillCharactersSlot(it, render, next) }
+        }
+        if (next.coverVersions !=
+            previous.coverVersions
+        ) {
+            render.coverStrip?.let { host.fillCoverStrip(it, render.story, render.model, next) }
+        }
+        next.aiJob?.let { render.progress[it.kind]?.text = it.message }
+        next.coverJob?.let { render.progress[StoryOperationKind.AI_COVER]?.text = it.message }
+        next.characterJob?.let { render.characterProgress?.text = it.message }
     }
 }
 
 /** Cover | Characters | Description, with a dot on the one whose finished result is still waiting. */
 private fun ScreenHost.addAiTabBar(
     container: LinearLayout,
-    storyId: String,
-    selected: AiControlsTab,
+    render: AiTabRender,
 ) {
+    val state = render.state
     val tabs = AiControlsTab.entries
     val segments =
         tabs.map { tab ->
             val waiting =
-                tab != selected &&
+                tab != state.tab &&
                     when (tab) {
-                        AiControlsTab.COVER -> aiControlsScreenState.coverDrafts[storyId] != null
-                        AiControlsTab.DESCRIPTION -> aiControlsScreenState.drafts[storyId] != null
-                        AiControlsTab.CHARACTERS -> storyId in aiControlsScreenState.unseenCharacters
+                        AiControlsTab.COVER -> state.coverDraft != null
+                        AiControlsTab.DESCRIPTION -> state.descriptionDraft != null
+                        AiControlsTab.CHARACTERS -> state.charactersUnseen
                     }
             // Text only: three labels with icons do not fit beside the story pane.
             Segment(tab.label, dot = waiting)
         }
     container.addView(
-        makeSegmentedControl(app, segments, tabs.indexOf(selected)) { index -> showAiControls(storyId, tabs[index]) },
+        makeSegmentedControl(app, segments, tabs.indexOf(state.tab)) { index -> render.model.selectTab(tabs[index]) },
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(Space.XS)
             bottomMargin = dp(Space.SM)
@@ -144,19 +211,19 @@ internal fun ScreenHost.addAiModelFooter(
 
 private fun ScreenHost.addAiDescriptionCard(
     container: LinearLayout,
-    story: Story,
-    generating: StoryOperationState?,
+    render: AiTabRender,
 ) {
-    val binding = aiControlsScreenState.binding
+    val story = render.story
+    val generating = render.state.aiJob?.takeIf { it.kind == StoryOperationKind.AI_DESCRIPTION }
     val colors = ThemeManager.colors
     val hasAi = !story.aiDescription.isNullOrBlank()
     val hasOriginal = !story.description.isNullOrBlank()
     // Without downloaded chapters there is no text to feed the model; archived snapshots are read-only.
     val canGenerate = story.isArchived != true && story.chapters.any { it.downloaded }
-    val isBusy = aiOperation?.storyId == story.id
+    val isBusy = render.state.aiJob != null
     val cardView =
         container.card {
-            addAiContextChaptersRow(this, story)
+            addAiContextChaptersRow(this, render)
             spacer(Space.MD)
             if (hasAi) {
                 addView(
@@ -181,7 +248,7 @@ private fun ScreenHost.addAiDescriptionCard(
             }
             if (hasAi && hasOriginal) {
                 spacer(Space.SM)
-                addAiDisplayToggleRow(this, story)
+                addAiDisplayToggleRow(this, render)
             }
             if (canGenerate) {
                 spacer(Space.SM)
@@ -196,10 +263,10 @@ private fun ScreenHost.addAiDescriptionCard(
                     icon = R.drawable.wna_auto_awesome,
                     enabled = generating == null && !isBusy,
                     bottomMarginDp = 0,
-                ) { generateAiDescriptionDraft(story) }
+                ) { generateAiDescriptionDraft(render) }
                 generating?.let { operation ->
                     spacer(Space.MD)
-                    binding?.addProgress(this, operation)
+                    render.addProgress(this, operation)
                 }
             } else {
                 text(
@@ -216,26 +283,22 @@ private fun ScreenHost.addAiDescriptionCard(
  * Applying an AI description already shows it; this switches back to the source's one (or to the AI
  * one again) without a separate on/off setting.
  */
-private fun ScreenHost.addAiDisplayToggleRow(
+private fun addAiDisplayToggleRow(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
 ) {
+    val story = render.story
     if (story.description.isNullOrBlank()) return
     val showingAi = story.showAiDescription
     container.row {
-        button(if (showingAi) "Use source description" else "Use AI description", Btn.TEXT) {
-            scope.launch {
-                repository.setShowAiDescription(story.id, !showingAi)
-                rerender?.invoke()
-            }
-        }
+        button(if (showingAi) "Use source description" else "Use AI description", Btn.TEXT) { render.model.showAiDescription(!showingAi) }
     }
 }
 
 /** Draft preview; nothing is persisted until Apply. */
 private fun ScreenHost.addAiDraftPreviewCard(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
     draft: String,
 ) {
     val colors = ThemeManager.colors
@@ -255,121 +318,30 @@ private fun ScreenHost.addAiDraftPreviewCard(
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
-            latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_DESCRIPTION)?.let { cost ->
+            render.state.costs.description?.let { cost ->
                 text(cost, Type.LABEL_MEDIUM, colors.tertiary).apply {
                     setPadding(0, 0, 0, dp(Space.SM))
                 }
             }
             row {
-                button("Apply", Btn.FILLED, R.drawable.wna_check) { applyAiDescriptionDraft(story, draft) }
-                button("Discard", Btn.TEXT) { discardAiDescriptionDraft(story) }
+                button("Apply", Btn.FILLED, R.drawable.wna_check) { render.model.applyDescription(draft) }
+                button("Discard", Btn.TEXT) { render.model.discardDescription() }
             }
         }
     container.addView(cardView)
 }
 
 /** Confirms first when an applied or pending synopsis would be replaced: each run is a billable OpenRouter call. */
-internal fun ScreenHost.generateAiDescriptionDraft(story: Story) {
-    val model = repository.aiSettings.get().descriptionModel
-    val hasApplied = story.aiDescription != null
-    val hasPendingDraft = aiControlsScreenState.drafts[story.id] != null
+private fun ScreenHost.generateAiDescriptionDraft(render: AiTabRender) {
+    val model = render.state.settings.descriptionModel
+    val hasApplied = render.story.aiDescription != null
+    val hasPendingDraft = render.state.descriptionDraft != null
     if (!hasApplied && !hasPendingDraft) {
-        startAiDescriptionDraft(story)
+        render.model.startDescription()
         return
     }
     val message =
         "Generate a new AI description with $model? This calls OpenRouter and uses your API credits." +
             (if (hasPendingDraft) " The pending preview will be replaced." else "")
-    confirm(message, confirmLabel = "Generate") { startAiDescriptionDraft(story) }
-}
-
-// Re-throw CancellationException; funnel other failures into toast + state cleanup.
-@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException")
-private fun ScreenHost.startAiDescriptionDraft(story: Story) {
-    // Only another AI job blocks this one; sync, cleanup, and EPUB runs are independent.
-    if (aiOperation != null) {
-        toast("Please wait for the current AI generation to finish")
-        return
-    }
-    aiOperation = StoryOperationState(story.id, StoryOperationKind.AI_DESCRIPTION, "Generating description...")
-    detailsAiOperationSlot = null
-    aiControlsScreenState.clearChipHistory(story.id, AiControlsTab.DESCRIPTION)
-    showAiControls(story.id)
-    scope.launch {
-        try {
-            val draft =
-                app.appContainer.aiDescriptionEngine.draft(story.id) { message ->
-                    app.runOnUiThread { patchAiDraftProgress(story.id, message) }
-                }
-            aiControlsScreenState.drafts[story.id] = draft
-            if (aiOperation?.storyId == story.id && aiOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
-                aiOperation = null
-                detailsAiOperationSlot = null
-            }
-            // Off its tab, the app-wide job chip points back to the waiting preview.
-            if (!frameIsAiControls(story.id) || aiControlsTab(story.id) != AiControlsTab.DESCRIPTION) {
-                aiControlsScreenState.unseenDescriptions += story.id
-            }
-            aiControlsScreenState.refreshJobChip()
-            if (frameIsAiControls(story.id)) showAiControls(story.id) else rerenderDetailsIfVisible(story.id)
-        } catch (error: Throwable) {
-            if (error is CancellationException) throw error
-            Timber.w(error, "AI description generation failed for %s", story.id)
-            if (aiOperation?.storyId == story.id && aiOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
-                aiOperation = null
-                detailsAiOperationSlot = null
-            }
-            val message = error.message ?: "AI description failed"
-            if (frameIsAiControls(story.id)) {
-                toast(message)
-                showAiControls(story.id)
-            } else {
-                aiControlsScreenState.recordFailure(story.id, AiControlsTab.DESCRIPTION, message)
-                rerenderDetailsIfVisible(story.id)
-            }
-            aiControlsScreenState.refreshJobChip()
-        }
-    }
-}
-
-/** Patches progress in place; setStoryOperation's first tick would rebuild Details and pull the user off this screen. */
-internal fun ScreenHost.patchAiDraftProgress(
-    storyId: String,
-    message: String,
-) {
-    val operation = aiOperation?.takeIf { it.storyId == storyId && it.kind == StoryOperationKind.AI_DESCRIPTION } ?: return
-    val next = operation.copy(message = message)
-    aiOperation = next
-    detailsAiOperationSlot?.let { renderStoryOperationProgress(it, next) }
-    updateAiControlsProgress(next)
-    aiControlsScreenState.refreshJobChip()
-}
-
-internal fun ScreenHost.applyAiDescriptionDraft(
-    story: Story,
-    draft: String,
-) {
-    scope.launch {
-        repository.setAiDescription(story.id, draft)
-        aiControlsScreenState.drafts.remove(story.id)
-        toast("AI description applied")
-        showAiControls(story.id)
-    }
-}
-
-internal fun ScreenHost.discardAiDescriptionDraft(story: Story) {
-    aiControlsScreenState.drafts.remove(story.id)
-    toast("Draft discarded")
-    showAiControls(story.id)
-}
-
-internal fun ScreenHost.frameIsAiControls(storyId: String): Boolean = frame.tag == AppRoute.AiControls(storyId).stableKey
-
-/** Re-renders the story page when it shows AI results: its Overview or Chapters tab, or any tab beside the hero pane. */
-internal fun ScreenHost.rerenderDetailsIfVisible(storyId: String) {
-    if (navigator.current is AppRoute.Details) {
-        if (storyTabShowing(storyId)) renderRoute(navigator.current)
-    } else {
-        refreshStoryHero(storyId)
-    }
+    confirm(message, confirmLabel = "Generate") { render.model.startDescription() }
 }

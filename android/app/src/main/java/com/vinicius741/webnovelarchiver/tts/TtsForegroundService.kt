@@ -34,7 +34,6 @@ class TtsForegroundService : Service() {
     private lateinit var audioFocus: TtsAudioFocusManager
     private lateinit var notificationManager: TtsNotificationManager
     private lateinit var mediaSessionManager: TtsMediaSessionManager
-    private val mediaButtonClaim = TtsMediaButtonClaim()
     private val noisyAudio =
         TtsNoisyAudioReceiver(this) {
             pausePlayback()
@@ -222,7 +221,6 @@ class TtsForegroundService : Service() {
         engine.onSleepTimerExpired = null
         audioFocus.abandon()
         mediaSessionManager.release()
-        mediaButtonClaim.stop()
         setCpuAwake(false)
         noisyAudio.unregister()
         super.onDestroy()
@@ -355,8 +353,6 @@ class TtsForegroundService : Service() {
         loadCoverFor(snapshot?.storyId)
         mediaSessionManager.updateMetadata(snapshot, coverBitmap)
         updateNotification()
-        // Rendered audio plays in this process, so this app is already the active player.
-        mediaButtonClaim.setSpeaking(snapshot?.isPlaying == true && snapshot.isLiveOutput)
         setCpuAwake(snapshot?.isPlaying == true)
         noisyAudio.setActive(snapshot?.isPlaying == true)
     }

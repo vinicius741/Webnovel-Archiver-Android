@@ -15,7 +15,8 @@ import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.feature.player.TTS_MINI_PLAYER_TAG
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
+import com.vinicius741.webnovelarchiver.navigation.aiOperation
+import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -26,6 +27,7 @@ import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.systemBarBottom
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
 /*
@@ -115,7 +117,14 @@ private class AiJobChipView(
     }
 }
 
+/**
+ * Attaches the chip to [root]. It follows the running cover and description jobs, the persisted
+ * unseen covers, and [AiAttention]'s unseen results, failures and dismissals, plus the current
+ * route (its own story's AI tab hides it).
+ */
 internal fun ScreenHost.attachAiJobChip(root: ViewGroup) {
+    val container = app.appContainer
+    val attention = container.aiAttention
     var current: AiJobChipState? = null
     lateinit var chip: AiJobChipView
 
@@ -134,9 +143,9 @@ internal fun ScreenHost.attachAiJobChip(root: ViewGroup) {
     }
 
     fun refresh() {
-        val state = aiControlsScreenState
+        val held = attention.state.value
         val coverJob =
-            app.appContainer.aiCoverJobCoordinator.jobs.value.values
+            container.aiCoverJobCoordinator.jobs.value.values
                 .firstOrNull()
         val descriptionJob = aiOperation?.takeIf { it.kind == StoryOperationKind.AI_DESCRIPTION }
         val viewing = (navigator.current as? AppRoute.AiControls)?.storyId
@@ -146,9 +155,9 @@ internal fun ScreenHost.attachAiJobChip(root: ViewGroup) {
                     runningCover = coverJob?.let { it.storyId to it.message },
                     runningDescription = descriptionJob?.let { it.storyId to it.message },
                     unseenCovers = repository.aiCoverUnseen.value,
-                    unseenDescriptions = state.unseenDescriptions,
-                    failures = state.jobFailures,
-                    dismissed = state.dismissedChips,
+                    unseenDescriptions = held.unseenDescriptions,
+                    failures = held.failures,
+                    dismissed = held.dismissed,
                     viewingStoryId = viewing,
                 ),
             ) { storyId -> repository.story(storyId)?.title }
@@ -175,8 +184,7 @@ internal fun ScreenHost.attachAiJobChip(root: ViewGroup) {
             root,
             onOpen = { current?.let { showAiControls(it.storyId, it.tab) } },
             onDismiss = {
-                current?.dismissKey?.let { aiControlsScreenState.dismissedChips += it }
-                refresh()
+                current?.dismissKey?.let(attention::dismiss)
             },
         )
     root.addView(
@@ -187,15 +195,13 @@ internal fun ScreenHost.attachAiJobChip(root: ViewGroup) {
     )
     root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (chip.view.visibility == View.VISIBLE) root.post { reposition() } }
 
-    aiControlsScreenState.refreshJobChip = { refresh() }
     val previousScreenBuilt = onScreenBuilt
     onScreenBuilt = {
         previousScreenBuilt?.invoke()
         refresh()
     }
     scope.launch {
-        app.appContainer.aiCoverJobCoordinator.jobs
-            .collect { refresh() }
+        merge(container.aiCoverJobCoordinator.jobs, operations.ai, attention.state).collect { refresh() }
     }
     scope.launch {
         var previous = repository.aiCoverUnseen.value.keys

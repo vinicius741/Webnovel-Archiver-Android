@@ -7,7 +7,6 @@ import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
-import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -65,7 +64,7 @@ internal fun ScreenHost.buildRemovedChaptersNotice(story: Story): LinearLayout {
                                 preferences.removedChaptersNoticeHiddenThrough.orEmpty() + (story.id to newest),
                         )
                     }
-                    rerenderDetailsIfVisible(story.id)
+                    if (storyTabShowing(story.id)) renderRoute(navigator.current)
                 }
             },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {

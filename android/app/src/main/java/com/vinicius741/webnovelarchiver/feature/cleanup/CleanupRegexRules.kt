@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.cleanup.RegexCleanupPresets
+import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.feature.settings.makePill
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -21,11 +22,13 @@ import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.text
-import kotlinx.coroutines.launch
 
-internal fun ScreenHost.buildRegexRules(body: LinearLayout) {
+internal fun ScreenHost.buildRegexRules(
+    body: LinearLayout,
+    model: CleanupScreenModel,
+    rules: List<RegexCleanupRule>,
+) {
     val colors = ThemeManager.colors
-    val rules = repository.regexRules.get()
     if (rules.isEmpty()) {
         body.text(
             "No rules yet. Presets remove common clutter, like separator lines.",
@@ -83,41 +86,19 @@ internal fun ScreenHost.buildRegexRules(body: LinearLayout) {
                         verticalSpacingDp = Spacing.SM
                         addView(
                             makeButton(context, "Edit", Btn.SURFACE) {
-                                if (preset ==
-                                    null
-                                ) {
-                                    showRegexRuleDialog(rule)
+                                if (preset == null) {
+                                    showRegexRuleDialog(model, rule)
                                 } else {
-                                    showCleanupPresetDialog(preset.preset, rule, preset.count)
+                                    showCleanupPresetDialog(model, preset.preset, rule, preset.count)
                                 }
                             },
                         )
                         addView(
-                            makeButton(context, if (rule.enabled) "Disable" else "Enable", Btn.SURFACE) {
-                                val toggled =
-                                    repository.regexRules.get().map {
-                                        if (it.id ==
-                                            rule.id
-                                        ) {
-                                            it.copy(enabled = !it.enabled)
-                                        } else {
-                                            it
-                                        }
-                                    }
-                                scope.launch {
-                                    repository.regexRules.save(toggled)
-                                    showCleanupRules()
-                                }
-                            },
+                            makeButton(context, if (rule.enabled) "Disable" else "Enable", Btn.SURFACE) { model.toggleRule(rule.id) },
                         )
                         addView(
                             makeButton(context, "Delete", Btn.TEXT) {
-                                confirm("Delete the rule \"${rule.name}\"?", confirmLabel = "Delete") {
-                                    scope.launch {
-                                        repository.regexRules.save(repository.regexRules.get().filterNot { it.id == rule.id })
-                                        showCleanupRules()
-                                    }
-                                }
+                                confirm("Delete the rule \"${rule.name}\"?", confirmLabel = "Delete") { model.deleteRule(rule.id) }
                             }.apply { setTextColor(colors.error) },
                         )
                     },
@@ -132,9 +113,9 @@ internal fun ScreenHost.buildRegexRules(body: LinearLayout) {
         WrapLayout(body.context).apply {
             horizontalSpacingDp = Spacing.SM
             verticalSpacingDp = Spacing.SM
-            addView(makeButton(context, "Add preset", Btn.TONAL, R.drawable.wna_add) { showCleanupPresetPicker() })
+            addView(makeButton(context, "Add preset", Btn.TONAL, R.drawable.wna_add) { showCleanupPresetPicker(model) })
             // Advanced: a raw regular expression, for what no preset covers.
-            addView(makeButton(context, "Advanced: write a pattern", Btn.TEXT) { showRegexRuleDialog(null) })
+            addView(makeButton(context, "Advanced: write a pattern", Btn.TEXT) { showRegexRuleDialog(model, null) })
         },
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = body.context.dp(Spacing.XS)

@@ -4,6 +4,9 @@ import android.app.AlertDialog
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.details.showChapterSelection
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.operations.SyncDownloadAction
+import com.vinicius741.webnovelarchiver.operations.SyncDownloadPlan
+import com.vinicius741.webnovelarchiver.operations.SyncDownloadPlanning
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.confirm
 

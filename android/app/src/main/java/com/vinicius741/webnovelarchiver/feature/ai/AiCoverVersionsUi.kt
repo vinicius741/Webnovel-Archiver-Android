@@ -8,16 +8,11 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
-import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverVersion
-import com.vinicius741.webnovelarchiver.data.repository.listAiCoverVersions
-import com.vinicius741.webnovelarchiver.data.repository.saveAiCoverPromptDraft
-import com.vinicius741.webnovelarchiver.data.repository.setAiCover
-import com.vinicius741.webnovelarchiver.data.repository.setShowAiCover
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverVersion
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.domain.sha256Hex
 import com.vinicius741.webnovelarchiver.feature.story.CoverViewerAction
 import com.vinicius741.webnovelarchiver.feature.story.CoverViewerItem
 import com.vinicius741.webnovelarchiver.feature.story.showCoverViewer
@@ -40,9 +35,6 @@ import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 // The Cover tab's strip of every cover the novel can show: the source cover first, then saved AI
 // versions newest first. Tapping one opens every version full screen (swipe between them, read the
@@ -61,9 +53,15 @@ private class CoverChoice(
     val version: AiCoverVersion?,
 )
 
+/** The strip's count label and the slot its covers fill once the saved versions load. */
+internal class CoverStripSlot(
+    val countLabel: TextView,
+    val slot: LinearLayout,
+)
+
 internal fun ScreenHost.addAiCoverStrip(
     container: LinearLayout,
-    story: Story,
+    render: AiTabRender,
 ) {
     val colors = ThemeManager.colors
     val countLabel = makeText(app, "", Type.LABEL_MEDIUM, colors.onSurfaceVariant)
@@ -77,49 +75,54 @@ internal fun ScreenHost.addAiCoverStrip(
     )
     val slot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     container.addView(slot)
-    val pendingBytes = aiControlsScreenState.coverDrafts[story.id]?.bytes
-    scope.launch {
-        val (versions, newId) =
-            coverUiAttempt {
-                val versions = repository.listAiCoverVersions(story.id)
-                versions to pendingBytes?.let { withContext(Dispatchers.Default) { sha256Hex(it) } }
-            } ?: return@launch
-        if (!frameIsAiControls(story.id)) return@launch
-        val sourceInUse = !AiCoverPlanning.isAiCoverActive(story)
-        val choices =
-            buildList {
-                story.coverUrl?.takeIf { it.isNotBlank() }?.let { add(CoverChoice("Source", it, sourceInUse, false, null)) }
-                versions.forEachIndexed { index, version ->
-                    add(CoverChoice("AI ${versions.size - index}", version.image, version.isCurrent, version.id == newId, version))
-                }
+    val strip = CoverStripSlot(countLabel, slot)
+    render.coverStrip = strip
+    fillCoverStrip(strip, render.story, render.model, render.state)
+}
+
+/** Fills the strip from [state]'s saved versions; empty until they load. */
+internal fun ScreenHost.fillCoverStrip(
+    strip: CoverStripSlot,
+    story: Story,
+    model: AiControlsScreenModel,
+    state: AiControlsUiState,
+) {
+    val (versions, newId) = state.coverVersions ?: return
+    val colors = ThemeManager.colors
+    val slot = strip.slot
+    slot.removeAllViews()
+    val sourceInUse = !AiCoverPlanning.isAiCoverActive(story)
+    val choices =
+        buildList {
+            story.coverUrl?.takeIf { it.isNotBlank() }?.let { add(CoverChoice("Source", it, sourceInUse, false, null)) }
+            versions.forEachIndexed { index, version ->
+                add(CoverChoice("AI ${versions.size - index}", version.image, version.isCurrent, version.id == newId, version))
             }
-        if (choices.isEmpty()) {
-            slot.text("No cover yet — make one below.", Type.BODY_SMALL, colors.onSurfaceVariant)
-            return@launch
         }
-        countLabel.text = if (choices.size == 1) "1 version" else "${choices.size} versions"
-        val strip = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
-        choices.forEachIndexed {
-            index,
-            choice,
-            ->
-            strip.addView(coverChoiceView(story, choice) { browseCoverChoices(story, choices, index) })
-        }
-        slot.addView(
-            HorizontalScrollView(app).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(strip)
-            },
-        )
-        slot.text("Tap a cover to see it full size, compare versions and choose one.", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
-            setPadding(0, dp(Space.SM), 0, dp(Space.SM))
-        }
+    if (choices.isEmpty()) {
+        strip.countLabel.text = ""
+        slot.text("No cover yet — make one below.", Type.BODY_SMALL, colors.onSurfaceVariant)
+        return
+    }
+    strip.countLabel.text = if (choices.size == 1) "1 version" else "${choices.size} versions"
+    val row = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
+    choices.forEachIndexed { index, choice ->
+        row.addView(coverChoiceView(story, model, choice) { browseCoverChoices(model, choices, index) })
+    }
+    slot.addView(
+        HorizontalScrollView(app).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(row)
+        },
+    )
+    slot.text("Tap a cover to see it full size, compare versions and choose one.", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+        setPadding(0, dp(Space.SM), 0, dp(Space.SM))
     }
 }
 
 /** Every version full screen: swipe between them, read each prompt, and use one. */
 private fun ScreenHost.browseCoverChoices(
-    story: Story,
+    model: AiControlsScreenModel,
     choices: List<CoverChoice>,
     start: Int,
 ) {
@@ -166,9 +169,9 @@ private fun ScreenHost.browseCoverChoices(
         val index = viewer.index
         committing = true
         val started =
-            useCoverChoice(story, choices[index]) { used ->
+            model.useCoverVersion(choices[index].version) { used ->
                 committing = false
-                if (!used) return@useCoverChoice
+                if (!used) return@useCoverVersion
                 val previous = inUse
                 inUse = index
                 listOf(previous, index).filter { it in items.indices }.forEach { items[it] = items[it].copy(subtitle = subtitle(it)) }
@@ -181,6 +184,7 @@ private fun ScreenHost.browseCoverChoices(
 
 private fun ScreenHost.coverChoiceView(
     story: Story,
+    model: AiControlsScreenModel,
     choice: CoverChoice,
     onOpen: () -> Unit,
 ): LinearLayout {
@@ -232,7 +236,7 @@ private fun ScreenHost.coverChoiceView(
         }
     frame.setOnClickListener { onOpen() }
     frame.setOnLongClickListener {
-        showCoverChoiceDetails(story, choice)
+        showCoverChoiceDetails(story, model, choice)
         true
     }
     item.addView(frame)
@@ -245,55 +249,17 @@ private fun ScreenHost.coverChoiceView(
     return item
 }
 
-/**
- * Makes [choice] the displayed cover; choosing anything also settles a waiting "New cover ready".
- * Returns false when it cannot be used right now; otherwise [onSettled] reports whether it was saved.
- */
-private fun ScreenHost.useCoverChoice(
-    story: Story,
-    choice: CoverChoice,
-    onSettled: (used: Boolean) -> Unit = {},
-): Boolean {
-    // An unfolded legacy archive snapshot (startup folds them all) stays read-only.
-    // A running cover job only writes a draft, never the cover in use, so choosing one is safe meanwhile.
-    if (story.isArchived == true) return false
-    scope.launch {
-        var used = false
-        try {
-            coverUiAttempt {
-                val version = choice.version
-                if (version == null) {
-                    repository.setShowAiCover(story.id, false)
-                } else {
-                    val bytes = withContext(Dispatchers.IO) { runCatching { version.image.readBytes() }.getOrNull() }
-                    if (bytes == null) {
-                        toast("This cover is no longer available")
-                        return@coverUiAttempt
-                    }
-                    repository.setAiCover(story.id, bytes, version.mediaType)
-                }
-                used = true
-                aiControlsScreenState.coverDrafts[story.id]?.let { draft -> closeAiCoverDraft(story.id, draft.prompt) }
-                if (frameIsAiControls(story.id)) showAiControls(story.id)
-            }
-        } finally {
-            onSettled(used)
-        }
-    }
-    return true
-}
-
 /** Larger view of one cover beside the one in use, with its prompt and the free reuse actions. */
 private fun ScreenHost.showCoverChoiceDetails(
     story: Story,
+    model: AiControlsScreenModel,
     choice: CoverChoice,
 ) {
-    if (!frameIsAiControls(story.id)) return
     val colors = ThemeManager.colors
     val (dialog, content) = makeAiCoverDialog(if (choice.version == null) "Source cover" else choice.label)
     val editable = story.isArchived != true
     // Reusing a prompt rewrites the prompt box, which a running cover job owns until it finishes.
-    val canReusePrompt = editable && aiCoverOperationFor(story.id) == null
+    val canReusePrompt = editable && model.state.value.coverJob == null
     if (choice.inUse) {
         content.addView(
             makeCover(app, 160, 240).apply {
@@ -332,13 +298,13 @@ private fun ScreenHost.showCoverChoiceDetails(
     if (!choice.inUse && editable) {
         content.fullButton("Use this cover", Btn.FILLED, R.drawable.wna_check) {
             dialog.dismiss()
-            useCoverChoice(story, choice)
+            model.useCoverVersion(choice.version)
         }
     }
     if (version != null && version.prompt.isNotBlank() && canReusePrompt && story.chapters.any { it.downloaded }) {
         content.fullButton("Reuse this prompt", Btn.OUTLINED) {
             dialog.dismiss()
-            reuseCoverPrompt(story, version.prompt)
+            model.reuseCoverPrompt(version.prompt)
         }
     }
     // Rarely needed, so it lives only here: drop a bad generation from history. Never the cover in use
@@ -348,7 +314,7 @@ private fun ScreenHost.showCoverChoiceDetails(
             .fullButton("Delete this cover", Btn.TEXT) {
                 confirm("Delete ${choice.label}? Its image and prompt are removed from this device.", "Delete") {
                     dialog.dismiss()
-                    deleteCoverVersion(story, version)
+                    model.deleteCoverVersion(version)
                 }
             }.apply {
                 setTextColor(colors.error)
@@ -360,37 +326,6 @@ private fun ScreenHost.showCoverChoiceDetails(
     }
     content.fullButton("Close", Btn.TEXT) { dialog.dismiss() }
     dialog.show()
-}
-
-private fun ScreenHost.deleteCoverVersion(
-    story: Story,
-    version: AiCoverVersion,
-) {
-    scope.launch {
-        coverUiAttempt {
-            if (repository.deleteAiCoverVersion(story.id, version.id)) {
-                toast("Cover deleted")
-            } else {
-                toast("This cover can't be deleted")
-            }
-            if (frameIsAiControls(story.id)) showAiControls(story.id)
-        }
-    }
-}
-
-/** Reusing a prompt is free: it only fills the box. Generate from prompt starts the billable call. */
-private fun ScreenHost.reuseCoverPrompt(
-    story: Story,
-    prompt: String,
-) {
-    scope.launch {
-        coverUiAttempt {
-            aiControlsScreenState.coverDrafts[story.id]?.let { draft -> closeAiCoverDraft(story.id, draft.prompt) }
-            repository.saveAiCoverPromptDraft(story.id, prompt)
-            aiControlsScreenState.coverPrompts[story.id] = prompt
-            if (frameIsAiControls(story.id)) showAiControls(story.id)
-        }
-    }
 }
 
 private const val USE_THIS_ACTION = "use"

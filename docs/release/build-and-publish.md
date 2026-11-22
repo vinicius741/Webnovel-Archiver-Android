@@ -117,3 +117,15 @@ Published APK filenames omit the legacy `-native` suffix and GitHub Actions run 
 https://github.com/vinicius741/Webnovel-Archiver-Android/releases/latest
 
 After the first install, the release app finds new releases through **Settings → App Updates** (and an automatic startup check) and opens the new APK in the browser, so Android's installer installs it over the existing app. The app does not install APKs itself (see [in-app-updates.md](in-app-updates.md)). The workflow adds a hidden `<!-- app-update versionCode=N -->` marker to the release notes for this; do not remove it when editing a release.
+
+## Agent release rules
+
+(Moved from `android/AGENTS.md`.)
+
+Run `:app:assembleRelease` or `:app:assembleBeta` only when the user explicitly requests a release or beta artifact. Both use the release signing credentials and are not routine validation steps.
+
+The `beta` build type (`initWith release`) is a separate app: application id suffix `.beta`, name and icon overrides in `app/src/beta/res`, release-only sources from `app/src/release/java`, its own deep-link scheme, and `UPDATE_CHANNEL` `beta`. Its `versionName` is the stable one plus `-beta.<n>` and its `versionCode` is `1000000 + n` (independent of the branch's stable code, so betas from any branch keep increasing), where `n` is `WEBNOVEL_BETA_NUMBER` (the beta workflow's run number; 0 locally). Keep the literal `versionCode N` / `versionName '…'` lines in `defaultConfig`, because both publish workflows parse them. When the stable launcher mark changes, update the beta copies in `app/src/beta/res/drawable/` too.
+
+The manual `Publish Android Beta APK` workflow (`.github/workflows/android-beta.yml`) builds the signed beta from any branch and publishes it as a GitHub prerelease (never *latest*) tagged `v<versionName>-beta.<run number>`; it needs no version bump. The manual `Publish Android APK` GitHub Actions workflow builds a signed release on `main`. It does not run the release gate. It only warns when the Quality Gate run for that commit failed or is still pending. Check open `quality-gate` issues before releasing. It reads `versionName` and `versionCode` from `app/build.gradle`; increase both before a new release. It publishes tag `v<versionName>` and refuses to overwrite existing tags. Signing secrets must use the original release key; setup is in the root `README.md`. The workflow does not install onto devices.
+
+Before publishing or retrying a GitHub release, follow the release preflight in `.agents/skills/build-and-install-apk/SKILL.md`: inspect recent workflow runs, remote tags, and published releases before choosing a version. A local APK rebuild alone does not require a version bump. For a new published release, use an unused `versionName` and a `versionCode` greater than previous releases, then verify the authorized changes are on remote `main` before dispatching. Re-running an old workflow uses its original commit, not a later version bump. An existing tag is a safety check, not a reason to delete a release or suppress failure notifications. Commit, push, and workflow dispatch still require the user's authorization; this checklist grants none.
