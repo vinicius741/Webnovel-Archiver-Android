@@ -8,7 +8,6 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.cleanup.SentenceRemovalPlanning
 import com.vinicius741.webnovelarchiver.feature.narration.makeListGroup
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -30,9 +29,12 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.launch
 
-internal fun ScreenHost.buildSentenceRules(body: LinearLayout) {
+internal fun ScreenHost.buildSentenceRules(
+    body: LinearLayout,
+    model: CleanupScreenModel,
+    sentences: List<String>,
+) {
     body.apply {
         // The input holds a full sentence — usually a paragraph, sometimes a long one — so it is a
         // multiline textarea (minLines gives a comfortable editing area and it grows with the content)
@@ -44,8 +46,8 @@ internal fun ScreenHost.buildSentenceRules(body: LinearLayout) {
                     InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE,
                     singleLine = false,
                 )
-                setText(cleanupScreenState.sentenceDraft)
-                doAfterTextChanged { cleanupScreenState.sentenceDraft = it.toString() }
+                setText(model.sentenceDraft)
+                doAfterTextChanged { model.setSentenceDraft(it.toString()) }
                 minLines = 4
                 // Cap the visible height so the saved-sentence list below stays reachable on long
                 // paragraphs; the field scrolls internally past that.
@@ -68,21 +70,11 @@ internal fun ScreenHost.buildSentenceRules(body: LinearLayout) {
                 }
             }
             button("Add", Btn.FILLED, R.drawable.wna_add) {
-                val list = repository.sentenceRemovalList.get()
-                val result = SentenceRemovalPlanning.save(list, sentence.text.toString())
-                if (!result.valid) {
-                    toast(result.error ?: "Invalid sentence")
-                } else {
-                    scope.launch {
-                        repository.sentenceRemovalList.save(result.sentences)
-                        cleanupScreenState.sentenceDraft = ""
-                        showCleanupRules()
-                    }
-                }
+                model.setSentenceDraft(sentence.text.toString())
+                model.addSentence()?.let(::toast)
             }
         }
         section("Saved sentences")
-        val sentences = repository.sentenceRemovalList.get()
         if (sentences.isEmpty()) {
             text("No sentences yet.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
             return
@@ -92,26 +84,9 @@ internal fun ScreenHost.buildSentenceRules(body: LinearLayout) {
         sentences.forEachIndexed { index, item ->
             group.addView(
                 sentenceRow(item, onEdit = {
-                    prompt("Edit sentence", item) { updated ->
-                        val result = SentenceRemovalPlanning.save(repository.sentenceRemovalList.get(), updated, index)
-                        if (!result.valid) {
-                            toast(result.error ?: "Invalid sentence")
-                        } else {
-                            scope.launch {
-                                repository.sentenceRemovalList.save(result.sentences)
-                                showCleanupRules()
-                            }
-                        }
-                    }
+                    prompt("Edit sentence", item) { updated -> model.editSentence(index, updated)?.let(::toast) }
                 }, onDelete = {
-                    confirm("Remove this sentence from the list?", confirmLabel = "Delete") {
-                        scope.launch {
-                            repository.sentenceRemovalList.save(
-                                SentenceRemovalPlanning.delete(repository.sentenceRemovalList.get(), index),
-                            )
-                            showCleanupRules()
-                        }
-                    }
+                    confirm("Remove this sentence from the list?", confirmLabel = "Delete") { model.deleteSentence(index) }
                 }),
             )
         }

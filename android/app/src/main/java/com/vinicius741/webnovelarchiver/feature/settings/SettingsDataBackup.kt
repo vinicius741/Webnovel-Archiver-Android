@@ -10,7 +10,11 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
-import com.vinicius741.webnovelarchiver.navigation.BackupExportKind
+import com.vinicius741.webnovelarchiver.data.repository.BackupFileEntry
+import com.vinicius741.webnovelarchiver.data.repository.deleteBackupFile
+import com.vinicius741.webnovelarchiver.data.repository.listBackupFiles
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
+import java.io.File
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -26,33 +30,60 @@ import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import kotlinx.coroutines.launch
 
-/** Backup and restore, the backup files kept on this phone, troubleshooting tools, and the reset. */
+/** Data & backup's reads and changes, from the repository. */
+private class HostDataBackupData(
+    private val host: ScreenHost,
+) : DataBackupData {
+    override suspend fun backupFiles(): List<BackupFileEntry> = host.repository.listBackupFiles()
+
+    override suspend fun deleteBackupFile(file: File): Boolean = host.repository.deleteBackupFile(file)
+
+    override fun storageIssues(): List<String> = host.repository.getStorageHealth().issues.map { issue -> "${issue.document}: ${issue.detail}" }
+
+    override suspend fun clearAll() = host.repository.clearAll()
+}
+
+/** Data & backup's model, kept while it is in the history. */
+private fun ScreenHost.dataBackupModel(): DataBackupScreenModel =
+    screenModels.get(AppRoute.DataBackup.stableKey) { DataBackupScreenModel(HostDataBackupData(this), backupExports) }
+
+/**
+ * Backup and restore, the backup files kept on this phone, troubleshooting tools, and the reset,
+ * built from [DataBackupScreenModel]'s state. The export's row, its progress card and the backup
+ * files follow the state in place; a change in storage problems rebuilds the page.
+ */
 internal fun ScreenHost.showDataBackup() {
-    backupExportState.reconcile()
     val colors = ThemeManager.colors
     screen(route = AppRoute.DataBackup, title = "Data & backup", scrollable = true) {
+        // screen() navigates to this route before it prunes the store, so the model is kept.
+        val model = dataBackupModel()
+        model.refresh()
+        val state = model.state.value
         capSettingsWidth(this)
         section("Backup")
+        lateinit var exportRow: LoadingRow
         settingsGroup {
-            loadingRow(
-                R.drawable.wna_archive,
-                "Create backup",
-                "Everything, including chapters",
-                backupExportState.activeKind == BackupExportKind.FULL,
-            ) {
-                startFullBackupExport()
-            }
+            exportRow =
+                loadingRow(
+                    R.drawable.wna_archive,
+                    "Create backup",
+                    "Everything, including chapters",
+                    state.export != null,
+                ) {
+                    model.startExport()
+                }
             navRow(R.drawable.wna_restore, "Restore backup", "Replace this library with a backup", chevron = false) {
                 importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
             }
         }
-        addFullBackupProgressCard(this)
-        addBackupFilesSection(this)
+        val progress = FullBackupProgressCard(this)
+        progress.show(state.export)
+        val files = BackupFilesSection(this@showDataBackup, this, model)
+        files.show(state.files)
 
         section("Troubleshooting")
-        settingsGroup { addTroubleshootingRows(this) }
+        settingsGroup { addTroubleshootingRows(this, state.storageIssues) }
 
         section("Danger zone").setTextColor(colors.error)
         tintedCard(colors.error) {
@@ -75,10 +106,7 @@ internal fun ScreenHost.showDataBackup() {
                         "Delete all novels, settings, and downloads? Backups on this phone are kept.",
                         confirmLabel = "Delete everything",
                     ) {
-                        scope.launch {
-                            repository.clearAll()
-                            showLibrary()
-                        }
+                        model.clearLocalStorage { showLibrary() }
                     }
                 },
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -86,21 +114,34 @@ internal fun ScreenHost.showDataBackup() {
                 },
             )
         }
+        var applied = state
+        bindWhileAttached(scope, model.state) { next ->
+            if (next.buildKey != applied.buildKey) {
+                showDataBackup()
+                return@bindWhileAttached
+            }
+            exportRow.setLoading(next.export != null)
+            progress.show(next.export)
+            if (next.files != applied.files) files.show(next.files)
+            applied = next
+        }
     }
 }
 
-private fun ScreenHost.addTroubleshootingRows(group: LinearLayout) {
+private fun ScreenHost.addTroubleshootingRows(
+    group: LinearLayout,
+    storageIssues: List<String>,
+) {
     val colors = ThemeManager.colors
-    val storageHealth = repository.getStorageHealth()
-    if (storageHealth.requiresUserAttention) {
+    if (storageIssues.isNotEmpty()) {
         group.navRow(
             R.drawable.wna_error,
             "Storage recovery notice",
-            "${storageHealth.issues.size} storage issue(s); preserved data was not overwritten",
+            "${storageIssues.size} storage issue(s); preserved data was not overwritten",
             tint = colors.error,
             chevron = false,
         ) {
-            alert("Storage recovery notice", storageHealth.issues.joinToString("\n") { issue -> "${issue.document}: ${issue.detail}" })
+            alert("Storage recovery notice", storageIssues.joinToString("\n"))
         }
     }
     group.navRow(R.drawable.wna_bug_report, "Share diagnostics", "Recent activity and source access; a copy goes to Downloads") {

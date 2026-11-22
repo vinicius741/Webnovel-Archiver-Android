@@ -12,7 +12,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -34,10 +33,12 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
+internal fun ScreenHost.showRegexRuleDialog(
+    model: CleanupScreenModel,
+    existing: RegexCleanupRule?,
+) {
     val view = FormLayout(app, dialog = true)
     val name = makeField(app, existing?.name.orEmpty(), "Rule name", InputType.TYPE_CLASS_TEXT)
     val pattern = makeField(app, existing?.pattern.orEmpty(), "Regex pattern", InputType.TYPE_CLASS_TEXT)
@@ -90,17 +91,9 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
         val patternText = pattern.text.toString()
         val flagsText = flags.text.toString()
         val inputText = previewInput.text.toString()
-        scope.launch(Dispatchers.Default) {
-            val cleaned =
-                RegexRuleCleanup.previewRegexRule(
-                    patternText,
-                    flagsText,
-                    inputText,
-                )
-            app.runOnUiThread {
-                if (generation != previewGeneration) return@runOnUiThread
-                previewOutput.text = cleaned ?: "(No output)"
-            }
+        scope.launch {
+            val cleaned = model.previewRule(patternText, flagsText, inputText)
+            if (generation == previewGeneration) previewOutput.text = cleaned ?: "(No output)"
         }
     }
     pattern.doAfterTextChanged { updatePreview() }
@@ -119,45 +112,15 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
     dialog.setOnShowListener {
         updatePreview()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val validation =
-                RegexRuleCleanup.validateRegexRule(
+            val error =
+                model.saveRegexRule(
+                    existing,
                     name.text.toString(),
                     pattern.text.toString(),
                     flags.text.toString(),
+                    targets.getOrElse(appliesTo.selectedItemPosition) { "both" },
                 )
-            if (!validation.valid) {
-                toast(validation.error ?: "Invalid regex rule")
-                return@setOnClickListener
-            }
-            val normalizedTarget = targets.getOrElse(appliesTo.selectedItemPosition) { "both" }
-            val rules = repository.regexRules.get().toMutableList()
-            if (RegexRuleCleanup.hasSimilarRegexRule(
-                    rules,
-                    existing?.id,
-                    validation.normalizedPattern.orEmpty(),
-                    validation.normalizedFlags.orEmpty(),
-                    normalizedTarget,
-                )
-            ) {
-                toast("A similar regex rule already exists")
-                return@setOnClickListener
-            }
-            val updated =
-                RegexCleanupRule(
-                    id = existing?.id ?: "rule_${System.currentTimeMillis()}",
-                    name = name.text.toString().trim(),
-                    pattern = validation.normalizedPattern.orEmpty(),
-                    flags = validation.normalizedFlags.orEmpty(),
-                    enabled = existing?.enabled ?: true,
-                    appliesTo = normalizedTarget,
-                )
-            val index = rules.indexOfFirst { it.id == updated.id }
-            if (index >= 0) rules[index] = updated else rules.add(updated)
-            scope.launch {
-                repository.regexRules.save(rules)
-                dialog.dismiss()
-                showCleanupRules()
-            }
+            if (error != null) toast(error) else dialog.dismiss()
         }
     }
     dialog.show()

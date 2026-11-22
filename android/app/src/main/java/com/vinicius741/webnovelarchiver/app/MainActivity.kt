@@ -26,7 +26,9 @@ import com.vinicius741.webnovelarchiver.feature.browser.ACTION_IMPORT_CURRENT_UR
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
-import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
+import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenStatePersistence
+import com.vinicius741.webnovelarchiver.feature.settings.BackupExports
+import com.vinicius741.webnovelarchiver.feature.settings.HostBackupExportHost
 import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
@@ -39,7 +41,6 @@ import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncs
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
-import com.vinicius741.webnovelarchiver.navigation.BackupExportState
 import com.vinicius741.webnovelarchiver.navigation.RouteViewMemory
 import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -96,8 +97,7 @@ class MainActivity :
     override val screenModels = ScreenModelStore()
     override val navigator = AppNavigator()
     override val routeMemory: RouteViewMemory = RouteViewMemory()
-    override val backupExportState: BackupExportState = BackupExportState()
-    override val cleanupScreenState: CleanupScreenState = CleanupScreenState()
+    override val backupExports: BackupExports by lazy { BackupExports(HostBackupExportHost(this), scope) }
     override val updatesSyncs: UpdatesSyncs by lazy { UpdatesSyncs(HostUpdatesSyncHost(this), operations, scope) }
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
@@ -394,7 +394,7 @@ class MainActivity :
         outState.putStringArrayList(STATE_ROUTE_STACK, ArrayList(navigator.encodedStack()))
         routeMemory.save(outState)
         LibraryScreenStatePersistence.save(screenModels, outState)
-        cleanupScreenState.save(outState)
+        CleanupScreenStatePersistence.save(screenModels, outState)
         super.onSaveInstanceState(outState)
     }
 
@@ -404,7 +404,7 @@ class MainActivity :
         state ?: return false
         // Library view memory restores even when the route stack can't: the root Library screen uses it too.
         LibraryScreenStatePersistence.restore(screenModels, state)
-        cleanupScreenState.restore(state)
+        CleanupScreenStatePersistence.restore(screenModels, state)
         val stack = state.getStringArrayList(STATE_ROUTE_STACK) ?: return false
         if (!navigator.restore(stack)) return false
         if (navigator.current == AppRoute.Working) {
