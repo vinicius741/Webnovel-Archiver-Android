@@ -41,6 +41,7 @@ under `android/`.
 | `project-improvement-audit.html` | Legacy HTML rendering of the original audit for easier reading and navigation; use the Markdown source for the refreshed current version. |
 | `refactoring-large-files.md` | Record of the large-file decomposition (Sources, AppStorage, DetailsScreen, TextCleanup), marked complete. |
 | `metric-trends.md` | Per-novel metric Trends feature: snapshot capture on sync, retention/downsampling, JSON history-store layout, and the Trends screen. |
+| `trending.md` | The library-wide Trending screen: the signals, decayed (Reddit-style) heat with a baseline discount, per-signal scaling so Patreon can't dominate, the caught-up bookmark filter, the screen layout, and the tuning constants. |
 | `source-metadata-opportunity-audit-2026-07-31.html` | Source-by-source audit of missing public novel metadata across Royal Road, Scribble Hub, SpaceBattles, and FanFiction.net, with retrieval paths and prioritized implementation guidance. |
 
 ### `msc-for-me-chat/`

@@ -13,6 +13,16 @@ class ShellNavigationPlanningTest {
     }
 
     @Test
+    fun `Trending stays under Updates, even when opened straight away`() {
+        assertEquals(
+            ShellDestination.UPDATES,
+            ShellNavigationPlanning.destinationOf(listOf(AppRoute.Library, AppRoute.Updates, AppRoute.Trending)),
+        )
+        assertEquals(ShellDestination.UPDATES, ShellNavigationPlanning.destinationOf(listOf(AppRoute.Trending)))
+        assertEquals(AppRoute.Trending, AppRouteCodec.decode(AppRouteCodec.encode(AppRoute.Trending)))
+    }
+
+    @Test
     fun `a settings page opened straight away falls back to its parent destination`() {
         assertEquals(ShellDestination.SETTINGS, ShellNavigationPlanning.destinationOf(listOf(AppRoute.TtsSettings)))
         assertEquals(ShellDestination.LIBRARY, ShellNavigationPlanning.destinationOf(listOf(AppRoute.Details("s"))))

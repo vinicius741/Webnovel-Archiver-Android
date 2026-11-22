@@ -67,6 +67,9 @@ sealed class AppRoute(
      */
     data object Updates : AppRoute("updates")
 
+    /** Novels whose statistics are rising now, reached from Updates' app bar. */
+    data object Trending : AppRoute("trending")
+
     /** Podcast-style Now Playing screen (TTS transport, progress, speed). */
     data object Player : AppRoute("player")
 
@@ -139,6 +142,7 @@ sealed class AppRoute(
                 is ChapterSelection -> Details(storyId)
                 is AuthorNovels -> Details(storyId)
                 is PatreonAccount -> storyId?.let(::Details) ?: Settings
+                Trending -> Updates
                 DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
                 else -> Library
             }
@@ -183,6 +187,7 @@ object AppRouteCodec {
             "add_story" -> AppRoute.AddStory
             "queue" -> AppRoute.Queue
             "updates" -> AppRoute.Updates
+            "trending" -> AppRoute.Trending
             "player" -> AppRoute.Player
             "narration" -> AppRoute.Narration
             "settings" -> AppRoute.Settings

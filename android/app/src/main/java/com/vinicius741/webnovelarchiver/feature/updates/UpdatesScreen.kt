@@ -13,9 +13,11 @@ import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning.Entry
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning.Overview
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning.Section
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
+import com.vinicius741.webnovelarchiver.feature.trending.showTrending
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.ShellDestination
+import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.RAIL_MIN_WIDTH_DP
 import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
@@ -101,7 +103,7 @@ private class UpdatesRenderer(
                     "Updates",
                     forecastSubtitle(state.storyCount),
                     // The forecast card (and the May be out filter) hold the one Sync all button.
-                    emptyList(),
+                    listOf(AppBarAction(R.drawable.wna_trending, "Trending") { showTrending(host) }),
                 )
             setSubtitle = appBar::setSubtitle
             addView(appBar.view)

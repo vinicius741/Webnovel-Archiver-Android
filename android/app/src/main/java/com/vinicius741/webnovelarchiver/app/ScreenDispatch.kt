@@ -20,6 +20,7 @@ import com.vinicius741.webnovelarchiver.feature.settings.showPatreonAccount
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showTabs
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
+import com.vinicius741.webnovelarchiver.feature.trending.showTrending
 import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -35,6 +36,7 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
         AppRoute.AddStory -> showAddStory()
         AppRoute.Queue -> showQueue()
         AppRoute.Updates -> showUpdates()
+        AppRoute.Trending -> showTrending(this)
         AppRoute.Player -> showPlayer()
         AppRoute.Narration -> showNarration()
         AppRoute.Settings -> showSettings()

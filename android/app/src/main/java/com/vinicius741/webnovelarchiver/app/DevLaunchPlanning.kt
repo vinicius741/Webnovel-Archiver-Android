@@ -22,6 +22,7 @@ object DevLaunchPlanning {
     ) {
         LIBRARY("library"),
         UPDATES("updates"),
+        TRENDING("trending"),
         QUEUE("queue"),
         SETTINGS("settings"),
         READER("reader"),
@@ -53,6 +54,7 @@ object DevLaunchPlanning {
             null -> null
             DevStartScreen.LIBRARY -> AppRoute.Library
             DevStartScreen.UPDATES -> AppRoute.Updates
+            DevStartScreen.TRENDING -> AppRoute.Trending
             DevStartScreen.QUEUE -> AppRoute.Queue
             DevStartScreen.SETTINGS -> AppRoute.Settings
             DevStartScreen.AI_SETTINGS -> AppRoute.AiSettings

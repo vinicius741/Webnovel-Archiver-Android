@@ -12,6 +12,7 @@ Supports **Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFicti
 - Listening with sentence highlighting, playback controls, per-story resume, and a choice of voice (any installed TTS app, or the built-in neural voices Kokoro v1.0 and Phonon, downloaded to the phone only when it should generate them itself), all set up on one Settings › Listening page.
 - Pre-generated narration: chapter audio is generated in full, in the background, before it plays (bulk queue, keep the next chapters ready while listening, per-chapter voice, the headphones on a chapter generate it first and then play; generate, regenerate and delete from each novel's Chapters tab or the Listen screen; audio made from older text keeps playing), so playback never waits on the voice model. Built-in-voice chapters can also generate on your own computers over Wi-Fi or Tailscale (`scripts/narration-server`), several times faster than on the phone and with the same voice; choose several computers and they share each chapter, with the phone optionally standing in while none can be reached. Audio is stored compressed (AAC, about 30 MB per hour, measured indistinguishable from the original), and audio generated before compression is converted in the background.
 - New-chapter tracking with a next-release estimate from each novel's recent release dates: the Updates screen groups novels whose next chapter may be out, is expected soon or is running late, and syncs one or all of them. Library tabs, search, filters, a tap-the-author view of their other novels in your library, and novel popularity trends.
+- Trending (from the Updates app bar): the novels whose Patreon, readers, views or rating are rising right now. Rises fade after about a week so the list keeps changing, and novels you're caught up on are left out.
 - EPUB export, text cleanup, and full library backup and restore.
 - One shareable diagnostics export (the last hour of syncs, downloads, library changes and errors, plus source access) for troubleshooting, also saved to Downloads/Webnovel Archiver; the phone keeps 7 days.
 - Patreon early-access chapters available through your own account.
@@ -57,7 +58,7 @@ The app uses Android Views, Kotlin coroutines, OkHttp, Jsoup, and file-based JSO
 |----------|---------|
 | `app/`, `navigation/` | Startup, shared dependencies, navigation, and the per-screen model store |
 | `operations/` | Work several screens start and watch: story sync, text cleanup, EPUB and AI progress, and listen starts |
-| `feature/`, `ui/` | Screens, each a screen model plus a View renderer (library, updates, story page tabs, listen/player/reader, downloads, settings), the app shell, shared widgets, and theme |
+| `feature/`, `ui/` | Screens, each a screen model plus a View renderer (library, updates, trending, story page tabs, listen/player/reader, downloads, settings), the app shell, shared widgets, and theme |
 | `domain/`, `data/` | Models, domain rules, persistence, and backups |
 | `source/`, `sync/`, `download/` | Site providers, story updates, and download queue |
 | `tts/`, `narration/`, `epub/`, `cleanup/`, `ai/` | Playback, generated chapter audio, export, text cleanup, and AI generation |
