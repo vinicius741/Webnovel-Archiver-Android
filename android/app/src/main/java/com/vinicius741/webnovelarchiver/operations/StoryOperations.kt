@@ -62,13 +62,10 @@ class StoryOperations {
         message: String,
     ): Boolean {
         var started = false
+        // update() runs the block again when another thread wrote in between, so the flag restarts each time.
         updatesState.update { current ->
-            if (storyId in current) {
-                current
-            } else {
-                started = true
-                current + (storyId to message)
-            }
+            started = storyId !in current
+            if (started) current + (storyId to message) else current
         }
         return started
     }
@@ -134,11 +131,8 @@ class StoryOperations {
         var applied: StoryOperationState? = null
         aiState.update { current ->
             val owns = current?.storyId == storyId && current.kind == kind
-            if (owns || (current == null && startIfIdle)) {
-                StoryOperationState(storyId, kind, message).also { applied = it }
-            } else {
-                current
-            }
+            applied = if (owns || (current == null && startIfIdle)) StoryOperationState(storyId, kind, message) else null
+            applied ?: current
         }
         return applied
     }
@@ -162,12 +156,8 @@ class StoryOperations {
     ): Boolean {
         var cleared = false
         state.update { current ->
-            if (current?.storyId == storyId && current.kind == kind) {
-                cleared = true
-                null
-            } else {
-                current
-            }
+            cleared = current?.storyId == storyId && current.kind == kind
+            if (cleared) null else current
         }
         return cleared
     }

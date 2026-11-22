@@ -5,6 +5,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class StoryOperationsTest {
     private val operations = StoryOperations()
@@ -48,11 +51,43 @@ class StoryOperationsTest {
     }
 
     @Test
+    fun onlyOneOfTwoRacingStartsListsANovelAsSyncingFromUpdates() {
+        val pool = Executors.newFixedThreadPool(RACERS)
+        try {
+            repeat(RACE_ROUNDS) { round ->
+                val raced = StoryOperations()
+                val ready = CountDownLatch(RACERS)
+                val go = AtomicBoolean(false)
+                val starts =
+                    List(RACERS) {
+                        pool.submit<Boolean> {
+                            ready.countDown()
+                            // Spinning, not parking, so both racers write within the same instant.
+                            while (!go.get()) Thread.onSpinWait()
+                            raced.startUpdatesSync("s1", "Starting...")
+                        }
+                    }
+                ready.await()
+                go.set(true)
+                assertEquals("round $round", 1, starts.count { it.get() })
+                assertTrue(raced.isSyncingFromUpdates("s1"))
+            }
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun clearingAiByKindReturnsWhatWasCleared() {
         operations.setAi(StoryOperationState("s3", StoryOperationKind.AI_COVER, "Painting"))
 
         assertNull(operations.clearAi(StoryOperationKind.AI_DESCRIPTION))
         assertEquals("s3", operations.clearAi(StoryOperationKind.AI_COVER)?.storyId)
         assertNull(operations.ai.value)
+    }
+
+    private companion object {
+        const val RACERS = 2
+        const val RACE_ROUNDS = 5_000
     }
 }

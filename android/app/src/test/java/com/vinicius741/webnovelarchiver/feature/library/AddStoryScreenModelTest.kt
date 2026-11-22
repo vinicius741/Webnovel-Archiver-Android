@@ -55,6 +55,17 @@ class AddStoryScreenModelTest {
     }
 
     @Test
+    fun aFinishedFetchLeavesAnEmptyFormBehind() {
+        val model = model()
+        model.setUrl("https://www.royalroad.com/fiction/1")
+        model.fetchStatus("Saving story")
+
+        model.fetchFinished()
+        assertFalse("Back to the form, when another screen covered it, must not show a fetch that ended", model.state.value.fetching)
+        assertEquals("", model.state.value.url)
+    }
+
+    @Test
     fun aNewModelStartsEmpty() {
         model().setUrl("https://example.test")
 

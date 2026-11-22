@@ -6,14 +6,17 @@ import com.vinicius741.webnovelarchiver.source.PatreonSession
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** The Patreon sign-in as the account page sees it: the shared cookie, Patreon's API, Firefox and the clipboard. */
 internal interface PatreonAccountData {
@@ -85,6 +88,9 @@ internal class PatreonAccountScreenModel(
     private var pasteFeedback: String? = null
     private var stepsExpanded = false
     private var check: Job? = null
+
+    /** Counts checks and sign-outs, so a pasted sign-in's check that a newer one replaced decides nothing. */
+    private var checkTicket = 0
     private val mutableState = MutableStateFlow(compute())
     val state: StateFlow<PatreonAccountUiState> = mutableState.asStateFlow()
 
@@ -100,6 +106,7 @@ internal class PatreonAccountScreenModel(
     }
 
     fun signOut() {
+        checkTicket += 1
         data.clearSession()
         status = null
         refresh()
@@ -143,25 +150,32 @@ internal class PatreonAccountScreenModel(
         status = AccountStatus.Checking
         publish()
         check?.cancel()
+        val ticket = ++checkTicket
         check =
-            scope.launch {
-                val result = checkAccount()
-                if (result is AccountStatus.Rejected) {
-                    if (previous != null && previous != sessionId) data.restoreSession(previous) else data.clearSession()
-                    status = null
-                    pasteFeedback = "Patreon didn't accept that sign-in. Copy session_id again while signed in on patreon.com."
-                } else {
-                    status = result
-                    if (result is AccountStatus.SignedIn) stepsExpanded = false
-                    if (fromClipboard) data.clearClipboard()
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                // To the end even when the page closes meanwhile: a sign-in Patreon refuses must not stay
+                // saved in place of the previous one, and an accepted one must not stay on the clipboard.
+                withContext(NonCancellable) {
+                    val result = checkAccount()
+                    if (ticket != checkTicket) return@withContext
+                    if (result is AccountStatus.Rejected) {
+                        if (previous != null && previous != sessionId) data.restoreSession(previous) else data.clearSession()
+                        status = null
+                        pasteFeedback = "Patreon didn't accept that sign-in. Copy session_id again while signed in on patreon.com."
+                    } else {
+                        status = result
+                        if (result is AccountStatus.SignedIn) stepsExpanded = false
+                        if (fromClipboard) data.clearClipboard()
+                    }
+                    publish()
                 }
-                publish()
             }
     }
 
     private fun checkSaved() {
         status = AccountStatus.Checking
         check?.cancel()
+        checkTicket += 1
         check =
             scope.launch {
                 status = checkAccount()

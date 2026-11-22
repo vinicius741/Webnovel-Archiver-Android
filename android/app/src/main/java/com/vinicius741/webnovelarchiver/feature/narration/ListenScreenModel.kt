@@ -12,6 +12,7 @@ import com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument
 import com.vinicius741.webnovelarchiver.narration.NarrationServerPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -255,7 +256,8 @@ internal class ListenScreenModel(
                     .distinctUntilChanged()
                     .collectLatest { (isIdle, _) ->
                         if (!isIdle) return@collectLatest
-                        idle = runCatching { data.continuePlace() }.getOrNull()?.let(ListenNow::Continue) ?: ListenNow.Nothing
+                        val place = runCatching { data.continuePlace() }.onFailure { if (it is CancellationException) throw it }
+                        idle = place.getOrNull()?.let(ListenNow::Continue) ?: ListenNow.Nothing
                         refresh()
                     }
             }

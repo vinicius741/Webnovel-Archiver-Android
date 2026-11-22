@@ -26,5 +26,9 @@ Applies to `feature/settings/` (the Settings hub and its pages). These rules add
   `speedTest` on its own so it survives a fold.
 - AI settings' model rows (`feature/ai/AiModelControls.kt`) save through `AiSettingsScreenModel.saveModelChoice`;
   pickers that outlive a fold call `refreshAiModelFields`, which bumps the model's `modelsRevision`.
+- A model's scope ends when its route leaves the history, so a write that must finish runs under `NonCancellable`
+  (tab, cleanup and AI saves) or in the process scope (`Autosave`). The Patreon page's check of a pasted sign-in also
+  runs to the end: it restores the previous sign-in when Patreon refuses the new one and clears the clipboard when
+  it accepts it.
 - Process-wide caches, not screen state: `SettingsHubCache` (last hub values shown while fresh ones load) and
   `UnsavedSettings`. Everything else resets when its route leaves the history.

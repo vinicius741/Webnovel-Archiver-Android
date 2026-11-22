@@ -6,6 +6,7 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackUpdate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -136,15 +137,21 @@ class PlayerScreenModel(
                     .map { update -> update.snapshot?.let { it.storyId to it.chapterId } }
                     .distinctUntilChanged()
                     .collectLatest { key ->
+                        // A lookup cut short by a newer chapter must not be kept as an empty result.
                         if (key == null) {
-                            continuePlace = runCatching { data.continuePlace() }.getOrNull()
+                            continuePlace = runCatching { data.continuePlace() }.onFailure(::rethrowCancellation).getOrNull()
                         } else if (sentences?.first != key) {
-                            sentences = key to runCatching { data.chapterSentences(key.first, key.second) }.getOrDefault(emptyList())
+                            val loaded = runCatching { data.chapterSentences(key.first, key.second) }.onFailure(::rethrowCancellation)
+                            sentences = key to loaded.getOrDefault(emptyList())
                         }
                         refresh()
                     }
             }
         }
+
+    private fun rethrowCancellation(error: Throwable) {
+        if (error is CancellationException) throw error
+    }
 
     private fun compute(): PlayerUiState {
         val update = data.playback.value

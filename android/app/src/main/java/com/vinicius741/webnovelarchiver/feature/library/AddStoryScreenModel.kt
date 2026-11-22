@@ -66,6 +66,13 @@ internal class AddStoryScreenModel(
         refresh()
     }
 
+    /** The story was added: the form is done, so Back to it (when another screen covered it) starts empty. */
+    fun fetchFinished() {
+        status = null
+        url = ""
+        refresh()
+    }
+
     private fun compute(): AddStoryUiState {
         val tabs = tabs().sortedBy { it.order }
         // Until a pick, new stories go to the Library's current tab when it is a real tab, else the first tab.

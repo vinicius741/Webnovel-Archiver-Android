@@ -74,6 +74,7 @@ internal fun ScreenHost.showAddStory() {
                     state.tabId,
                     onStatus = model::fetchStatus,
                     onDone = { story ->
+                        model.fetchFinished()
                         // The finished form gives way to the story it added: Back from it goes to the Library.
                         if (navigator.current == AppRoute.AddStory) navigator.replace(AppRoute.Details(story.id))
                         showDetails(story.id)

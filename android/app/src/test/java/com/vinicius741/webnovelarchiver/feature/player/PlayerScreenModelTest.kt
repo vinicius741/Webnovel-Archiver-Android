@@ -6,6 +6,7 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsHistoryEntry
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackUpdate
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -106,6 +107,24 @@ class PlayerScreenModelTest {
         }
 
     @Test
+    fun aSentenceLoadCutShortByAStopRunsAgainWhenTheChapterResumes() =
+        runTest(dispatcher) {
+            data.sentenceGate = CompletableDeferred()
+            play()
+            val model = model()
+            observe(model)
+            assertEquals("still loading", emptyList<String>(), model.state.value.sentences)
+
+            data.playback.value = TtsPlaybackUpdate(null, isAuthoritative = true)
+            runCurrent()
+            data.sentenceGate = null
+            play()
+            runCurrent()
+            assertEquals(listOf("c1 one", "c1 two"), model.state.value.sentences)
+            assertEquals(listOf("c1", "c1"), data.sentenceLoads)
+        }
+
+    @Test
     fun withNothingPlayingTheSavedPlaceIsOfferedAndResumed() =
         runTest(dispatcher) {
             data.place = ContinuePlace(TtsContinueListening.Target(story, story.chapters[1]), null)
@@ -181,6 +200,9 @@ private class FakePlayerData(
     var storyLookups = 0
     val sentenceLoads = mutableListOf<String>()
 
+    /** While set, a sentence load waits on it. */
+    var sentenceGate: CompletableDeferred<Unit>? = null
+
     override fun story(id: String): Story? {
         storyLookups++
         return story.takeIf { it.id == id }?.copy()
@@ -196,6 +218,7 @@ private class FakePlayerData(
         chapterId: String,
     ): List<String> {
         sentenceLoads += chapterId
+        sentenceGate?.await()
         return listOf("$chapterId one", "$chapterId two")
     }
 

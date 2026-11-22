@@ -23,6 +23,10 @@ import kotlinx.coroutines.launch
  * and failures into [AiAttention]. It toasts, but it redraws nothing; the AI tab, the story page and
  * the job chip follow that state themselves.
  *
+ * A job's terminal event also ends its slot. The mirror alone can miss a job that fails at once (no
+ * API key): the coordinator is idle again before the mirror runs, so it sees no change, and the
+ * slot the AI tab took when it started the job would stay held, refusing every later AI start.
+ *
  * The bridge dies with the activity (it launches on the activity scope), but every event it might
  * miss is covered elsewhere: cover results are persisted before the event fires, the foreground
  * service posts a result notification, and the AI tab rehydrates persisted cover work.
@@ -73,6 +77,7 @@ private fun MainActivity.presentCoverEvent(
     attention: AiAttention,
     event: AiCoverJobEvent,
 ) {
+    operations.clearAi(event.storyId, StoryOperationKind.AI_COVER)
     when (event) {
         is AiCoverJobEvent.Succeeded ->
             when (val record = event.record) {
@@ -97,6 +102,7 @@ private fun MainActivity.presentDescriptionEvent(
     attention: AiAttention,
     event: AiDescriptionJobEvent,
 ) {
+    operations.clearAi(event.storyId, StoryOperationKind.AI_DESCRIPTION)
     when (event) {
         is AiDescriptionJobEvent.Succeeded -> {
             attention.setDescriptionDraft(event.storyId, event.draft)

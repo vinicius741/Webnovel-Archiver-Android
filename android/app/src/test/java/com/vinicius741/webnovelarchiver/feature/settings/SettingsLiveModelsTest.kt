@@ -26,6 +26,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -125,6 +126,46 @@ class SettingsLiveModelsTest {
                 model.state.value.pasteFeedback,
             )
             assertFalse(model.enterManually("nonsense"))
+        }
+
+    @Test
+    fun aRefusedPasteRestoresTheOldSessionEvenWhenThePageClosesDuringTheCheck() =
+        runTest(dispatcher) {
+            val data = FakePatreonData(session = "old").apply { reject = true }
+            val model = PatreonAccountScreenModel(data, storyId = null, scope)
+            assertTrue(model.enterManually("session_id=bad"))
+            assertEquals("bad", data.session)
+
+            model.clear()
+            runCurrent()
+            assertEquals(1, data.checks)
+            assertEquals("old", data.session)
+        }
+
+    @Test
+    fun anAcceptedPasteIsWipedFromTheClipboardEvenWhenThePageClosesDuringTheCheck() =
+        runTest(dispatcher) {
+            val data = FakePatreonData()
+            val model = PatreonAccountScreenModel(data, storyId = null, scope)
+            model.paste("session_id=new")
+
+            model.clear()
+            runCurrent()
+            assertEquals("new", data.session)
+            assertTrue(data.clipboardCleared)
+        }
+
+    @Test
+    fun signingOutDuringACheckIsNotUndoneByItsAnswer() =
+        runTest(dispatcher) {
+            val data = FakePatreonData(session = "old").apply { reject = true }
+            val model = PatreonAccountScreenModel(data, storyId = null, scope)
+            assertTrue(model.enterManually("session_id=bad"))
+
+            model.signOut()
+            runCurrent()
+            assertNull("the refused paste's answer must not bring the old sign-in back", data.session)
+            assertEquals(AccountStatus.SignedOut, model.state.value.status)
         }
 
     @Test
@@ -351,6 +392,8 @@ private class FakePatreonData(
 
     override suspend fun currentUser(): PatreonAccount {
         checks++
+        // Patreon answers later, as the network does.
+        yield()
         failure?.let { throw it }
         if (reject) throw HttpNetworkException("https://www.patreon.com/api/current_user", 401)
         return PatreonAccount("Reader", emptyList())
