@@ -5,6 +5,8 @@ import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.text.TextUtils
 import android.view.GestureDetector
 import android.view.Gravity
@@ -19,6 +21,10 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.BlurredBackdropView
@@ -64,8 +70,10 @@ internal interface CoverViewerHandle {
 
 /**
  * The full-screen cover viewer: the whole image as large as the screen allows (pinch or double-tap
- * to zoom), a blurred copy behind it, title and counter on top, swipe or the side arrows to move
- * between items, the prompt on request, and the caller's action buttons at the bottom.
+ * to zoom), edge to edge with the system bars hidden and a blurred copy behind it. The title and
+ * counter on top, the side arrows, the prompt and the caller's action buttons float over the image
+ * on soft scrims instead of taking space from it; a single tap hides or shows them. Swipe sideways
+ * to move between items, down to close.
  */
 @SuppressLint("ClickableViewAccessibility")
 internal class CoverViewer(
@@ -76,7 +84,8 @@ internal class CoverViewer(
     private val onAction: (String, CoverViewerHandle) -> Unit,
 ) : CoverViewerHandle {
     private val context: Context = host.app
-    private val dialog = Dialog(context).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
+    private val dialog =
+        Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
     override var index: Int = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
         private set
     private val backdrop = BlurredBackdropView(context, dim = Color.argb(BACKDROP_DIM_ALPHA, 0, 0, 0))
@@ -96,6 +105,9 @@ internal class CoverViewer(
     private val promptScroll = ScrollView(context).apply { addView(promptText) }
     private val actionRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
     private var promptOpen = false
+    private var chromeVisible = true
+    private lateinit var topBar: View
+    private lateinit var bottomBar: View
 
     fun show() {
         dialog.setContentView(buildRoot())
@@ -105,6 +117,19 @@ internal class CoverViewer(
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             setDimAmount(DIM)
+            // Edge to edge with the bars hidden, so the image can use the whole screen; a swipe from
+            // an edge shows them briefly.
+            WindowCompat.setDecorFitsSystemWindows(this, false)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                attributes =
+                    attributes.apply {
+                        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
+            }
+            WindowInsetsControllerCompat(this, decorView).apply {
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
+            }
         }
         paint()
     }
@@ -120,7 +145,7 @@ internal class CoverViewer(
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(context.dp(Spacing.XS), context.dp(Spacing.SM), context.dp(Spacing.LG), context.dp(Spacing.SM))
+                background = scrim(GradientDrawable.Orientation.TOP_BOTTOM)
                 addView(navButton(R.drawable.wna_close, "Close") { close() })
                 addView(
                     LinearLayout(context).apply {
@@ -152,25 +177,85 @@ internal class CoverViewer(
         val bottom =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(context.dp(Spacing.LG), context.dp(Spacing.SM), context.dp(Spacing.LG), context.dp(Spacing.LG))
+                background = scrim(GradientDrawable.Orientation.BOTTOM_TOP)
                 addView(dots, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(Spacing.LG)))
                 addView(promptToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 addView(promptScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 addView(actionRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
-        val column =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(top)
-                addView(stage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-                addView(bottom)
+        topBar = top
+        bottomBar = bottom
+        // The image gets the whole screen; the bars float over it.
+        val root =
+            FrameLayout(context).apply {
+                setBackgroundColor(VIEWER_BACKGROUND)
+                addView(backdrop, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(stage, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(
+                    top,
+                    FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP),
+                )
+                addView(
+                    bottom,
+                    FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM),
+                )
             }
-        return FrameLayout(context).apply {
-            setBackgroundColor(VIEWER_BACKGROUND)
-            addView(backdrop, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            addView(column, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // Keep the controls clear of the bar and cutout areas (even while the bars are hidden, since
+        // they can slide back in over them); the image itself ignores insets.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val bars =
+                insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
+            val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            val left = maxOf(bars.left, cutout.left)
+            val right = maxOf(bars.right, cutout.right)
+            top.setPadding(
+                left + context.dp(Spacing.XS),
+                maxOf(bars.top, cutout.top) + context.dp(Spacing.SM),
+                right + context.dp(Spacing.LG),
+                context.dp(Spacing.XL),
+            )
+            bottom.setPadding(
+                left + context.dp(Spacing.LG),
+                context.dp(Spacing.XL),
+                right + context.dp(Spacing.LG),
+                maxOf(bars.bottom, cutout.bottom) + context.dp(Spacing.LG),
+            )
+            insets
+        }
+        return root
+    }
+
+    /** A single tap on the image hides the bars and arrows so only the cover is left, or brings them back. */
+    private fun toggleChrome() {
+        chromeVisible = !chromeVisible
+        listOf(topBar, bottomBar, prev, next).forEach { view ->
+            view.animate().cancel()
+            if (chromeVisible) {
+                if (view === prev || view === next) paintArrows() else view.visibility = View.VISIBLE
+                view
+                    .animate()
+                    .alpha(1f)
+                    .setDuration(CHROME_FADE_MS)
+                    .start()
+            } else {
+                view
+                    .animate()
+                    .alpha(0f)
+                    .setDuration(CHROME_FADE_MS)
+                    .withEndAction { view.visibility = View.GONE }
+                    .start()
+            }
         }
     }
+
+    private fun paintArrows() {
+        if (!chromeVisible) return
+        prev.visibility = if (index > 0) View.VISIBLE else View.INVISIBLE
+        next.visibility = if (index < items.lastIndex) View.VISIBLE else View.INVISIBLE
+    }
+
+    private fun scrim(orientation: GradientDrawable.Orientation) =
+        GradientDrawable(orientation, intArrayOf(SCRIM_STRONG, SCRIM_SOFT, Color.TRANSPARENT))
 
     private fun paint() {
         val item = items.getOrNull(index) ?: return
@@ -180,8 +265,7 @@ internal class CoverViewer(
         subtitle.text = item.subtitle.orEmpty()
         subtitle.visibility = if (item.subtitle.isNullOrBlank()) View.GONE else View.VISIBLE
         counter.text = if (items.size > 1) "${index + 1} / ${items.size}" else ""
-        prev.visibility = if (index > 0) View.VISIBLE else View.INVISIBLE
-        next.visibility = if (index < items.lastIndex) View.VISIBLE else View.INVISIBLE
+        paintArrows()
         dots.removeAllViews()
         if (items.size > 1) {
             items.indices.forEach { i ->
@@ -249,6 +333,11 @@ internal class CoverViewer(
     private inner class SwipeListener : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean = true
 
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            toggleChrome()
+            return true
+        }
+
         override fun onFling(
             e1: MotionEvent?,
             e2: MotionEvent,
@@ -303,6 +392,9 @@ internal class CoverViewer(
         val VIEWER_MUTED = Color.argb(200, 237, 230, 218)
         val NAV_BACKGROUND = Color.argb(120, 10, 8, 5)
         val DOT_OFF = Color.argb(90, 255, 255, 255)
+        val SCRIM_STRONG = Color.argb(190, 0, 0, 0)
+        val SCRIM_SOFT = Color.argb(110, 0, 0, 0)
+        const val CHROME_FADE_MS = 180L
         const val BACKDROP_DIM_ALPHA = 190
         const val DIM = 0.85f
         const val NAV_DP = 44
