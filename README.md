@@ -55,8 +55,9 @@ The app uses Android Views, Kotlin coroutines, OkHttp, Jsoup, and file-based JSO
 
 | Packages | Purpose |
 |----------|---------|
-| `app/`, `navigation/` | Startup, shared dependencies, and navigation |
-| `feature/`, `ui/` | Screens (library, updates, story page tabs, listen/player/reader, downloads, settings), the app shell, shared widgets, and theme |
+| `app/`, `navigation/` | Startup, shared dependencies, navigation, and the per-screen model store |
+| `operations/` | Work several screens start and watch: story sync, text cleanup, EPUB and AI progress, and listen starts |
+| `feature/`, `ui/` | Screens, each a screen model plus a View renderer (library, updates, story page tabs, listen/player/reader, downloads, settings), the app shell, shared widgets, and theme |
 | `domain/`, `data/` | Models, domain rules, persistence, and backups |
 | `source/`, `sync/`, `download/` | Site providers, story updates, and download queue |
 | `tts/`, `narration/`, `epub/`, `cleanup/`, `ai/` | Playback, generated chapter audio, export, text cleanup, and AI generation |
