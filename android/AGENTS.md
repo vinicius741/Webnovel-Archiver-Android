@@ -23,6 +23,8 @@ Before editing a package listed here, read its `AGENTS.md`. Paths are under
 | `feature/details/` | Story page tabs and Trends |
 | `feature/library/` | The Library root, Add story and the author page |
 | `feature/updates/` | The Updates destination and the shared manual sync path |
+| `feature/settings/` | The Settings hub and its pages, autosave, the backup export |
+| `feature/cleanup/` | Text cleanup rules and their saved state |
 
 ## Project map
 
