@@ -1,6 +1,8 @@
 # Architecture plan (2026-11-21)
 
-Status: **proposal, waiting for the owner's decision.** Measured on `main` at `fb6e4d8`.
+Status: **implemented through Phase 3 on branch `refactor/screen-architecture`** (the owner approved it
+on 2026-11-21). "Before" numbers were measured on `main` at `fb6e4d8`. The outcome and the remaining
+work are under "Result" at the end.
 It replaces Phases 4–6 of `simplification-roadmap-2026-10-06.md`. Phases 1–3 of that roadmap are done.
 
 Draft by Claude Opus 5.5. Reviewed independently by Gemini 4 Neon and Claude Fable 5.2, both of which
@@ -109,12 +111,12 @@ Rules for screens:
 
 ### Phase 0 — Guardrails (≈2–3 agent days, low risk, no UI change)
 
-- [ ] **0.1 Slim `android/AGENTS.md` to ≤ 15 KB.**
+- [x] **0.1 Slim `android/AGENTS.md` to ≤ 15 KB.** (`8ea8f02`)
   - Keep rules and a one-line-per-package map.
   - Move subsystem detail into per-package `AGENTS.md` files (`tts/`, `narration/`, `source/`,
     `download/`) so it loads only when those files are touched, or into `docs/<subject>/`.
   - Add the rule: AGENTS.md states current rules, never history.
-- [ ] **0.2 Architecture tests as JUnit source scans** (like `DownloadJobTransitionOwnershipTest`; no new dependency).
+- [x] **0.2 Architecture tests as JUnit source scans** (`6e420c0`) (like `DownloadJobTransitionOwnershipTest`; no new dependency).
   - Import rules: `domain/` imports no Android and no other app packages; engines and `data/` do not
     import `feature/`/`ui/`; `feature/` does not import `data.storage`.
   - Allowlist today's real seams so the check passes on day one: services and notifications using
@@ -122,7 +124,7 @@ Rules for screens:
     `DevEnvironment`, `DownloadForegroundService` → `CloudflareSolveActivity`.
   - Ratchets that may only go down: count of `fun ScreenHost.`, `ScreenHost` properties,
     `appContainer` uses in `feature/`, and `android/AGENTS.md` size.
-- [ ] **0.3 Delete the dead description-playback branch in `TtsEngine` only.**
+- [x] **0.3 Delete the dead description-playback branch in `TtsEngine` only.** (`3802d3d`)
   - Remove `speaksLive` (`TtsLoadedSession.kt:34`), the non-pack part of `loadOutputLocked`,
     `switchToLiveOutputLocked`, the render-ahead helpers, the `isDescriptionSession` checks in
     `TtsPlaybackPreparation.kt`, and the unused `availableVoices()`/`refreshEngine()` if confirmed.
@@ -133,14 +135,14 @@ Rules for screens:
 
 ### Phase 1 — Foundation (≈1 week, medium risk)
 
-- [ ] **1.1 `operations/StoryOperations`.**
+- [x] **1.1 `operations/StoryOperations`.** (`7142fc1`, work moved in `94a17d7`)
   - Move `storyOperation`, `aiOperation`, `detailsOperationSlot` and `detailsAiOperationSlot` off
     `ScreenHost` into typed `StateFlow`s.
   - Move in the orchestration from `feature/story/ManualStorySync.kt`, `StoryActions.kt`,
     `SyncDownloadActions.kt` and `StoryContentActions.kt`.
   - Make `app/AiJobUiBridge.kt` publish to it instead of changing screen state.
   - Engines are unchanged.
-- [ ] **1.2 `ScreenModel` base and `ScreenModelStore`.** Write the lifecycle design first:
+- [x] **1.2 `ScreenModel` base and `ScreenModelStore`.** (`7142fc1`, `a88d9f8`, `80cf41f`) Write the lifecycle design first:
   - A model is created on route entry and disposed (scope cancelled) when its route leaves the history,
     the same lifetime as `RouteViewMemory`.
   - On fold, `MainActivity` is not recreated (`configChanges`), so the renderer rebuilds from the
@@ -148,7 +150,7 @@ Rules for screens:
   - On process death, only fields that already persist (`LibraryScreenStatePersistence`, route ids)
     are saved, through `RouteViewMemory`/`onSaveInstanceState`.
   - Dialog and picker callbacks call model actions and never capture views.
-- [ ] **1.3 Narrow fakeable ports** for what screen models need, following `RepositoryStoryStore`, so
+- [x] **1.3 Narrow fakeable ports** (one data interface per model, added with each migration) for what screen models need, following `RepositoryStoryStore`, so
   models get JVM tests with in-memory fakes.
 
 ### Phase 2 — Pilot: Details and the Chapters tab (≈1 week including owner QA)
@@ -164,7 +166,7 @@ Rules for screens:
   - Model and `StoryWork` tests; no tab-state tests, since tab state did not move into the model.
 - [x] Do emulator QA on the cover and inner displays, including a live fold, an active download, and a
   sync while on the page.
-- [ ] **Gate: measure and decide.**
+- [x] **Gate: measure and decide.** Decided: continue. The page had one source of state and one render path, +200 production and +545 test lines, and one stale-state bug fixed. The pilot recommended a shared binding helper and a create-free model lookup (`a88d9f8`).
   - Measure lines and files before and after, model test lines, state/stale-view bugs found, and perf
     suite navigation/scroll numbers (advisory).
   - Then continue, adjust, or stop. Stopping here still keeps Phases 0–1.
@@ -270,3 +272,56 @@ The draft got these wrong. They are fixed above and recorded here so future audi
 | 2026-11-21 | Phase 3: Downloads | `0a351a2` | 87,001 | 347 | Downloads on `QueueScreenModel` (published queue + pacer + site checks + ticker + expand choices, planned off the main thread; skips idle ticks; holds the dragged order until the save lands), renderer bound while attached; every queue change is a `QueueControl` through `HostQueueData`, and the menus are a `QueueMenus` class reading the model at tap time. Removed `ScreenHost.storyExpandOverride`, the queue's `screenObserver` loop and `root.parent !== frame` guard, `launchQueueControl`, `queuePlan` and nine other `ScreenHost` extensions. ScreenHost extensions 365 → 347, `appContainer` in `feature/` 69 → 61, ScreenHost properties 25 → 24. Group lines (`feature/downloads`): 1,886 → 2,155 production, 56 → 424 test. No state or stale-view bugs found. Changed lifetime: expand choices now reset when Downloads leaves the history (they lived on the activity before); queue controls now run as `NonCancellable` in the model's scope, so one tapped just before leaving still saves. |
 | 2026-11-21 | Phase 3: Updates | `51ce74c` | 87,383 | 330 | Updates on `UpdatesScreenModel` (overview planned off the main thread from the badge's cache, replanned 400 ms after library/queue changes; filter; live sync lines and batch), renderer bound while attached. Syncs moved from `UpdatesSyncState` on the activity to the activity-level `UpdatesSyncs` (batch, summary, held reviews, forecast cache); each novel syncs through the new `StoryWork.syncFromUpdates`, listed in `StoryOperations.updatesSyncs`, which the story page's Sync, cleanup and EPUB now check instead of `ScreenHost.isSyncingFromUpdates`. Removed `UpdatesSyncState` and its `onChange`/`onStatus` view callbacks, the Updates `screenObserver` loop, and 17 `ScreenHost` extensions (the forecast card and row binding now take a `Context`). ScreenHost extensions 347 → 330; `appContainer` in `feature/` 61 and ScreenHost properties 24 unchanged (`updatesSyncState` → `updatesSyncs`). Group lines (`feature/updates` + operations changes): 1,246 → 1,630 production, 59 → 548 test (+ 3 `StoryWorkTest` cases). No state or stale-view bugs found. Changed: the filter resets to All when Updates leaves the history; "Sync all" takes its novels from the screen's last plan rather than replanning on the tap (on the main thread); a finished row sync shows its new "Synced just now" line after the coalesced replan (≤ 0.4 s) instead of at once. |
 | 2026-11-21 | Phase 3: Settings and Cleanup | `d707410`..`449eb74` (+ docs) | 88,812 | 316 | Every Settings page and Cleanup rules on screen models with data ports (`Host…Data`/`Repository…Data` in the renderer files). Removed `ScreenHost.backupExportState` (+ `BackupExportState`/`Kind`), `cleanupScreenState` (+ `CleanupScreenState`) and `screenObserver` (+ its Scaffold/MainActivity handling), the module-level drafts and caches (`unsavedDownloadSettings`, `downloadAdvancedOpen`, `unsavedAiKey`, `unsavedTts`, `sampleTextDraft`, `sampleComputerIds`, `lastHubSummaries`, `lastPhoneSummary`, `PatreonAccountScreenState`) and `AiModelFieldsModel`. ScreenHost extensions 330 → 316, `appContainer` in `feature/` 61 → 54, ScreenHost properties 24 → 22. Group lines (`feature/settings` + `feature/cleanup`): 4,767 → 6,246 production, 418 → 1,613 test. Fixed: choosing an engine or voice within 0.4 s of a stepper change could let the older pending save overwrite it (the choice now flushes the draft); the new tab name and the Listening sample text being typed now survive a fold. Changed lifetime: Download settings' Advanced toggle, the sample computers, Patreon's checked status and the sample text reset when their page leaves the history (they were process-wide). |
+| 2026-11-21 | Phases 0–1: guardrails and foundation | `8ea8f02`..`7142fc1`, `a88d9f8` | 84,229 | 448 | `android/AGENTS.md` 55 KB → 14 KB with per-package `AGENTS.md` files; `ArchitectureRulesTest`; `TtsEngine` plays packs only (−264 lines, the live-only media-button claim removed); `StoryOperations`, `ScreenModel`/`ScreenModelStore`, `bindWhileAttached`, `ScreenModelStore.find`. |
+
+## Result
+
+Every destination and every state-heavy screen now runs on a screen model and a renderer. These
+screens are on models: story page, AI Controls, Listen, Now Playing, Reader, Library, Add story,
+author page, Downloads, Updates, every Settings page, and Cleanup.
+
+**`ScreenHost` and `MainActivity` hold no per-screen state any more.** What remains is shared
+dependencies, navigation, the shell, launchers, and two activity-level work holders: `UpdatesSyncs`
+and `BackupExports`. Their runs must outlive a screen, and each one's reasoning is written in its
+package `AGENTS.md`.
+
+| Measure | Before (`fb6e4d8`) | After |
+|---|---:|---:|
+| Main Kotlin lines / files | 84,311 / 524 | 88,812 / 553 |
+| JVM test lines | 32,970 | 38,557 |
+| `feature/` test lines (share of `feature/` production) | 2,955 (10%) | 7,594 (23%) |
+| `fun ScreenHost.` extensions | 448 | 316 |
+| ScreenHost properties | 30 | 22 |
+| `appContainer` lookups in `feature/` | 93 | 54 |
+| `android/AGENTS.md` | 55 KB | 14 KB |
+
+Production code grew by about 4.5k lines (+5%). As predicted, the payoff is structure and test
+coverage, not size. Several state bugs were found and fixed on the way:
+
+- the story page's ⋮ menu read a stale story;
+- Reader Previous/Next skipped a chapter downloaded while reading;
+- the Unassigned tab jumped to All on a fold;
+- Add story stuck on "Fetching…" after a blocked fetch;
+- a TTS voice choice could be overwritten by an older pending save.
+
+Each migration's progress-log row records its lifetime changes. Most of them are drafts or toggles
+that now reset when their screen leaves the history instead of living for the whole activity.
+
+**The `fun ScreenHost.` < 100 target was not met, and it was the wrong measure.** The remaining
+extensions are mostly renderer entry points (`showXxx`, which route dispatch calls) and view-building
+helpers that use the host only to reach the activity. They hold no state. The ratchet keeps the count
+from growing. The real exit criterion, no screen state on the host, is met.
+
+### Remaining work (not in this program)
+
+- Trends, Chapter selection, the cover viewer and the browser import screens still use the old shape.
+  They hold little live state; migrate each when a change touches its state.
+- `ScreenHost.rerender` and `activeStory` are still set by those screens. Remove them once the last
+  user migrates.
+- Convert hand-written list diffing to `ListAdapter` where it does not fight gesture handling. The
+  Library and Chapters lists deliberately keep theirs.
+- The Reader opens at the top after a fold, as it always has. Remembering its scroll position is a
+  separate feature.
+- Separate later decisions, unchanged: Compose (measured on a release build), immutable models,
+  Media3.
+
