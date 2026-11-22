@@ -14,14 +14,12 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.CardListDecoration
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
@@ -37,7 +35,7 @@ import kotlinx.coroutines.launch
 
 /*
  * The Chapters tab: search, filter chips with counts (All / Downloaded / From bookmark / Not
- * downloaded / Audio / Removed from source), the shown count with jump-to-bookmark, the audio menu
+ * downloaded / Audio / Removed from source), the shown count with jump-to-bookmark
  * and Select, then the recycled chapter rows (each with its audio state; long-press for its
  * actions). The header rides as the list's first item so the whole tab scrolls as one.
  */
@@ -192,7 +190,7 @@ internal fun ScreenHost.buildChaptersTab(
     }
 }
 
-/** The shown count's row: jump to the bookmark (ivory), the story's audio menu, and Select chapters. */
+/** The shown count's row: jump to the bookmark (ivory) and Select chapters. */
 private fun ScreenHost.renderChapterTools(
     tools: LinearLayout,
     story: Story,
@@ -209,9 +207,6 @@ private fun ScreenHost.renderChapterTools(
                 contentDescription = "Jump to your bookmark, chapter ${bookmarkIndex + 1}"
             },
         )
-    }
-    if (story.chapters.any(TtsContinueListening::isPlayable)) {
-        tools.addView(app.iconButton(R.drawable.wna_headphones, "Audio for this story") { showStoryAudioMenu(story) })
     }
     if (story.chapters.isNotEmpty()) {
         tools.addView(makeButton(app, "Select", Btn.TEXT, R.drawable.wna_checklist) { showChapterSelection(story.id) })
