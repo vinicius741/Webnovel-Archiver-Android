@@ -94,12 +94,19 @@ impl Options {
 /// A loaded Kokoro v1.0 on the fast path.
 pub struct Fast {
     front: Tts,
-    /// Requests not in use, a trunk and a tail each; one pair per sentence in flight.
-    idle: Mutex<Vec<(Request, Request)>>,
+    pool: Mutex<Pool>,
     trunk: Compiled,
     tail: Compiled,
     // Last, so the models above are dropped before the runtime that made them.
     _core: Core,
+}
+
+/// Requests not in use, a trunk and a tail each (one pair per sentence in flight), and how many
+/// sentences are running.
+#[derive(Default)]
+struct Pool {
+    idle: Vec<(Request, Request)>,
+    running: usize,
 }
 
 impl Fast {
@@ -113,20 +120,47 @@ impl Fast {
         let with = |precision: &'static str| [&shared[..], &[("INFERENCE_PRECISION_HINT", precision)]].concat();
         let trunk = core.compile(&fast.join("trunk.onnx"), &with(options.precision))?;
         let tail = core.compile(&fast.join("tail.onnx"), &with("f32"))?;
-        Ok(Fast { front, idle: Mutex::new(Vec::new()), trunk, tail, _core: core })
+        Ok(Fast { front, pool: Mutex::new(Pool::default()), trunk, tail, _core: core })
     }
 
-    fn take(&self) -> Result<(Request, Request), String> {
-        let idle = self.idle.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).pop();
-        match idle {
-            Some(pair) => Ok(pair),
-            None => Ok((self.trunk.request()?, self.tail.request()?)),
-        }
+    fn pool(&self) -> std::sync::MutexGuard<'_, Pool> {
+        self.pool.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Turns the front model's output for one request into 16-bit PCM.
-    fn finish(&self, mut packed: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
-        let (mut trunk, mut tail) = self.take()?;
+    fn finish(&self, packed: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
+        let idle = {
+            let mut pool = self.pool();
+            pool.running += 1;
+            pool.idle.pop()
+        };
+        let mut pair = match idle {
+            Some(pair) => Ok(pair),
+            None => self.trunk.request().and_then(|trunk| Ok((trunk, self.tail.request()?))),
+        };
+        let result = match &mut pair {
+            Ok((trunk, tail)) => self.run(trunk, tail, packed, sample_rate),
+            Err(error) => Err(error.clone()),
+        };
+        let mut pool = self.pool();
+        pool.running -= 1;
+        // A pair that failed is dropped: its state is unknown.
+        if let (Ok(pair), Ok(_)) = (pair, &result) {
+            pool.idle.push(pair);
+        }
+        // The last sentence out gives back what the longest input made OpenVINO keep, so a model
+        // between sentences or chapters holds about what a fresh one does. Holding the pool's lock,
+        // no other sentence can start a request meanwhile.
+        let released = pool.running == 0 && self.trunk.release_memory() & self.tail.release_memory();
+        drop(pool);
+        if released {
+            // glibc would keep the freed buffers for itself otherwise.
+            crate::memory::release_free_heap();
+        }
+        result
+    }
+
+    fn run(&self, trunk: &mut Request, tail: &mut Request, mut packed: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
         let mut samples = Vec::new();
         while !packed.is_empty() {
             let chunk = Chunk::read(&mut packed)?;
@@ -144,8 +178,6 @@ impl Fast {
             }
             scale_silence(audio, SILENCE_SCALE, sample_rate, &mut samples);
         }
-        // A pair that failed is dropped above by `?`: its state is unknown.
-        self.idle.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push((trunk, tail));
         Ok(to_pcm16(&samples))
     }
 }

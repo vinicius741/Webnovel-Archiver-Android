@@ -377,7 +377,12 @@ impl Shared {
                 let one = engine.status();
                 (
                     engine.name().to_string(),
-                    serde_json::json!({"model": one["model"], "work": one["work"], "slots": one["memory"]["slots"]}),
+                    serde_json::json!({
+                        "model": one["model"],
+                        "work": one["work"],
+                        "slots": one["memory"]["slots"],
+                        "loadCostMb": one["memory"]["loadCostMb"],
+                    }),
                 )
             })
             .collect();

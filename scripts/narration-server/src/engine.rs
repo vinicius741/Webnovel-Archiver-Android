@@ -28,6 +28,12 @@ const LOAD_FAILURES_BEFORE_ERROR: u32 = 2;
 /// Memory must stay low this long before the model is reloaded to shrink it, so a brief dip (a
 /// compile, a browser tab) does not cost a reload.
 const LOW_BEFORE_SHRINK: Duration = Duration::from_secs(10);
+/// While the model is unloaded, what its learned load cost holds above the default halves this often.
+/// The cost is learned from the peak of a whole session (a long sentence can grow it to the 4 GB cap)
+/// and only a load corrects it, so without this, one tall peak could refuse every later load on a
+/// machine that has plenty of memory for a fresh one. A load that does grow too far is stopped by the
+/// critical line, and its cooldown keeps it from reloading at once.
+const LOAD_COST_HALF_LIFE: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Debug)]
 pub struct Settings {
@@ -92,7 +98,10 @@ struct State {
     /// Highest process memory seen since the last load.
     peak: u64,
     slot_cost: u64,
+    /// Learned while loaded; read it through [Engine::load_cost], which lets it decay once unloaded.
     load_cost: u64,
+    /// When the model was last unloaded; None while it is loaded or before its first load.
+    unloaded_at: Option<Instant>,
     critical_since: Option<Instant>,
     low_since: Option<Instant>,
     /// When memory last left the critical zone; None until it has been there.
@@ -160,6 +169,7 @@ impl Engine {
                 peak: 0,
                 slot_cost: memory::DEFAULT_SLOT_COST,
                 load_cost,
+                unloaded_at: None,
                 critical_since: None,
                 low_since: None,
                 cooldown: CRITICAL_COOLDOWN,
@@ -249,7 +259,7 @@ impl Engine {
             room = room.min(limit_room);
         }
         // Loading must leave a margin above the critical line, or the load itself would cross it.
-        if !cooling && state.critical_since.is_none() && room >= state.load_cost + memory::HYSTERESIS {
+        if !cooling && state.critical_since.is_none() && room >= self.load_cost(state) + memory::HYSTERESIS {
             return None;
         }
         let mut busy = self.busy(state, "does not have the memory to load the model");
@@ -277,10 +287,21 @@ impl Engine {
         room >= state.load_cost + memory::HYSTERESIS
     }
 
+    /// Memory a load needs now: the learned cost while loaded, decaying toward the default once
+    /// unloaded (see [LOAD_COST_HALF_LIFE]).
+    fn load_cost(&self, state: &State) -> u64 {
+        let default = self.settings.default_load_cost();
+        let Some(since) = state.unloaded_at.filter(|_| state.tts.is_none()) else { return state.load_cost };
+        let excess = state.load_cost.saturating_sub(default) as f64;
+        let halvings = since.elapsed().as_secs_f64() / LOAD_COST_HALF_LIFE.as_secs_f64();
+        default + (excess * 0.5f64.powf(halvings)) as u64
+    }
+
     /// Loads the model with the lock released, so status requests keep answering.
     fn load_locked<'a>(&'a self, mut state: MutexGuard<'a, State>) -> MutexGuard<'a, State> {
         state.loading = true;
         let fast = self.settings.fast.as_ref().map(|options| options.for_slots(state.budget.slots));
+        let load_cost = self.load_cost(&state);
         drop(state);
         let before = memory::snapshot().own;
         let started = Instant::now();
@@ -295,6 +316,7 @@ impl Engine {
                 state.load_error = None;
                 state.load_failures = 0;
                 state.before_load = before;
+                state.unloaded_at = None;
                 state.peak = own;
                 state.grown = 0;
                 state.counters.loads += 1;
@@ -305,7 +327,7 @@ impl Engine {
                 // lower the slot count forever.
                 state.slot_cost = ((state.slot_cost + memory::DEFAULT_SLOT_COST) / 2).max(memory::DEFAULT_SLOT_COST);
                 let default = self.settings.default_load_cost();
-                state.load_cost = ((state.load_cost + default) / 2).max(default);
+                state.load_cost = ((load_cost + default) / 2).max(default);
             }
             Err(error) => {
                 log(&format!("{} failed to load: {error}", self.name()));
@@ -337,6 +359,7 @@ impl Engine {
         state.draining = false;
         let Some(tts) = state.tts.take() else { return };
         state.grown = 0;
+        state.unloaded_at = Some(Instant::now());
         state.counters.unloads += 1;
         drop(state);
         drop(tts);
@@ -470,7 +493,7 @@ impl Engine {
                 "criticalMb": self.settings.policy.critical / MIB,
                 "serverMb": state.snapshot.own / MIB,
                 "slotCostMb": state.slot_cost / MIB,
-                "loadCostMb": state.load_cost / MIB,
+                "loadCostMb": self.load_cost(&state) / MIB,
                 "stallSome": state.snapshot.stall_some,
                 "stallFull": state.snapshot.stall_full,
                 "limitRoomMb": state.snapshot.limit_room.map(|room| room / MIB),
@@ -517,6 +540,28 @@ mod tests {
             idle_unload: Duration::MAX,
             verbose: false,
         })
+    }
+
+    #[test]
+    fn a_learned_load_cost_decays_once_unloaded() {
+        let engine = engine();
+        let mut state = engine.lock();
+        // A long sentence on one slot taught it the cap.
+        state.load_cost = 4096 * MIB;
+        state.snapshot = Snapshot { total: 16384 * MIB, available: 4600 * MIB, own: 40 * MIB, ..Snapshot::default() };
+        // Loaded, or never unloaded: the learned cost stands.
+        assert_eq!(engine.load_cost(&state), 4096 * MIB);
+        // Just unloaded: still refused with 4.6 GB available (3.5 GB above the critical line).
+        state.unloaded_at = Some(Instant::now());
+        assert!(engine.load_refusal(&state).is_some());
+        // Two half-lives later the excess is a quarter: 900 + 799 MB, and the load goes ahead.
+        state.unloaded_at = Some(Instant::now() - 2 * LOAD_COST_HALF_LIFE);
+        let cost = engine.load_cost(&state) / MIB;
+        assert!((1698..=1700).contains(&cost), "{cost}");
+        assert!(engine.load_refusal(&state).is_none());
+        // Long unloaded, it is back near the default.
+        state.unloaded_at = Some(Instant::now() - 10 * LOAD_COST_HALF_LIFE);
+        assert!(engine.load_cost(&state) < 904 * MIB);
     }
 
     #[test]

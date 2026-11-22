@@ -206,6 +206,27 @@ load cost starts at 1.6 GB instead of 0.9 GB and is learned from there. After an
 server holds about 100 MB, 36 MB of it private; the rest is OpenVINO's library pages, which the
 system can reclaim.
 
+OpenVINO keeps the buffers it sized for the longest input a compiled model has run, and Kokoro's
+inputs grow with the sentence: on one slot the server went from 0.8 GB to 3.0-3.4 GB over sentences
+of 10 to 200 words and stayed there (normal path on the Mac: 0.6 to 1.3 GB). That held memory then
+became the learned load cost described under [Memory](#memory). Freeing the requests gives nothing
+back; the memory belongs to the compiled models. So when the last running sentence finishes, the
+fast path calls `ov::CompiledModel::release_memory()` on the trunk and the tail, then
+`malloc_trim`. That takes 2-15 ms and the next sentence allocates what it needs again. Measured on
+one slot, same sentences:
+
+| | Held after 200 words | Peak during 100 words | 200 words took |
+|---|---|---|---|
+| Bazzite, before | 3380 MB | 3086 MB | 9.4 s |
+| Bazzite, released | 1334 MB | 1960 MB | 7.7 s |
+| Mac, before | 2887 MB | 2958 MB | 10.2 s |
+| Mac, released | 1656 MB | 2467 MB | 10.2 s |
+
+With four sentences at once on the Mac it held 2.4 GB instead of 3.8 GB. The C API does not
+wrap that method, so `openvino.rs` calls the C++ symbol with the object inside the C handle; it does
+so only on OpenVINO 2026.4, the release `setup.sh` pins and whose handle layout was checked, and
+leaves the memory held on any other.
+
 It applies on x86-64 with AVX-512 BF16 and on Apple silicon (`fast::layout`), when `lib/openvino`
 and the model's `fast/` folder, split for that precision, exist. `setup.sh` installs both there
 (about 420 MB): it makes a temporary Python environment with uv (fetching a private uv when the
@@ -276,7 +297,12 @@ line does not make it flap. The model reloads only with room for it plus that 38
 line (learned load cost, 900 MB to start), and not within 15 s of leaving Critical. That cooldown
 doubles, up to 5 minutes, each time a reload is followed by another stop within a minute. A refused
 request is told when to ask again. The learned costs drift back toward the defaults at each load, so
-one unusual chapter does not lower the slot count for good. A model that fails to load twice in a row
+one unusual chapter does not lower the slot count for good. While the model is unloaded, what the
+learned load cost holds above its default also halves every minute: the cost comes from the peak of
+a whole session, and only a load corrects it, so one long sentence once kept Kokoro v1.0 at the
+4 GB cap and refused every load on Bazzite with 4.6 GB available ("does not have the memory to load
+the model") until the service restarted. `/v1/status` shows each model's current load cost under
+`models` (`loadCostMb`). A model that fails to load twice in a row
 (missing or corrupt files) is reported as an error (`500`), not as busy. A process cgroup limit
 (systemd `MemoryMax`, a container) caps slots to what fits under it, separately from the machine's
 reserve. An idle model is unloaded after 5 minutes. It reloads in about a second (0.75-1.0 s measured) on
@@ -413,6 +439,12 @@ port 8790 open for LAN access.
   without uv (it fetched its own); the first split's tail did not compile in OpenVINO and the server
   fell back to the normal path by itself, which is how the subtraction above was found; then the
   figures in [Apple silicon (f16)](#apple-silicon-f16), with no invalid audio in either log.
+- Learned load cost and released OpenVINO memory (2026-11-21, Bazzite and MacBook Pro M1 Pro): 25 unit
+  tests, clippy clean; a test instance beside the installed service on each machine, fed sentences of
+  10 to 200 words one at a time and four at once, with the figures in
+  [Kokoro v1.0's fast path](#kokoro-v10s-fast-path-2026-11-21) and no failed or invalid sentence. With
+  too little memory free for a fresh load, it refused with `503` as before. `/v1/status` reported each
+  model's `loadCostMb`.
 - Rust server (2026-11-12, Bazzite): unit tests for the memory policy, the PCM conversion and the token
   check; output identical across runs. Squeezed with a memory hog during a five-in-flight load test, it
   dropped to one slot below the reserve, reloaded to shrink (932 → 489 MB), and returned to four slots

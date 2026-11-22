@@ -35,6 +35,19 @@ struct Shape {
     dims: *mut i64,
 }
 
+/// `ov_version_t`.
+#[repr(C)]
+struct Version {
+    build_number: *const c_char,
+    description: *const c_char,
+}
+
+/// The OpenVINO release whose C API layout [Api::release_memory] relies on; setup.sh installs it.
+const RELEASE_MEMORY_VERSION: &str = "2026.4.";
+
+/// `ov::CompiledModel::release_memory()`, which the C API does not wrap (see [Compiled::release_memory]).
+const RELEASE_MEMORY: &CStr = c"_ZN2ov13CompiledModel14release_memoryEv";
+
 /// `ov_property_t`: a key and its value, both C strings here.
 #[repr(C)]
 struct Property {
@@ -64,6 +77,10 @@ struct Api {
     model_free: unsafe extern "C" fn(Handle),
     core_free: unsafe extern "C" fn(Handle),
     get_last_err_msg: unsafe extern "C" fn() -> *const c_char,
+    get_openvino_version: unsafe extern "C" fn(*mut Version) -> i32,
+    version_free: unsafe extern "C" fn(*mut Version),
+    /// A C++ method taking the `ov::CompiledModel` as its only argument; None on another release.
+    release_memory: Option<unsafe extern "C-unwind" fn(*mut c_void)>,
 }
 
 // SAFETY: plain function pointers into a library that stays loaded for the life of the process.
@@ -96,6 +113,7 @@ impl Api {
         macro_rules! api {
             ($($field:ident),*) => {
                 Api {
+                    release_memory: None,
                     $($field: {
                         let symbol = CString::new(concat!("ov_", stringify!($field))).unwrap();
                         // SAFETY: library is a live handle and symbol is NUL-terminated.
@@ -110,7 +128,7 @@ impl Api {
                 }
             };
         }
-        Ok(api!(
+        let mut api = api!(
             core_create,
             core_read_model,
             core_compile_model_props,
@@ -128,8 +146,34 @@ impl Api {
             compiled_model_free,
             model_free,
             core_free,
-            get_last_err_msg
-        ))
+            get_last_err_msg,
+            get_openvino_version,
+            version_free
+        );
+        if api.version().starts_with(RELEASE_MEMORY_VERSION) {
+            // SAFETY: library is a live handle; dlsym also searches libopenvino, which it loaded.
+            let address = unsafe { dlsym(library, RELEASE_MEMORY.as_ptr()) };
+            if !address.is_null() {
+                // SAFETY: a non-static C++ method with no arguments and no result takes `this` as its
+                // only argument (Itanium ABI, used on Linux and macOS).
+                api.release_memory = Some(unsafe { std::ptr::read((&address as *const *mut c_void).cast()) });
+            }
+        }
+        Ok(api)
+    }
+
+    /// The library's build number, such as "2026.4.1-20914-…"; empty if it cannot say.
+    fn version(&self) -> String {
+        let mut version = Version { build_number: std::ptr::null(), description: std::ptr::null() };
+        // SAFETY: version is writable and freed below only when filled in.
+        if unsafe { (self.get_openvino_version)(&mut version) } != 0 || version.build_number.is_null() {
+            return String::new();
+        }
+        // SAFETY: checked non-null; the string lives until version_free.
+        let number = unsafe { CStr::from_ptr(version.build_number) }.to_string_lossy().into_owned();
+        // SAFETY: filled in by get_openvino_version, freed exactly once.
+        unsafe { (self.version_free)(&mut version) };
+        number
     }
 
     /// Turns a status code into a result, with OpenVINO's own message.
@@ -230,6 +274,24 @@ impl Core {
 }
 
 impl Compiled {
+    /// Frees the memory the model keeps between runs: buffers sized for the longest input it has
+    /// run, which with Kokoro's dynamic lengths reach 1-2 GB after one long sentence and are never
+    /// given back otherwise. The next run allocates what it needs again (a few ms). Returns false
+    /// where this release of OpenVINO does not offer it.
+    ///
+    /// No request of this model may be running: OpenVINO throws then, which would abort the server.
+    pub fn release_memory(&self) -> bool {
+        let Some(release) = self.api.release_memory else { return false };
+        // SAFETY: on the release checked in Api::open, `ov_compiled_model_t` is
+        // `{ std::shared_ptr<ov::CompiledModel> object; }` and a shared_ptr's first word is the
+        // object it points to. The caller guarantees no request is running.
+        unsafe {
+            let object = *(self.raw as *const *mut c_void);
+            release(object);
+        }
+        true
+    }
+
     pub fn request(&self) -> Result<Request, String> {
         let mut raw: Handle = std::ptr::null_mut();
         // SAFETY: self.raw is live; raw is a writable handle.
