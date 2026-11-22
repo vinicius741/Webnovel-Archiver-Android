@@ -16,7 +16,6 @@ import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 
 /**
  * The contract between [MainActivity] and the screen/action extension functions split across
@@ -100,9 +99,6 @@ interface ScreenHost {
      * opts in.
      */
     var rerender: (() -> Unit)?
-
-    /** Observer owned by the currently rendered screen. [screen] cancels it on navigation/rebuild. */
-    var screenObserver: Job?
 
     /**
      * Invoked at the end of every [com.vinicius741.webnovelarchiver.ui.screen] build so app-level

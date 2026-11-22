@@ -7,14 +7,12 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
-import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.data.repository.BackupFileEntry
 import com.vinicius741.webnovelarchiver.data.repository.deleteBackupFile
 import com.vinicius741.webnovelarchiver.data.repository.listBackupFiles
-import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
-import java.io.File
+import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -22,6 +20,7 @@ import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.alert
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
@@ -30,6 +29,7 @@ import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import java.io.File
 
 /** Data & backup's reads and changes, from the repository. */
 private class HostDataBackupData(
@@ -39,7 +39,11 @@ private class HostDataBackupData(
 
     override suspend fun deleteBackupFile(file: File): Boolean = host.repository.deleteBackupFile(file)
 
-    override fun storageIssues(): List<String> = host.repository.getStorageHealth().issues.map { issue -> "${issue.document}: ${issue.detail}" }
+    override fun storageIssues(): List<String> =
+        host.repository
+            .getStorageHealth()
+            .issues
+            .map { issue -> "${issue.document}: ${issue.detail}" }
 
     override suspend fun clearAll() = host.repository.clearAll()
 }

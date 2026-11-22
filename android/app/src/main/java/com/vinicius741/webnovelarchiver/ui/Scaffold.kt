@@ -57,8 +57,6 @@ internal fun ScreenHost.screen(
     block: LinearLayout.() -> Unit,
 ) {
     val perfBuildStartedNanos = if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) System.nanoTime() else 0L
-    screenObserver?.cancel()
-    screenObserver = null
     navigator.navigate(route)
     shell.onRoute(navigator.history)
     // A screen that did not set its own rerender inherits the previous screen's, which on a fold

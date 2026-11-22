@@ -10,7 +10,6 @@ import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Tab
-import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -18,6 +17,7 @@ import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
@@ -39,7 +39,12 @@ private class RepositoryTabsData(
 ) : TabsData {
     override fun tabs(): List<Tab> = repository.tabs.get()
 
-    override fun novelCounts(): Map<String, Int> = repository.library().mapNotNull { it.tabId }.groupingBy { it }.eachCount()
+    override fun novelCounts(): Map<String, Int> =
+        repository
+            .library()
+            .mapNotNull { it.tabId }
+            .groupingBy { it }
+            .eachCount()
 
     override suspend fun saveTabs(tabs: List<Tab>) = repository.tabs.save(tabs)
 
@@ -58,7 +63,10 @@ private class RepositoryTabsData(
 }
 
 /** Manage tabs' model, kept while it is in the history. */
-private fun ScreenHost.tabsModel(): TabsScreenModel = screenModels.get(AppRoute.Tabs.stableKey) { TabsScreenModel(RepositoryTabsData(repository)) }
+private fun ScreenHost.tabsModel(): TabsScreenModel =
+    screenModels.get(AppRoute.Tabs.stableKey) {
+        TabsScreenModel(RepositoryTabsData(repository))
+    }
 
 /** Manage tabs, built from [TabsScreenModel]'s state; a change of the tabs or their counts rebuilds it. */
 internal fun ScreenHost.showTabs() {

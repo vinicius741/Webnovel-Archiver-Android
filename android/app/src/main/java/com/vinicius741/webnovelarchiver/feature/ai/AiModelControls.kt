@@ -15,9 +15,9 @@ import com.vinicius741.webnovelarchiver.ai.AiModelSelection
 import com.vinicius741.webnovelarchiver.ai.AiReasoningPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.settings.AiReasoningEffort
+import com.vinicius741.webnovelarchiver.feature.settings.AiSettingsScreenModel
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.feature.settings.AiSettingsScreenModel
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type

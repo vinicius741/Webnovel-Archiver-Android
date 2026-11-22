@@ -17,13 +17,13 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.PatreonAccount
 import com.vinicius741.webnovelarchiver.source.PatreonApi
 import com.vinicius741.webnovelarchiver.source.PatreonSession
-import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.FormLayout
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.applyFormStyle
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.clearClipboard
@@ -41,8 +41,6 @@ import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 
 internal fun patreonAccountSummary(): String =
     if (PatreonSession.isPresent()) "Signed in" else "Not signed in · set up early-access chapters"
@@ -50,71 +48,79 @@ internal fun patreonAccountSummary(): String =
 private const val COOKIE_EDITOR_URL = "https://addons.mozilla.org/android/addon/cookie-editor/"
 private const val PATREON_LOGIN_URL = "https://www.patreon.com/login"
 
-private sealed interface AccountStatus {
-    data object SignedOut : AccountStatus
+/** The Patreon sign-in: the shared cookie store, Patreon's API, Firefox and the clipboard. */
+private class HostPatreonAccountData(
+    private val host: ScreenHost,
+) : PatreonAccountData {
+    override fun session(): String? = PatreonSession.currentValue()
 
-    data object Checking : AccountStatus
+    override fun storeSession(sessionId: String) = PatreonSession.store(sessionId)
 
-    data class SignedIn(
-        val account: PatreonAccount,
-    ) : AccountStatus
+    override fun restoreSession(sessionId: String) = PatreonSession.restore(sessionId)
 
-    data object Rejected : AccountStatus
+    override fun clearSession() = PatreonSession.clear()
 
-    data class Unreachable(
-        val reason: String,
-    ) : AccountStatus
+    override fun parsePaste(text: String?): PatreonSession.Paste = PatreonSession.parsePaste(text)
+
+    override suspend fun currentUser(): PatreonAccount = PatreonApi(host.app.appContainer.network).currentUser()
+
+    override fun firefoxInstalled(): Boolean = FirefoxLauncher.installedPackage(host.app) != null
+
+    override fun earlyAccessTitle(storyId: String): String? =
+        host.repository
+            .story(storyId)
+            ?.takeIf { it.patreonEarlyAccess != null }
+            ?.title
+
+    override fun clearClipboard() = host.clearClipboard()
 }
 
-/** Process-lifetime screen state, so returning from Firefox re-renders without re-asking Patreon. */
-private object PatreonAccountScreenState {
-    var status: AccountStatus? = null
+/** The account page's model, kept while it is in the history. */
+private fun ScreenHost.patreonAccountModel(storyId: String?): PatreonAccountScreenModel {
+    val route = AppRoute.PatreonAccount(storyId)
+    return screenModels.get(route.stableKey) { PatreonAccountScreenModel(HostPatreonAccountData(this), storyId) }
+}
 
-    /** Shown under the paste button after a paste that could not be used; never contains the value. */
-    var pasteFeedback: String? = null
-
-    var stepsExpanded = false
+/** Re-reads which setup steps are done when the account page is on screen (returning from Firefox). */
+internal fun ScreenHost.refreshPatreonAccount() {
+    val route = navigator.current as? AppRoute.PatreonAccount ?: return
+    screenModels.find<PatreonAccountScreenModel>(route.stableKey)?.refresh()
 }
 
 /**
  * Patreon sign-in guide. Google sign-in cannot run inside the app, so the user signs in with
  * Firefox, copies the `session_id` cookie with the Cookie-Editor add-on, and pastes it here in one
  * tap. The value is never displayed, logged, or stored outside the shared cookie store, and the
- * clipboard is cleared once Patreon accepts it.
+ * clipboard is cleared once Patreon accepts it. Built from [PatreonAccountScreenModel]'s state; any
+ * change rebuilds the page.
  */
 internal fun ScreenHost.showPatreonAccount(storyId: String? = null) {
-    rerender = { showPatreonAccount(storyId) }
-    val state = PatreonAccountScreenState
-    val sessionPresent = PatreonSession.isPresent()
-    val status = if (sessionPresent) state.status ?: AccountStatus.Checking else AccountStatus.SignedOut
-    if (sessionPresent && state.status == null) refreshAccountStatus(storyId)
-    val signedIn = status is AccountStatus.SignedIn
-    val firefox = FirefoxLauncher.installedPackage(app)
-
     screen(route = AppRoute.PatreonAccount(storyId), title = "Patreon account", scrollable = true) {
+        // screen() navigates to this route before it prunes the store, so the model is kept.
+        val model = patreonAccountModel(storyId)
+        val state = model.refresh()
+        bindWhileAttached(scope, model.state) { next -> if (next != state) showPatreonAccount(storyId) }
         capSettingsWidth(this)
-        buildStatusCard(this, status, storyId)
-        if (signedIn && !state.stepsExpanded) {
-            fullButton("Sign in with a different account", Btn.TEXT, bottomMarginDp = Space.SM) {
-                state.stepsExpanded = true
-                showPatreonAccount(storyId)
-            }
+        buildStatusCard(this, model, state, storyId)
+        if (state.signedIn && !state.stepsExpanded) {
+            fullButton("Sign in with a different account", Btn.TEXT, bottomMarginDp = Space.SM) { model.expandSteps() }
             return@screen
         }
-        section(if (sessionPresent) "Sign in again" else "Set up in 5 steps")
+        val firefox = state.firefoxInstalled
+        section(if (state.sessionPresent) "Sign in again" else "Set up in 5 steps")
         addView(
             setupStep(
                 this,
                 1,
                 "Install Firefox",
-                if (firefox != null) {
+                if (firefox) {
                     "Firefox is installed."
                 } else {
                     "Patreon's Google sign-in doesn't work inside other apps, so you'll sign in with Firefox."
                 },
-                done = firefox != null,
+                done = firefox,
             ) {
-                if (firefox == null) button("Get Firefox", Btn.TONAL, R.drawable.wna_download) { FirefoxLauncher.openStoreListing(app) }
+                if (!firefox) button("Get Firefox", Btn.TONAL, R.drawable.wna_download) { FirefoxLauncher.openStoreListing(app) }
             },
         )
         addView(
@@ -149,12 +155,12 @@ internal fun ScreenHost.showPatreonAccount(storyId: String? = null) {
         addView(
             setupStep(this, 5, "Paste it here", "Come back to this screen and tap Paste. The app picks out session_id.") {
                 orientation = LinearLayout.VERTICAL
-                fullButton("Paste from clipboard", Btn.FILLED, R.drawable.wna_paste, bottomMarginDp = 0) { pasteSession(storyId) }
+                fullButton("Paste from clipboard", Btn.FILLED, R.drawable.wna_paste, bottomMarginDp = 0) { model.paste(clipboardText()) }
                 state.pasteFeedback?.let { feedback ->
                     spacer(Space.SM)
                     text(feedback, Type.BODY_SMALL, ThemeManager.colors.error)
                 }
-                fullButton("Enter it manually", Btn.TEXT, topMarginDp = Space.XS, bottomMarginDp = 0) { showManualEntry(storyId) }
+                fullButton("Enter it manually", Btn.TEXT, topMarginDp = Space.XS, bottomMarginDp = 0) { showManualEntry(model) }
             },
         )
         text(
@@ -169,10 +175,12 @@ internal fun ScreenHost.showPatreonAccount(storyId: String? = null) {
 
 private fun ScreenHost.buildStatusCard(
     parent: ViewGroup,
-    status: AccountStatus,
+    model: PatreonAccountScreenModel,
+    state: PatreonAccountUiState,
     storyId: String?,
 ): LinearLayout {
     val colors = ThemeManager.colors
+    val status = state.status
     val (title, body) =
         when (status) {
             AccountStatus.SignedOut ->
@@ -196,9 +204,10 @@ private fun ScreenHost.buildStatusCard(
             addView(makeText(context, title, Type.TITLE_SMALL, colors.onSurface).apply { textSize = STATUS_TITLE_SP })
             body?.let { addView(makeText(context, it, Type.BODY_SMALL, colors.onSurfaceVariant).apply { setPadding(0, dp(2), 0, 0) }) }
         }
-        val story = storyId?.let { repository.story(it) }
-        if (status is AccountStatus.SignedIn && story != null && story.patreonEarlyAccess != null) {
-            fullButton("Check “${story.title}” now", Btn.FILLED, bottomMarginDp = 0) {
+        val title = state.earlyAccessTitle
+        if (status is AccountStatus.SignedIn && storyId != null && title != null) {
+            fullButton("Check “$title” now", Btn.FILLED, bottomMarginDp = 0) {
+                val story = repository.story(storyId) ?: return@fullButton
                 showDetails(story.id)
                 syncStory(story)
             }
@@ -206,16 +215,11 @@ private fun ScreenHost.buildStatusCard(
         if (status !is AccountStatus.SignedOut && status !is AccountStatus.Checking) {
             row {
                 if (status !is AccountStatus.SignedIn) {
-                    button("Check again", Btn.TEXT) {
-                        PatreonAccountScreenState.status = null
-                        showPatreonAccount(storyId)
-                    }
+                    button("Check again", Btn.TEXT) { model.checkAgain() }
                 }
                 button("Sign out", Btn.TEXT) {
                     confirm("Sign out of Patreon? Stored early-access chapters stay; new ones stop arriving.", confirmLabel = "Sign out") {
-                        PatreonSession.clear()
-                        PatreonAccountScreenState.status = null
-                        showPatreonAccount(storyId)
+                        model.signOut()
                     }
                 }
             }.apply {
@@ -272,23 +276,7 @@ private fun ScreenHost.setupStep(
     }
 }
 
-private fun ScreenHost.pasteSession(storyId: String?) {
-    val state = PatreonAccountScreenState
-    state.pasteFeedback =
-        when (val paste = PatreonSession.parsePaste(clipboardText())) {
-            is PatreonSession.Paste.Found -> {
-                saveSession(paste.sessionId, storyId, fromClipboard = true)
-                return
-            }
-            PatreonSession.Paste.Empty -> "The clipboard is empty. Copy your sign-in in Firefox first (step 4)."
-            PatreonSession.Paste.CookiesWithoutSession ->
-                "Those cookies have no session_id. Sign in on patreon.com in Firefox, then export again."
-            PatreonSession.Paste.Unrecognized -> "That doesn't look like a Patreon sign-in. Copy it again from Cookie-Editor."
-        }
-    showPatreonAccount(storyId)
-}
-
-private fun ScreenHost.showManualEntry(storyId: String?) {
+private fun ScreenHost.showManualEntry(model: PatreonAccountScreenModel) {
     val view = FormLayout(app, dialog = true)
     val field = makeField(app, "", "session_id value", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
     view.addItem(field, "Session cookie")
@@ -302,72 +290,15 @@ private fun ScreenHost.showManualEntry(storyId: String?) {
             .create()
     dialog.setOnShowListener {
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val paste = PatreonSession.parsePaste(field.text.toString())
-            if (paste !is PatreonSession.Paste.Found) {
-                field.error = "Enter the session_id value"
-                return@setOnClickListener
-            }
-            dialog.dismiss()
-            saveSession(paste.sessionId, storyId, fromClipboard = false)
+            if (model.enterManually(field.text.toString())) dialog.dismiss() else field.error = "Enter the session_id value"
         }
     }
     dialog.show()
     dialog.applyFormStyle()
 }
 
-/**
- * Saves [sessionId] and confirms it with Patreon. A refused value never replaces a session that
- * was already saved; an accepted clipboard paste is wiped so the cookie doesn't linger there.
- */
-private fun ScreenHost.saveSession(
-    sessionId: String,
-    storyId: String?,
-    fromClipboard: Boolean,
-) {
-    val state = PatreonAccountScreenState
-    val previous = PatreonSession.currentValue()
-    PatreonSession.store(sessionId)
-    state.pasteFeedback = null
-    state.status = AccountStatus.Checking
-    showPatreonAccount(storyId)
-    scope.launch {
-        val result = checkAccount()
-        if (result is AccountStatus.Rejected) {
-            if (previous != null && previous != sessionId) PatreonSession.restore(previous) else PatreonSession.clear()
-            state.status = null
-            state.pasteFeedback = "Patreon didn't accept that sign-in. Copy session_id again while signed in on patreon.com."
-        } else {
-            state.status = result
-            if (result is AccountStatus.SignedIn) state.stepsExpanded = false
-            if (fromClipboard) clearClipboard()
-        }
-        if (navigator.current == AppRoute.PatreonAccount(storyId)) showPatreonAccount(storyId)
-    }
-}
-
 private fun ScreenHost.openInFirefox(url: String) {
     if (!FirefoxLauncher.open(app, url)) toast("Install Firefox first (step 1)")
 }
-
-private fun ScreenHost.refreshAccountStatus(storyId: String?) {
-    PatreonAccountScreenState.status = AccountStatus.Checking
-    scope.launch {
-        PatreonAccountScreenState.status = checkAccount()
-        if (navigator.current == AppRoute.PatreonAccount(storyId)) showPatreonAccount(storyId)
-    }
-}
-
-private suspend fun ScreenHost.checkAccount(): AccountStatus =
-    try {
-        AccountStatus.SignedIn(PatreonApi(app.appContainer.network).currentUser())
-    } catch (error: CancellationException) {
-        throw error
-    } catch (error: HttpNetworkException) {
-        if (error.statusCode in setOf(401, 403)) AccountStatus.Rejected else AccountStatus.Unreachable("HTTP ${error.statusCode}")
-    } catch (
-        @Suppress("TooGenericExceptionCaught") error: Exception,
-    ) {
-        AccountStatus.Unreachable(error.message ?: error.javaClass.simpleName)
-    }
 
 private const val STATUS_TITLE_SP = 15f

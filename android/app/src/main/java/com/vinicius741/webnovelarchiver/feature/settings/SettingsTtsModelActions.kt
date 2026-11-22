@@ -13,59 +13,59 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.launch
 
 internal fun ScreenHost.confirmKokoroDownload(
-    model: BuiltInModel,
-    onStarted: () -> Unit,
+    model: TtsSettingsScreenModel,
+    builtIn: BuiltInModel,
 ) {
-    val pkg = model.modelPackage
+    val pkg = builtIn.modelPackage
     confirm(
-        "${model.family} on this phone is a one-time ${KokoroInstallPlanning.megabytes(pkg.downloadBytes)} download " +
+        "${builtIn.family} on this phone is a one-time ${KokoroInstallPlanning.megabytes(pkg.downloadBytes)} download " +
             "and uses about ${KokoroInstallPlanning.megabytes(pkg.unpackedBytes)}. Chapters can generate on your computers " +
             "without it; it lets this phone generate too and speak descriptions in this voice. " +
             "Keep the app open until it finishes; Wi-Fi is best.",
         "Download",
     ) {
-        modelInstaller(model).install()
-        onStarted()
+        model.installModel(builtIn)
     }
 }
 
-/** A model card's buttons while [model] is not installed: download, continue, or fetch new voices. */
+/** A model card's buttons while [builtIn] is not installed: download, continue, or fetch new voices. */
 internal fun ScreenHost.addNotInstalledActions(
     actions: ViewGroup,
-    model: BuiltInModel,
+    model: TtsSettingsScreenModel,
+    builtIn: BuiltInModel,
     state: KokoroModelState.NotInstalled,
 ) {
     val context = actions.context
-    val installer = modelInstaller(model)
     when {
         state.updateBytes > 0L -> {
-            actions.addView(makeButton(context, "Download new voices", Btn.FILLED, R.drawable.wna_download) { installer.install() })
+            actions.addView(makeButton(context, "Download new voices", Btn.FILLED, R.drawable.wna_download) { model.installModel(builtIn) })
             actions.addView(
-                makeButton(context, "Remove", Btn.TEXT) { confirmKokoroRemoval(model) }.apply { setTextColor(ThemeManager.colors.error) },
+                makeButton(context, "Remove", Btn.TEXT) { confirmKokoroRemoval(model, builtIn) }.apply {
+                    setTextColor(ThemeManager.colors.error)
+                },
             )
         }
         state.downloadedBytes > 0L ->
-            actions.addView(makeButton(context, "Continue download", Btn.FILLED, R.drawable.wna_download) { installer.install() })
+            actions.addView(makeButton(context, "Continue download", Btn.FILLED, R.drawable.wna_download) { model.installModel(builtIn) })
         else ->
             actions.addView(
-                makeButton(context, "Download to this phone", Btn.SURFACE, R.drawable.wna_download) { confirmKokoroDownload(model) {} },
+                makeButton(
+                    context,
+                    "Download to this phone",
+                    Btn.SURFACE,
+                    R.drawable.wna_download,
+                ) { confirmKokoroDownload(model, builtIn) },
             )
     }
 }
 
-internal fun ScreenHost.confirmKokoroRemoval(model: BuiltInModel) {
-    confirm("Remove ${model.family}'s voices from this phone? You can download them again later.", "Remove") {
-        modelInstaller(model).remove()
-        scope.launch {
-            val settings = repository.ttsSettings.get()
-            if (settings.enginePackage == model.engineId) {
-                persistTtsSettings(settings.copy(enginePackage = null, voiceIdentifier = null))
-                toast("${model.family} removed. Speaking with the phone's engine again.")
-            }
-            showTtsSettings()
-        }
+internal fun ScreenHost.confirmKokoroRemoval(
+    model: TtsSettingsScreenModel,
+    builtIn: BuiltInModel,
+) {
+    confirm("Remove ${builtIn.family}'s voices from this phone? You can download them again later.", "Remove") {
+        model.removeModel(builtIn)?.let(::toast)
     }
 }

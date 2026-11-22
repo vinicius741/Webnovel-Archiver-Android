@@ -4,10 +4,10 @@ import com.vinicius741.webnovelarchiver.data.repository.BackupFileEntry
 import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.File
 
 /** What Data & backup reads and changes besides the export. */
@@ -130,6 +131,7 @@ internal class DataBackupScreenModel(
             } catch (
                 @Suppress("TooGenericExceptionCaught") error: Exception,
             ) {
+                Timber.w(error, "Backup files could not be listed")
                 BackupFilesState.Failed
             }
         mutableState.update { it.copy(files = files) }

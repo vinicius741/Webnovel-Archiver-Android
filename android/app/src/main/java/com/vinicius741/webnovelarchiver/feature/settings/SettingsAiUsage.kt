@@ -230,4 +230,3 @@ private val REQUEST_TIME_FORMATTER: DateTimeFormatter =
 
 private val REQUEST_DETAIL_TIME_FORMATTER: DateTimeFormatter =
     DateTimeFormatter.ofPattern("MMM d, HH:mm:ss", Locale.getDefault())
-

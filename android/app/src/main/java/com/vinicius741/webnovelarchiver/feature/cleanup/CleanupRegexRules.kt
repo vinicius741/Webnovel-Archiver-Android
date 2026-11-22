@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.cleanup.RegexCleanupPresets
+import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.feature.settings.makePill
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -21,7 +22,6 @@ import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.text
-import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 
 internal fun ScreenHost.buildRegexRules(
     body: LinearLayout,

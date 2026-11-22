@@ -72,12 +72,20 @@ class DataBackupScreenModelTest {
             val render = launch { model.state.collect() }
             model.refresh()
             runCurrent()
-            assertEquals("Writing library", model.state.value.export?.message)
+            assertEquals(
+                "Writing library",
+                model.state.value.export
+                    ?.message,
+            )
             assertEquals(BackupFilesState.Loaded(emptyList()), model.state.value.files)
 
             host.progress("Copying chapters 1/2")
             runCurrent()
-            assertEquals("Copying chapters 1/2", model.state.value.export?.message)
+            assertEquals(
+                "Copying chapters 1/2",
+                model.state.value.export
+                    ?.message,
+            )
             val buildKey = model.state.value.buildKey
             host.progress("Copying chapters 2/2")
             runCurrent()

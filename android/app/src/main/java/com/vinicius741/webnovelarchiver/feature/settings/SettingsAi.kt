@@ -9,8 +9,8 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.ai.OpenRouterKeyUsage
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageLedger
@@ -44,7 +44,9 @@ private class HostAiSettingsData(
 
     override fun ledger(): AiUsageLedger = host.repository.getAiUsageLedger()
 
-    override suspend fun keyUsage(apiKey: String): OpenRouterKeyUsage = host.app.appContainer.openRouter.fetchCurrentKeyUsage(apiKey)
+    override suspend fun keyUsage(apiKey: String): OpenRouterKeyUsage =
+        host.app.appContainer.openRouter
+            .fetchCurrentKeyUsage(apiKey)
 
     override fun now(): Long = System.currentTimeMillis()
 }

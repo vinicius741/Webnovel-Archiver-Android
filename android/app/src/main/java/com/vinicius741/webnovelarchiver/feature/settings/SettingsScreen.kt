@@ -16,11 +16,10 @@ import com.vinicius741.webnovelarchiver.data.repository.listBackupFiles
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.feature.narration.CompressionStatusView
 import com.vinicius741.webnovelarchiver.feature.narration.narration
+import com.vinicius741.webnovelarchiver.narration.NarrationCompressionStatus
 import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.narration.NarrationCompressionStatus
-import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
 import com.vinicius741.webnovelarchiver.tts.TtsEnginePlanning
@@ -28,6 +27,7 @@ import com.vinicius741.webnovelarchiver.ui.SegmentedSelector
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
@@ -294,7 +294,8 @@ private fun layoutModeRow(
                         colors.onSurfaceVariant,
                     ).apply { setPadding(0, app.dp(2), 0, 0) },
                 )
-                val control = SegmentedSelector(app, LAYOUT_MODES.map { it.second }, selected) { index -> onSelect(LAYOUT_MODES[index].first) }
+                val control =
+                    SegmentedSelector(app, LAYOUT_MODES.map { it.second }, selected) { index -> onSelect(LAYOUT_MODES[index].first) }
                 addView(
                     control.view,
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {

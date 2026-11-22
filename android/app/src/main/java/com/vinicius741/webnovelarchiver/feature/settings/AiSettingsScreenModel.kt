@@ -1,12 +1,12 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
 import com.vinicius741.webnovelarchiver.ai.AiUsagePeriod
-import com.vinicius741.webnovelarchiver.domain.model.AiUsagePeriodSummary
 import com.vinicius741.webnovelarchiver.ai.AiUsagePlanning
 import com.vinicius741.webnovelarchiver.ai.OpenRouterKeyUsage
 import com.vinicius741.webnovelarchiver.ai.RecentAiRequestGroup
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageLedger
+import com.vinicius741.webnovelarchiver.domain.model.AiUsagePeriodSummary
 import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 /** What AI settings reads and saves. */
 internal interface AiSettingsData {
@@ -77,7 +78,9 @@ internal class AiSettingsScreenModel(
     val state: StateFlow<AiSettingsUiState> = mutableState.asStateFlow()
 
     /** The key the field shows: one typed and not saved yet, else the saved one. */
-    val apiKey: String get() = unsavedKey.value ?: state.value.settings.apiKey.orEmpty()
+    val apiKey: String get() =
+        unsavedKey.value ?: state.value.settings.apiKey
+            .orEmpty()
 
     /** Re-reads the settings and the log, and asks OpenRouter for the entered key's spending (on each render, as before). */
     fun refresh() {
@@ -98,6 +101,7 @@ internal class AiSettingsScreenModel(
                     } catch (
                         @Suppress("TooGenericExceptionCaught") error: Exception,
                     ) {
+                        Timber.w(error, "OpenRouter key usage could not be loaded")
                         return@launch
                     }
                 mutableState.update { it.copy(keyUsage = usage) }

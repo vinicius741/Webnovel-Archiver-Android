@@ -27,15 +27,17 @@ import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordin
 import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenStatePersistence
-import com.vinicius741.webnovelarchiver.feature.settings.BackupExports
-import com.vinicius741.webnovelarchiver.feature.settings.HostBackupExportHost
 import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.player.TtsMiniPlayer
+import com.vinicius741.webnovelarchiver.feature.settings.BackupExports
+import com.vinicius741.webnovelarchiver.feature.settings.HostBackupExportHost
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
-import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
+import com.vinicius741.webnovelarchiver.feature.settings.refreshAppUpdate
+import com.vinicius741.webnovelarchiver.feature.settings.refreshPatreonAccount
 import com.vinicius741.webnovelarchiver.feature.settings.refreshSettingsHub
+import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.updates.HostUpdatesSyncHost
 import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncs
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
@@ -67,7 +69,6 @@ import com.vinicius741.webnovelarchiver.ui.systemBarTop
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -102,7 +103,6 @@ class MainActivity :
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
     override var rerender: (() -> Unit)? = null
-    override var screenObserver: Job? = null
     override var onScreenBuilt: (() -> Unit)? = null
 
     /** Created in [onCreate] once engines/storage are up. */
@@ -351,9 +351,9 @@ class MainActivity :
         // Returning from Android's notification settings: refresh the Settings row.
         if (uiReady) refreshSettingsHub()
         // Returning from Firefox: refresh which setup steps are done.
-        if (uiReady && navigator.current is AppRoute.PatreonAccount) rerender?.invoke()
+        if (uiReady) refreshPatreonAccount()
         // Returning from the browser: refresh the "checked" time and state.
-        if (uiReady && navigator.current == AppRoute.AppUpdate) rerender?.invoke()
+        if (uiReady && navigator.current == AppRoute.AppUpdate) refreshAppUpdate()
         if (uiReady) maybePromptForAppUpdate()
         // Queued audio starts generating whenever the app is in front, even if a background start was refused.
         if (uiReady) appContainer.narration.let { if (it.hasRunnableWork()) NarrationForegroundService.start(this) }
@@ -379,7 +379,6 @@ class MainActivity :
 
     override fun onDestroy() {
         finishPerfSession()
-        screenObserver?.cancel()
         screenModels.clear()
         // Destroy lingering reader WebViews so they can't leak the activity reference.
         com.vinicius741.webnovelarchiver.platform.WebViewSafety

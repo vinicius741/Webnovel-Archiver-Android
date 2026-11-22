@@ -67,7 +67,9 @@ class CleanupScreenModelTest {
 
             assertNull(model.saveRegexRule(null, " Separator ", "^-+$", "im", "tts"))
             runCurrent()
-            val added = model.state.value.rules.single()
+            val added =
+                model.state.value.rules
+                    .single()
             assertEquals("rule_1", added.id)
             assertEquals("Separator", added.name)
             assertTrue(added.enabled)
@@ -75,16 +77,31 @@ class CleanupScreenModelTest {
 
             model.toggleRule(added.id)
             runCurrent()
-            assertNull("editing keeps the id and the enabled flag", model.saveRegexRule(model.state.value.rules.single(), "Lines", "^=+$", "m", "both"))
+            assertNull(
+                "editing keeps the id and the enabled flag",
+                model.saveRegexRule(
+                    model.state.value.rules
+                        .single(),
+                    "Lines",
+                    "^=+$",
+                    "m",
+                    "both",
+                ),
+            )
             runCurrent()
-            val edited = model.state.value.rules.single()
+            val edited =
+                model.state.value.rules
+                    .single()
             assertEquals("rule_1", edited.id)
             assertEquals("Lines", edited.name)
             assertFalse(edited.enabled)
 
             model.deleteRule(edited.id)
             runCurrent()
-            assertTrue(model.state.value.rules.isEmpty())
+            assertTrue(
+                model.state.value.rules
+                    .isEmpty(),
+            )
         }
 
     @Test
@@ -98,7 +115,17 @@ class CleanupScreenModelTest {
             runCurrent()
             assertEquals(1, model.state.value.rules.size)
             assertEquals(PresetSave.DUPLICATE, model.savePresetRule(preset, 3, "both", null))
-            assertEquals("re-saving the rule itself is not a duplicate", PresetSave.SAVED, model.savePresetRule(preset, 3, "both", model.state.value.rules.single()))
+            assertEquals(
+                "re-saving the rule itself is not a duplicate",
+                PresetSave.SAVED,
+                model.savePresetRule(
+                    preset,
+                    3,
+                    "both",
+                    model.state.value.rules
+                        .single(),
+                ),
+            )
         }
 
     @Test

@@ -81,7 +81,11 @@ class SettingsFormModelsTest {
             val unsaved = UnsavedSetting<AppSettings>()
             DownloadSettingsScreenModel(data, scope, unsaved, scope).setParallelSites(4)
 
-            assertEquals(4, DownloadSettingsScreenModel(data, scope, unsaved, scope).state.value.settings.maxParallelSources)
+            assertEquals(
+                4,
+                DownloadSettingsScreenModel(data, scope, unsaved, scope)
+                    .state.value.settings.maxParallelSources,
+            )
         }
 
     @Test
@@ -98,7 +102,10 @@ class SettingsFormModelsTest {
 
             model.saveSourcePace("royalroad", null)
             runCurrent()
-            assertTrue(model.state.value.overrides.isEmpty())
+            assertTrue(
+                model.state.value.overrides
+                    .isEmpty(),
+            )
 
             model.toggleAdvanced()
             assertTrue(model.state.value.advancedOpen)
@@ -122,16 +129,28 @@ class SettingsFormModelsTest {
             model.setNewTabName("Later")
             model.addTab()
             runCurrent()
-            assertEquals(listOf("Reading", "Later"), model.state.value.tabs.map(Tab::name))
+            assertEquals(
+                listOf("Reading", "Later"),
+                model.state.value.tabs
+                    .map(Tab::name),
+            )
 
             model.move(1, 0)
             runCurrent()
-            assertEquals(listOf("Later", "Reading"), model.state.value.tabs.map(Tab::name))
+            assertEquals(
+                listOf("Later", "Reading"),
+                model.state.value.tabs
+                    .map(Tab::name),
+            )
 
             val reading = model.state.value.tabs[1]
             model.rename(reading.id, "Now")
             runCurrent()
-            assertEquals("Now", model.state.value.tabs[1].name)
+            assertEquals(
+                "Now",
+                model.state.value.tabs[1]
+                    .name,
+            )
 
             data.counts = mapOf(reading.id to 2)
             model.refresh()
@@ -139,7 +158,11 @@ class SettingsFormModelsTest {
             model.delete(reading.id)
             runCurrent()
             assertEquals(listOf(reading.id), data.unassigned)
-            assertEquals(listOf("Later"), model.state.value.tabs.map(Tab::name))
+            assertEquals(
+                listOf("Later"),
+                model.state.value.tabs
+                    .map(Tab::name),
+            )
         }
 
     // AI settings
@@ -179,12 +202,21 @@ class SettingsFormModelsTest {
             data.settings = data.settings.copy(apiKey = "sk-or-v1")
             model.refresh()
             runCurrent()
-            assertEquals("1.25", model.state.value.keyUsage?.usage)
+            assertEquals(
+                "1.25",
+                model.state.value.keyUsage
+                    ?.usage,
+            )
 
             data.failUsage = true
             model.refresh()
             runCurrent()
-            assertEquals("a failed fetch keeps the last figures", "1.25", model.state.value.keyUsage?.usage)
+            assertEquals(
+                "a failed fetch keeps the last figures",
+                "1.25",
+                model.state.value.keyUsage
+                    ?.usage,
+            )
         }
 
     @Test
@@ -211,22 +243,42 @@ class SettingsFormModelsTest {
             val data = FakeHubData()
             val cache = SettingsHubCache().apply { summaries = HubSummaries("old voice", "Signed in", "Add an OpenRouter key") }
             val model = SettingsScreenModel(data, cache, scope)
-            assertEquals("old voice", model.state.value.summaries?.voice)
+            assertEquals(
+                "old voice",
+                model.state.value.summaries
+                    ?.voice,
+            )
             assertNull(model.state.value.phone)
 
             val render = launch { model.state.collect() }
             model.refresh()
             runCurrent()
-            assertEquals("Kokoro · Heart · 1.0×", model.state.value.summaries?.voice)
-            assertEquals(3, model.state.value.phone?.novels)
+            assertEquals(
+                "Kokoro · Heart · 1.0×",
+                model.state.value.summaries
+                    ?.voice,
+            )
+            assertEquals(
+                3,
+                model.state.value.phone
+                    ?.novels,
+            )
             assertEquals(model.state.value.summaries, cache.summaries)
 
             val buildKey = model.state.value.buildKey
             data.audio = 700L
             data.compression.value = NarrationCompressionStatus(remainingChapters = 4)
             runCurrent()
-            assertEquals(700L, model.state.value.phone?.audioBytes)
-            assertEquals(4, model.state.value.compression?.remainingChapters)
+            assertEquals(
+                700L,
+                model.state.value.phone
+                    ?.audioBytes,
+            )
+            assertEquals(
+                4,
+                model.state.value.compression
+                    ?.remainingChapters,
+            )
             assertEquals("the card follows in place", buildKey, model.state.value.buildKey)
             render.cancel()
         }
