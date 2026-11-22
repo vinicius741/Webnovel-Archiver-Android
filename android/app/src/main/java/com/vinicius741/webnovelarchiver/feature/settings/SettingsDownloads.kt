@@ -1,13 +1,14 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
+import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
+import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceProvider
@@ -27,7 +28,6 @@ import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.showBottomSheet
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.launch
 
 private val PARALLEL_SPEC =
     StepperSpec(
@@ -51,45 +51,39 @@ private fun delaySpecs(range: PaceRange): Pair<StepperSpec, StepperSpec> {
     return min to min.copy(label = "Delay max")
 }
 
-private const val SAVE_DEBOUNCE_MS = 400L
+/** Download settings' reads and saves, from the repository. */
+private class RepositoryDownloadSettingsData(
+    private val repository: AppRepository,
+) : DownloadSettingsData {
+    override fun settings(): AppSettings = repository.settings.get()
 
-/**
- * The newest values not yet written, so a quick return to the page (or the Settings hub) never
- * shows older ones. Cleared once their save finishes, whether or not it succeeded.
- */
-private var unsavedDownloadSettings: AppSettings? = null
+    override fun overrides(): Map<String, SourceDownloadSettings> = repository.sourceDownloadSettings.get()
 
-/** What Download settings shows: a change still being saved, else the saved settings. */
-internal fun ScreenHost.downloadSettingsShown(): AppSettings = unsavedDownloadSettings ?: repository.settings.get()
+    override suspend fun saveSettings(settings: AppSettings) = repository.settings.save(settings)
 
-/** Whether Download settings shows its Advanced group (exact delays, parallel sites). */
-private var downloadAdvancedOpen = false
+    override suspend fun saveOverrides(overrides: Map<String, SourceDownloadSettings>) = repository.sourceDownloadSettings.save(overrides)
+}
+
+/** Download settings' model, kept while it is in the history. */
+private fun ScreenHost.downloadSettingsModel(): DownloadSettingsScreenModel =
+    screenModels.get(AppRoute.DownloadSettings.stableKey) {
+        // The process scope: a save on leaving must finish even if the activity goes away.
+        DownloadSettingsScreenModel(RepositoryDownloadSettingsData(repository), app.appContainer.applicationScope)
+    }
 
 /**
  * Download settings (v3): a named default pace (Gentle / Balanced / Fast), a pace per site, and an
- * Advanced group with parallel sites and the exact delay range (min stays ≤ max), saved as they change.
+ * Advanced group with parallel sites and the exact delay range (min stays ≤ max), saved as they
+ * change by [DownloadSettingsScreenModel]. Steppers and the pace selector patch each other in place;
+ * picking a pace, opening Advanced or saving a site's pace rebuilds the page.
  */
 internal fun ScreenHost.showDownloadSettings() {
     val host = this
-    var draft = downloadSettingsShown()
-    val saver =
-        DebouncedSaver {
-            val toSave = draft
-            // The process scope: a flush on leaving must finish even if the activity goes away.
-            app.appContainer.applicationScope.launch {
-                try {
-                    repository.settings.save(toSave)
-                } finally {
-                    if (unsavedDownloadSettings === toSave) unsavedDownloadSettings = null
-                }
-            }
-        }
-    val changed = { next: AppSettings ->
-        draft = next
-        unsavedDownloadSettings = next
-        saver.post()
-    }
     screen(route = AppRoute.DownloadSettings, title = "Download settings", scrollable = true) {
+        // screen() navigates to this route before it prunes the store, so the model is kept.
+        val model = downloadSettingsModel()
+        val state = model.refresh()
+        val draft = state.settings
         capSettingsWidth(this)
         section("Default pace")
         lateinit var minHandle: StepperHandle
@@ -104,25 +98,23 @@ internal fun ScreenHost.showDownloadSettings() {
                 }
             paceSelector =
                 paceSelectorRow(caption, paceIndex(draft.range())) { index ->
-                    val range = DownloadPacePlanning.presets[index].range
-                    changed(draft.copy(downloadDelay = range.minMs, downloadDelayMax = range.maxMs))
-                    // Rebuilt so the caption and every stepper show the new pace (the change is kept unsaved until then).
+                    val range = model.selectPace(index)
+                    // Rebuilt so the caption and every stepper show the new pace.
                     post { showDownloadSettings() }
                     minHandle.show(range.minMs.toDouble())
                     maxHandle.show(range.maxMs.toDouble())
                 }
         }
         section("Per-site pace")
-        val overrides = repository.sourceDownloadSettings.get()
         settingsGroup {
             SourceRegistry.all().forEach { provider ->
-                val override = overrides[provider.id]
+                val override = state.overrides[provider.id]
                 val summary = DownloadPacePlanning.overrideSummary(override)
                 navRow(
                     if (override != null) R.drawable.wna_tune else R.drawable.wna_globe,
                     provider.name,
                     if (override != null) tinted(summary, ThemeManager.colors.primary) else summary,
-                ) { host.showSourcePaceSheet(provider) { draft } }
+                ) { host.showSourcePaceSheet(provider, model) }
             }
         }
         settingsNote("Slow a site down if it starts limiting requests.")
@@ -130,12 +122,11 @@ internal fun ScreenHost.showDownloadSettings() {
         val advanced =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                visibility = if (downloadAdvancedOpen) View.VISIBLE else View.GONE
+                visibility = if (state.advancedOpen) View.VISIBLE else View.GONE
             }
         settingsGroup {
-            navRow(R.drawable.wna_tune, "Exact delays and parallel sites", if (downloadAdvancedOpen) "Hide" else "Show", chevron = false) {
-                downloadAdvancedOpen = !downloadAdvancedOpen
-                showDownloadSettings()
+            navRow(R.drawable.wna_tune, "Exact delays and parallel sites", if (state.advancedOpen) "Hide" else "Show", chevron = false) {
+                model.toggleAdvanced()
             }
         }
         addView(advanced)
@@ -147,32 +138,31 @@ internal fun ScreenHost.showDownloadSettings() {
                 (draft.maxParallelSources ?: DEFAULT_PARALLEL_SOURCES).toDouble(),
                 PARALLEL_SPEC,
             ) {
-                changed(draft.copy(maxParallelSources = it.toInt()))
+                model.setParallelSites(it.toInt())
                 null
             }
             minHandle =
                 groupStepper("Delay min", "Wait between chapters", draft.downloadDelay.toDouble(), delayMinSpec) { value ->
-                    val range = DownloadPacePlanning.withMin(draft.range(), value.toLong())
-                    changed(draft.copy(downloadDelay = range.minMs, downloadDelayMax = range.maxMs))
+                    val range = model.setDelayMin(value.toLong())
                     maxHandle.show(range.maxMs.toDouble())
                     paceSelector.select(paceIndex(range))
                     null
                 }
             maxHandle =
                 groupStepper("Delay max", "Randomized up to this value", draft.range().maxMs.toDouble(), delayMaxSpec) { value ->
-                    val range = DownloadPacePlanning.withMax(draft.range(), value.toLong())
-                    changed(draft.copy(downloadDelay = range.minMs, downloadDelayMax = range.maxMs))
+                    val range = model.setDelayMax(value.toLong())
                     minHandle.show(range.minMs.toDouble())
                     paceSelector.select(paceIndex(range))
                     null
                 }
         }
+        bindWhileAttached(scope, model.state) { next -> if (next.buildKey != state.buildKey) showDownloadSettings() }
         // Leaving the screen flushes a change still waiting for the debounce.
         addOnAttachStateChangeListener(
             object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(view: View) = Unit
 
-                override fun onViewDetachedFromWindow(view: View) = saver.flush()
+                override fun onViewDetachedFromWindow(view: View) = model.flush()
             },
         )
     }
@@ -206,18 +196,16 @@ private fun LinearLayout.paceSelectorRow(
     return selector
 }
 
-private fun AppSettings.range(): PaceRange = PaceRange(downloadDelay, maxOf(downloadDelay, downloadDelayMax))
-
 /**
  * One site's pace: Default / Gentle / Balanced / Fast, with the exact delays under Advanced.
  * Save writes the override (or removes it for Default).
  */
 private fun ScreenHost.showSourcePaceSheet(
     provider: SourceProvider,
-    defaults: () -> AppSettings,
+    model: DownloadSettingsScreenModel,
 ) {
-    val base = defaults().range()
-    val saved = repository.sourceDownloadSettings.get()[provider.id]
+    val base = model.state.value.range
+    val saved = model.state.value.overrides[provider.id]
     var custom = saved != null
     var range = saved?.let { PaceRange(it.delay, maxOf(it.delay, it.delayMax)) } ?: base
     val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
@@ -281,23 +269,14 @@ private fun ScreenHost.showSourcePaceSheet(
             addView(
                 makeButton(app, "Save", Btn.FILLED) {
                     val chosen = if (custom) range else null
-                    scope.launch {
-                        val next =
-                            DownloadPacePlanning.withOverride(
-                                repository.sourceDownloadSettings.get(),
-                                provider.id,
-                                chosen,
-                            )
-                        repository.sourceDownloadSettings.save(next)
-                        toast(
-                            if (chosen == null) {
-                                "${provider.name} uses the default pace"
-                            } else {
-                                "${provider.name}: ${DownloadPacePlanning.paceLabel(chosen)}"
-                            },
-                        )
-                        if (navigator.current == AppRoute.DownloadSettings) showDownloadSettings()
-                    }
+                    model.saveSourcePace(provider.id, chosen)
+                    toast(
+                        if (chosen == null) {
+                            "${provider.name} uses the default pace"
+                        } else {
+                            "${provider.name}: ${DownloadPacePlanning.paceLabel(chosen)}"
+                        },
+                    )
                     sheet?.dismiss()
                 },
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = app.dp(Spacing.SM) },
@@ -311,28 +290,3 @@ private fun makeGroupIn(
     parent: ViewGroup,
     block: LinearLayout.() -> Unit,
 ): LinearLayout = parent.settingsGroup(block)
-
-/** Coalesces rapid stepper changes (a held ± fires many) into one save after they settle. */
-private class DebouncedSaver(
-    private val save: () -> Unit,
-) {
-    private val handler = Handler(Looper.getMainLooper())
-    private var pending = false
-    private val run =
-        Runnable {
-            pending = false
-            save()
-        }
-
-    fun post() {
-        pending = true
-        handler.removeCallbacks(run)
-        handler.postDelayed(run, SAVE_DEBOUNCE_MS)
-    }
-
-    fun flush() {
-        if (!pending) return
-        handler.removeCallbacks(run)
-        run.run()
-    }
-}

@@ -35,7 +35,7 @@ import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.player.TtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
-import com.vinicius741.webnovelarchiver.feature.settings.showSettings
+import com.vinicius741.webnovelarchiver.feature.settings.refreshSettingsHub
 import com.vinicius741.webnovelarchiver.feature.updates.HostUpdatesSyncHost
 import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncs
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
@@ -138,7 +138,7 @@ class MainActivity :
 
     override val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-            if (uiReady && navigator.current == AppRoute.Settings) showSettings()
+            if (uiReady) refreshSettingsHub()
         }
 
     override var screenBack: ScreenBack? = null
@@ -349,7 +349,7 @@ class MainActivity :
         SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
         SourceCheckOutcomes.returnedToApp(DevEnvironment.active?.time?.nowMillis() ?: System.currentTimeMillis())
         // Returning from Android's notification settings: refresh the Settings row.
-        if (uiReady && navigator.current == AppRoute.Settings) showSettings()
+        if (uiReady) refreshSettingsHub()
         // Returning from Firefox: refresh which setup steps are done.
         if (uiReady && navigator.current is AppRoute.PatreonAccount) rerender?.invoke()
         // Returning from the browser: refresh the "checked" time and state.
