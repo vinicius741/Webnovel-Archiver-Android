@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.download.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.download.QueueSection
 import com.vinicius741.webnovelarchiver.download.SourceCheckOutcome
 import com.vinicius741.webnovelarchiver.download.SourceCheckPhase
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -179,6 +180,28 @@ class QueueScreenModelTest {
         }
 
     @Test
+    fun downloadsStartOnlyAfterTheQueueChangeSavesAndNotWhenItFails() =
+        runTest(dispatcher) {
+            val model = model()
+            val gate = CompletableDeferred<Unit>()
+            data.applyGate = gate
+
+            model.run(QueueControl.ResumeAll)
+            runCurrent()
+            assertEquals("service must wait until the queue update lands", 0, data.serviceStarts)
+
+            gate.complete(Unit)
+            runCurrent()
+            assertEquals(1, data.serviceStarts)
+
+            data.applyGate = null
+            data.failing = true
+            model.run(QueueControl.RetryFailed)
+            runCurrent()
+            assertEquals("failed save must not start the download service", 1, data.serviceStarts)
+        }
+
+    @Test
     fun aFailedSaveIsReportedAsAMessage() =
         runTest(dispatcher) {
             val model = model()
@@ -323,6 +346,7 @@ private class FakeQueueData : QueueData {
     val checks = mutableListOf<Pair<String, String>>()
     var serviceStarts = 0
     var failing = false
+    var applyGate: CompletableDeferred<Unit>? = null
 
     override val downloads = MutableStateFlow(DownloadUiSnapshot())
     override val pacing = MutableStateFlow<Map<String, DownloadPacingSnapshot>>(emptyMap())
@@ -351,6 +375,7 @@ private class FakeQueueData : QueueData {
     override fun isSourceBlocked(providerId: String): Boolean = providerId in blocked
 
     override suspend fun apply(control: QueueControl) {
+        applyGate?.await()
         check(!failing) { "disk full" }
         applied += control
     }

@@ -7,6 +7,7 @@ import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.narration.NarrationCompressionStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -235,6 +236,30 @@ class SettingsFormModelsTest {
             assertEquals(12, data.settings.coverEvidenceChapters)
         }
 
+    @Test
+    fun overlappingApiKeyFlushAndModelPickNeverClobberEachOther() =
+        runTest(dispatcher) {
+            val data = FakeAiData()
+            val firstSave = CompletableDeferred<Unit>()
+            data.firstSaveGate = firstSave
+            val unsaved = UnsavedSetting<String>()
+            val model = AiSettingsScreenModel(data, scope, unsaved, scope)
+
+            model.setApiKey("sk-or-v1")
+            model.flush()
+            runCurrent()
+
+            val pick = launch { model.saveModelChoice { it.copy(imageModel = "image/next") } }
+            runCurrent()
+            assertEquals("model pick waits for the earlier API key save", 1, data.savesStarted)
+
+            firstSave.complete(Unit)
+            runCurrent()
+            pick.join()
+            assertEquals("sk-or-v1", data.settings.apiKey)
+            assertEquals("image/next", data.settings.imageModel)
+        }
+
     // Settings hub
 
     @Test
@@ -339,12 +364,16 @@ private class FakeTabsData : TabsData {
 private class FakeAiData : AiSettingsData {
     var settings = AiSettings()
     var saves = 0
+    var savesStarted = 0
+    var firstSaveGate: CompletableDeferred<Unit>? = null
     var usageCalls = 0
     var failUsage = false
 
     override fun settings(): AiSettings = settings
 
     override suspend fun save(settings: AiSettings) {
+        val call = ++savesStarted
+        if (call == 1) firstSaveGate?.await()
         saves++
         this.settings = settings
     }

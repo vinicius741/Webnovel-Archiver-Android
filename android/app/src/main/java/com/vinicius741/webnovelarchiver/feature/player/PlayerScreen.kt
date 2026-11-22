@@ -77,7 +77,8 @@ private class PlayerRenderer(
     private var root: View? = null
     private var views: NowPlayingViews? = null
     private var nothingBox: LinearLayout? = null
-    private var continueShown = false
+    private var continueButton: View? = null
+    private var shownContinue: ContinuePlace? = null
 
     fun start() {
         val root = root ?: return
@@ -364,18 +365,23 @@ private class PlayerRenderer(
         return box
     }
 
-    /** Adds the "Continue" button under "Nothing playing" once the saved place is known. */
+    /** Adds or updates the "Continue" button under "Nothing playing" as the saved place changes. */
     private fun showContinue(place: ContinuePlace?) {
         val box = nothingBox ?: return
-        if (place == null || continueShown) return
-        continueShown = true
-        val target = place.target
+        if (place == shownContinue && (continueButton != null) == (place != null)) return
+        shownContinue = place
+        continueButton?.let(box::removeView)
+        continueButton = null
+        val target = place?.target ?: return
+        val button =
+            makeButton(app, "Continue · ${target.chapter.title}", Btn.FILLED, R.drawable.wna_play) { model.continueListening() }
         box.addView(
-            makeButton(app, "Continue · ${target.chapter.title}", Btn.FILLED, R.drawable.wna_play) { model.continueListening() },
+            button,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             },
         )
+        continueButton = button
     }
 }
 

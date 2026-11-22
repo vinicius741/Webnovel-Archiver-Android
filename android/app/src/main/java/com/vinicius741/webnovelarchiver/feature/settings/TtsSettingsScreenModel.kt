@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.tts.VoiceInfo
 import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelState
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** What the Listening page reads and drives: speech settings, engines and voices, built-in models, the computers, and the speed test. */
@@ -233,8 +235,19 @@ internal class TtsSettingsScreenModel(
         mutableSpeedTest.value = SpeedTestRun(model)
         scope.launch {
             val report =
-                data.runSpeedTest(model, data.settings(), stopSpeedTest::get) { progress ->
-                    mutableSpeedTest.update { run -> if (run == null || run.stopping) run else run.copy(message = progress) }
+                try {
+                    data.runSpeedTest(model, data.settings(), stopSpeedTest::get) { progress ->
+                        mutableSpeedTest.update { run -> if (run == null || run.stopping) run else run.copy(message = progress) }
+                    }
+                } catch (error: CancellationException) {
+                    mutableSpeedTest.value = null
+                    throw error
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") error: Exception,
+                ) {
+                    Timber.w(error, "Speed test failed for %s", model)
+                    mutableSpeedTest.value = null
+                    return@launch
                 }
             mutableSpeedTest.update { it?.copy(report = report) }
             mutableState.update { it.copy(speedTests = speedTests()) }

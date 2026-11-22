@@ -96,6 +96,7 @@ class DataBackupScreenModelTest {
             runCurrent()
             assertNull(model.state.value.export)
             assertEquals(BackupFilesState.Loaded(listOf(entry("new.zip"))), model.state.value.files)
+            assertEquals("export and file list changes patch in place", buildKey, model.state.value.buildKey)
             render.cancel()
         }
 

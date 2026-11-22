@@ -17,6 +17,8 @@ internal class UnsavedSetting<T : Any> {
     var value: T? = null
         private set
 
+    private var inFlight: Job? = null
+
     /** The unsaved value, else [saved]. */
     fun shown(saved: () -> T): T = value ?: saved()
 
@@ -28,6 +30,25 @@ internal class UnsavedSetting<T : Any> {
     fun saved(saved: T) {
         if (value === saved) value = null
     }
+
+    /**
+     * Runs [write] on [saveScope] strictly after any earlier queued save on this setting, so an
+     * older save can never finish after a newer one and overwrite it — even across screen re-entries.
+     */
+    fun enqueueSave(
+        saveScope: CoroutineScope,
+        write: suspend () -> Unit,
+    ): Job =
+        synchronized(this) {
+            val previous = inFlight
+            val next =
+                saveScope.launch {
+                    previous?.join()
+                    write()
+                }
+            inFlight = next
+            next
+        }
 }
 
 /** The values the settings pages have not finished saving (see [UnsavedSetting]). */
@@ -69,7 +90,7 @@ internal class Autosave<T : Any>(
         timer = null
         val toSave = waiting ?: return
         waiting = null
-        saveScope.launch {
+        unsaved.enqueueSave(saveScope) {
             try {
                 save(toSave)
             } finally {

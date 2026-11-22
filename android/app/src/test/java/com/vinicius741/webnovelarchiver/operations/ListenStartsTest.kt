@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.narration.NarrationJobState
 import com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackUpdate
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -175,6 +176,45 @@ class ListenStartsTest {
             assertEquals(listOf("start c2", "toast You've listened to the end. Nothing new yet."), ui.events)
         }
 
+    @Test
+    fun supersedingAQueueingRequestDoesNotToastAnError() =
+        runTest(dispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            data.enqueueGate = gate
+            data.ready += "c2"
+            val ui = ui()
+            val starts = starts()
+            val started = mutableListOf<String>()
+
+            starts.playIfGenerated(ui, "s", "c1") { started += "c1" }
+            runCurrent()
+            starts.playIfGenerated(ui, "s", "c2") { started += "c2" }
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(listOf("c2"), started)
+            assertTrue("cancelling enqueue must not report a failure: ${ui.events}", ui.events.isEmpty())
+        }
+
+    @Test
+    fun supersedingPlayChapterCancelsTheOlderPositionLookup() =
+        runTest(dispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            data.positionGate = gate
+            data.ready += listOf("c1", "c2")
+            val ui = ui()
+            val starts = starts()
+
+            starts.playChapter(ui, "s", "c1")
+            runCurrent()
+            data.positionGate = null
+            starts.playChapter(ui, "s", "c2")
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(listOf("beginning c2"), ui.events)
+        }
+
     private fun snapshot(isPlaying: Boolean) =
         TtsPlaybackSnapshot(
             title = "Chapter",
@@ -196,7 +236,9 @@ private class FakeStartData(
     val ready = mutableSetOf<String>()
     val enqueued = mutableListOf<String>()
     var enqueueFails = false
+    var enqueueGate: CompletableDeferred<Unit>? = null
     var position: TtsStoryPosition? = null
+    var positionGate: CompletableDeferred<Unit>? = null
 
     override suspend fun isReady(
         storyId: String,
@@ -207,6 +249,7 @@ private class FakeStartData(
         storyId: String,
         chapterId: String,
     ) {
+        enqueueGate?.await()
         if (enqueueFails) error("queue unreadable")
         enqueued += chapterId
         queue.value = queue.value.copy(jobs = queue.value.jobs + NarrationJob(id = chapterId, storyId = storyId, chapterId = chapterId))
@@ -217,7 +260,10 @@ private class FakeStartData(
         chapterId: String,
     ) = "Title $chapterId"
 
-    override suspend fun position(storyId: String) = position
+    override suspend fun position(storyId: String): TtsStoryPosition? {
+        positionGate?.await()
+        return position
+    }
 
     override fun story(storyId: String) = story.takeIf { it.id == storyId }
 }

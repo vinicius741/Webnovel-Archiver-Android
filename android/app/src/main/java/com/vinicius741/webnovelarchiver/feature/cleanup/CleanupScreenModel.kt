@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -72,6 +73,7 @@ internal class CleanupScreenModel(
     var sentenceDraft: String = restored?.sentenceDraft.orEmpty()
         private set
     private val scroll = restored?.scroll.orEmpty().toMutableMap()
+    private var pendingSave: Job? = null
     private val mutableState = MutableStateFlow(compute())
 
     val state: StateFlow<CleanupUiState> = mutableState.asStateFlow()
@@ -117,7 +119,10 @@ internal class CleanupScreenModel(
     ): String? {
         val result = SentenceRemovalPlanning.save(data.sentences(), text, index)
         if (!result.valid) return result.error ?: "Invalid sentence"
-        save { data.saveSentences(result.sentences) }
+        save {
+            val latest = SentenceRemovalPlanning.save(data.sentences(), text, index)
+            if (latest.valid) data.saveSentences(latest.sentences)
+        }
         return null
     }
 
@@ -150,7 +155,7 @@ internal class CleanupScreenModel(
                 enabled = existing?.enabled ?: true,
                 appliesTo = appliesTo,
             )
-        save { data.saveRules(upsert(rules, rule)) }
+        save { data.saveRules(upsert(data.rules(), rule)) }
         return null
     }
 
@@ -175,7 +180,7 @@ internal class CleanupScreenModel(
                 enabled = existing?.enabled ?: true,
                 appliesTo = appliesTo,
             )
-        save { data.saveRules(upsert(rules, rule)) }
+        save { data.saveRules(upsert(data.rules(), rule)) }
         return PresetSave.SAVED
     }
 
@@ -203,10 +208,15 @@ internal class CleanupScreenModel(
     }
 
     private fun save(write: suspend () -> Unit) {
-        scope.launch {
-            withContext(NonCancellable) { write() }
-            refresh()
-        }
+        val previous = pendingSave
+        pendingSave =
+            scope.launch {
+                withContext(NonCancellable) {
+                    previous?.join()
+                    write()
+                }
+                refresh()
+            }
     }
 
     private fun compute(): CleanupUiState = CleanupUiState(mode, data.sentences(), data.rules())

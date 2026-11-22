@@ -338,6 +338,27 @@ class ReaderScreenModelTest {
         }
 
     @Test
+    fun aTextSizeEditDuringReloadIsKeptWhenThePageFinishes() =
+        runTest(dispatcher) {
+            val model = opened()
+            val gate = CompletableDeferred<Unit>()
+            data.gate = gate
+
+            model.updateDisplay(ReaderDisplay(1f, pureBlack = true))
+            runCurrent()
+            assertEquals(ReaderPage.Loading, model.state.value.page)
+
+            // User adjusts font size while Pure black is reloading.
+            model.updateDisplay(ReaderDisplay(1.4f, pureBlack = true))
+            gate.complete(Unit)
+            runCurrent()
+
+            val after = model.state.value.page as ReaderPage.Ready
+            assertEquals(1.4f, model.state.value.display.fontScale)
+            assertTrue(after.document.webViewHtml.contains("font-size: 25px"))
+        }
+
+    @Test
     fun theVoiceSummaryPrefersTheLiveSpeed() =
         runTest(dispatcher) {
             val model = opened()

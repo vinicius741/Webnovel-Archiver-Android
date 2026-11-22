@@ -17,6 +17,7 @@ import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -47,14 +48,17 @@ internal suspend fun runKokoroSpeedTest(
     // Generation shares the model and the CPU: stop it so the test measures Kokoro alone.
     val resumeNarration = container.narration.pauseForSpeedTest()
     val result =
-        KokoroBenchmark(app, KokoroModelFiles(app, model)).run(
-            voice = voice,
-            listeningRate = settings.rate,
-            narrationModelLoaded = container.builtIns.runtime(model).isLoaded,
-            shouldStop = shouldStop,
-            onProgress = onProgress,
-        )
-    if (resumeNarration) withContext(Dispatchers.IO) { runCatching { container.narration.resume() } }
+        try {
+            KokoroBenchmark(app, KokoroModelFiles(app, model)).run(
+                voice = voice,
+                listeningRate = settings.rate,
+                narrationModelLoaded = container.builtIns.runtime(model).isLoaded,
+                shouldStop = shouldStop,
+                onProgress = onProgress,
+            )
+        } finally {
+            if (resumeNarration) withContext(Dispatchers.IO + NonCancellable) { runCatching { container.narration.resume() } }
+        }
     val report = KokoroBenchmarkReport.report(result)
     Timber.i("Kokoro speed test\n%s", report)
     withContext(Dispatchers.IO) { runCatching { speedTestFile(app, model).writeText(report) } }

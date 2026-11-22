@@ -321,7 +321,8 @@ private class ReaderRenderer(
                 }
             },
             onCopy = {
-                host.copyToClipboard("Chapter text", document.formattedText)
+                val active = shownReaderModel()?.state?.value?.document ?: document
+                host.copyToClipboard("Chapter text", active.formattedText)
                 host.toast("Chapter copied")
             },
             onOpenVoiceSettings = { host.showTtsSettings() },

@@ -58,8 +58,8 @@ internal data class DataBackupUiState(
     val files: BackupFilesState,
     val storageIssues: List<String>,
 ) {
-    /** What the page is built from; a new progress line only patches the progress card. */
-    val buildKey: Any get() = Triple(export != null, files, storageIssues)
+    /** What the page is built from; export state and backup files patch in place. */
+    val buildKey: Any get() = storageIssues
 }
 
 /**

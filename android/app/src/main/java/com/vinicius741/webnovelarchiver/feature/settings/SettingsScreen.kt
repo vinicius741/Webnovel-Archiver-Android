@@ -34,6 +34,7 @@ import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -55,7 +56,11 @@ private class HostSettingsHubData(
         withContext(Dispatchers.IO) {
             val library = repository.library()
             val audio = runCatching { host.narration.store.totalBytes() }.getOrDefault(0L)
-            val newest = runCatching { repository.listBackupFiles() }.getOrDefault(emptyList()).maxByOrNull { it.lastModifiedMillis }
+            val newest =
+                runCatching { repository.listBackupFiles() }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .getOrDefault(emptyList())
+                    .maxByOrNull { it.lastModifiedMillis }
             PhoneSummary(library.size, library.sumOf { it.downloadedChapters }, audio, newest?.lastModifiedMillis, newest?.sizeBytes)
         }
 
@@ -82,8 +87,7 @@ private class HostSettingsHubData(
         )
     }
 
-    override suspend fun saveScreenLayoutMode(mode: String) =
-        repository.saveDisplayPreferences(repository.getDisplayPreferences().copy(screenLayoutMode = mode))
+    override suspend fun saveScreenLayoutMode(mode: String) = repository.updateDisplayPreferences { it.copy(screenLayoutMode = mode) }
 
     private fun voiceSummary(): String {
         val app = host.app

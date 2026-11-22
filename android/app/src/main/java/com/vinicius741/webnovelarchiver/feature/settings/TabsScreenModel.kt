@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,7 @@ internal class TabsScreenModel(
 ) : ScreenModel(scope) {
     var newTabName: String = ""
         private set
+    private var pendingSave: Job? = null
     private val mutableState = MutableStateFlow(compute())
     val state: StateFlow<TabsUiState> = mutableState.asStateFlow()
 
@@ -57,11 +59,18 @@ internal class TabsScreenModel(
     /** Adds a tab named [newTabName]; false (nothing added) when the name is blank or taken. */
     fun addTab(): Boolean {
         val tabs = state.value.tabs
-        val next = TabPlanning.create(tabs, newTabName, data.newTabId(), data.now())
+        val name = newTabName
+        val id = data.newTabId()
+        val now = data.now()
+        val next = TabPlanning.create(tabs, name, id, now)
         if (next.size <= tabs.size) return false
         save {
-            data.saveTabs(next)
-            newTabName = ""
+            val current = TabPlanning.normalizeOrders(data.tabs())
+            val latest = TabPlanning.create(current, name, id, now)
+            if (latest.size > current.size) {
+                data.saveTabs(latest)
+                newTabName = ""
+            }
         }
         return true
     }
@@ -69,25 +78,30 @@ internal class TabsScreenModel(
     fun move(
         from: Int,
         to: Int,
-    ) = save { data.saveTabs(TabPlanning.move(state.value.tabs, from, to)) }
+    ) = save { data.saveTabs(TabPlanning.move(TabPlanning.normalizeOrders(data.tabs()), from, to)) }
 
     fun rename(
         tabId: String,
         name: String,
-    ) = save { data.saveTabs(TabPlanning.rename(state.value.tabs, tabId, name)) }
+    ) = save { data.saveTabs(TabPlanning.rename(TabPlanning.normalizeOrders(data.tabs()), tabId, name)) }
 
     /** Deletes the tab; its novels become Unassigned. */
     fun delete(tabId: String) =
         save {
             data.unassign(tabId)
-            data.saveTabs(TabPlanning.delete(state.value.tabs, tabId))
+            data.saveTabs(TabPlanning.delete(TabPlanning.normalizeOrders(data.tabs()), tabId))
         }
 
     private fun save(write: suspend () -> Unit) {
-        scope.launch {
-            withContext(NonCancellable) { write() }
-            refresh()
-        }
+        val previous = pendingSave
+        pendingSave =
+            scope.launch {
+                withContext(NonCancellable) {
+                    previous?.join()
+                    write()
+                }
+                refresh()
+            }
     }
 
     private fun compute(): TabsUiState = TabsUiState(TabPlanning.normalizeOrders(data.tabs()), data.novelCounts())

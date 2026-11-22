@@ -10,10 +10,12 @@ import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackUpdate
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
@@ -288,6 +290,7 @@ internal class ReaderScreenModel(
     private fun load() {
         loadJob?.cancel()
         fontJob?.cancel()
+        val ticketAtStart = writeTicket
         mutate { copy(page = ReaderPage.Loading) }
         loadJob =
             scope.launch {
@@ -295,12 +298,22 @@ internal class ReaderScreenModel(
                     is ReaderPreparation.Ready -> {
                         val document = preparation.document
                         val seed = currentReaderSnapshot(document.persistedSession, storyId, chapterId, document.annotated.chunks.size)
+                        val loadedDisplay = ReaderDisplay(document.display.readerFontScale, document.display.readerDark)
+                        // Keep a text-size edit made while the page was preparing instead of reverting it.
+                        val newerDisplay = state.value.display.takeIf { writeTicket != ticketAtStart }
+                        val resolvedDisplay = newerDisplay ?: loadedDisplay
+                        val resolvedDocument =
+                            if (resolvedDisplay.fontScale != document.display.readerFontScale) {
+                                withContext(computation) { document.withFontScale(resolvedDisplay.fontScale) }
+                            } else {
+                                document
+                            }
                         mutate {
                             copy(
-                                page = ReaderPage.Ready(document, ++generation),
-                                bookmarked = document.story.lastReadChapterId == chapterId,
+                                page = ReaderPage.Ready(resolvedDocument, ++generation),
+                                bookmarked = resolvedDocument.story.lastReadChapterId == chapterId,
                                 playing = playingAfter(seed, data.playback.value),
-                                display = ReaderDisplay(document.display.readerFontScale, document.display.readerDark),
+                                display = resolvedDisplay,
                             )
                         }
                     }
@@ -331,11 +344,14 @@ internal class ReaderScreenModel(
         val previous = writes
         writes =
             scope.launch {
-                previous?.join()
-                if (ticket != writeTicket) return@launch
-                runCatching { data.saveDisplay(display) }.onFailure {
-                    Timber.e(it, "Reader settings save failed")
-                    messageChannel.trySend("Could not save reader settings")
+                withContext(NonCancellable) {
+                    previous?.join()
+                    if (ticket != writeTicket) return@withContext
+                    runCatching { data.saveDisplay(display) }.onFailure {
+                        if (it is CancellationException) throw it
+                        Timber.e(it, "Reader settings save failed")
+                        messageChannel.trySend("Could not save reader settings")
+                    }
                 }
             }
     }

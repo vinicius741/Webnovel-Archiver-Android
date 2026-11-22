@@ -12,14 +12,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /** What AI settings reads and saves. */
@@ -63,7 +61,7 @@ internal data class AiSettingsUiState(
  */
 internal class AiSettingsScreenModel(
     private val data: AiSettingsData,
-    saveScope: CoroutineScope,
+    private val saveScope: CoroutineScope,
     private val unsavedKey: UnsavedSetting<String> = UnsavedSettings.aiKey,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : ScreenModel(scope) {
@@ -114,7 +112,8 @@ internal class AiSettingsScreenModel(
 
     /** Saves a model pick ([edit] applies it to the settings) and refreshes the rows on screen. */
     suspend fun saveModelChoice(edit: (AiSettings) -> AiSettings) {
-        withContext(NonCancellable) { data.save(edit(data.settings())) }
+        // Serialized with the API-key autosave so concurrent writes never clobber each other.
+        unsavedKey.enqueueSave(saveScope) { data.save(edit(data.settings())) }.join()
         mutableState.update { it.copy(settings = data.settings()) }
         modelsChanged()
     }
@@ -129,7 +128,7 @@ internal class AiSettingsScreenModel(
 
     private fun update(edit: (AiSettings) -> AiSettings) {
         scope.launch {
-            withContext(NonCancellable) { data.save(edit(data.settings())) }
+            unsavedKey.enqueueSave(saveScope) { data.save(edit(data.settings())) }.join()
             mutableState.update { it.copy(settings = data.settings()) }
         }
     }

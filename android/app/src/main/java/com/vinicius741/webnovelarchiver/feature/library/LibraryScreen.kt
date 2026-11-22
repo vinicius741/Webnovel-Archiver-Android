@@ -156,7 +156,10 @@ private class LibraryRenderer(
         if (state.selecting) host.shell.setNavigationSuppressed(true)
         root = host.frame.getChildAt(0)
         // The open sheet acts on this render's lists; a new render (fold, search, selection) closes it.
-        root.doOnDetach { sheet?.dismiss() }
+        root.doOnDetach {
+            queryApply?.cancel()
+            sheet?.dismiss()
+        }
         root.bindWhileAttached(host.scope, model.state) { apply(it) }
         root.bindWhileAttached(host.scope, model.messages) { host.toast(it) }
     }
@@ -214,7 +217,8 @@ private class LibraryRenderer(
             object : ViewPager2.OnPageChangeCallback() {
                 override fun onPageSelected(position: Int) {
                     if (suppressingPageCallback) return
-                    val tabId = state.pageTabs.getOrNull(position) ?: return
+                    if (position !in state.pageTabs.indices) return
+                    val tabId = state.pageTabs[position]
                     if (tabId != applied.filter.selectedTabId) {
                         tabBar?.selectVisual(tabId)
                         model.selectTab(tabId)

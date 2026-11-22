@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackUpdate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,7 +98,7 @@ class ListenStarts(
         ui: ListenStartUi,
         storyId: String,
         chapterId: String,
-        start: () -> Unit,
+        start: suspend () -> Unit,
     ) {
         pending?.cancel()
         // What was playing when asked: only audio started after the request cancels the wait.
@@ -108,13 +109,19 @@ class ListenStarts(
             ui.scope.launch {
                 val ready =
                     runCatching { data.isReady(storyId, chapterId) }
-                        .onFailure { Timber.w(it, "Narration status failed") }
-                        .getOrDefault(false)
+                        .onFailure {
+                            if (it is CancellationException) throw it
+                            Timber.w(it, "Narration status failed")
+                        }.getOrDefault(false)
                 if (ready) {
                     start()
                     return@launch
                 }
-                val queued = withContext(io) { runCatching { data.enqueueFirst(storyId, chapterId) } }
+                val queued =
+                    withContext(io) {
+                        runCatching { data.enqueueFirst(storyId, chapterId) }
+                            .onFailure { if (it is CancellationException) throw it }
+                    }
                 if (queued.isFailure) {
                     Timber.e(queued.exceptionOrNull(), "Narration enqueue failed")
                     ui.toast("Could not generate the audio")
@@ -125,7 +132,11 @@ class ListenStarts(
                 if (awaitAudio(storyId, chapterId, playingAtRequest)) {
                     // Starting the playback service needs the app in the foreground: wait for the user to come back.
                     ui.awaitForeground()
-                    runCatching(start).onFailure { Timber.w(it, "Pending play could not start") }
+                    runCatching { start() }
+                        .onFailure {
+                            if (it is CancellationException) throw it
+                            Timber.w(it, "Pending play could not start")
+                        }
                 }
             }
     }
@@ -140,13 +151,11 @@ class ListenStarts(
         chapterId: String,
     ) {
         playIfGenerated(ui, storyId, chapterId) {
-            ui.scope.launch {
-                val position = data.position(storyId)
-                if (position != null && !position.caughtUp && position.chapterId == chapterId) {
-                    ui.start(storyId, chapterId)
-                } else {
-                    ui.startFromBeginning(storyId, chapterId)
-                }
+            val position = data.position(storyId)
+            if (position != null && !position.caughtUp && position.chapterId == chapterId) {
+                ui.start(storyId, chapterId)
+            } else {
+                ui.startFromBeginning(storyId, chapterId)
             }
         }
     }
@@ -197,7 +206,9 @@ class ListenStarts(
                 val playing = snapshot?.let { it.storyId to it.chapterId }
                 val job = queue.jobs.firstOrNull { it.storyId == storyId && it.chapterId == chapterId }
                 when {
-                    runCatching { data.isReady(storyId, chapterId) }.getOrDefault(false) -> PendingPlay.READY
+                    runCatching { data.isReady(storyId, chapterId) }
+                        .onFailure { if (it is CancellationException) throw it }
+                        .getOrDefault(false) -> PendingPlay.READY
                     snapshot?.isPlaying == true && playing != storyId to chapterId && playing != playingAtRequest -> PendingPlay.GIVE_UP
                     job == null || job.state == NarrationJobState.FAILED -> PendingPlay.GIVE_UP
                     else -> PendingPlay.WAIT

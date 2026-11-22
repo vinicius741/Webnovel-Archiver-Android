@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackUpdate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
@@ -38,16 +39,26 @@ internal class RepositoryPlayerData(
     ): List<String> {
         val story = repository.story(storyId) ?: return emptyList()
         val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return emptyList()
-        val html = withContext(Dispatchers.IO) { runCatching { repository.readChapter(chapter) }.getOrNull() } ?: chapter.content
+        val html =
+            withContext(Dispatchers.IO) {
+                runCatching { repository.readChapter(chapter) }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .getOrNull()
+            } ?: chapter.content
         if (html.isNullOrBlank()) return emptyList()
         val rules = repository.regexRules.get()
-        return withContext(
-            Dispatchers.Default,
-        ) { runCatching { TtsTextPreparation.prepareTtsChunks(html, rules) }.getOrDefault(emptyList()) }
+        return withContext(Dispatchers.Default) {
+            runCatching { TtsTextPreparation.prepareTtsChunks(html, rules) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrDefault(emptyList())
+        }
     }
 
     override suspend fun continuePlace(): ContinuePlace? {
-        val positions = runCatching { repository.getTtsStoryPositions() }.getOrDefault(emptyList())
+        val positions =
+            runCatching { repository.getTtsStoryPositions() }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrDefault(emptyList())
         val place =
             TtsContinueListening.target(positions) { repository.story(it) }?.let { target ->
                 val sentence =

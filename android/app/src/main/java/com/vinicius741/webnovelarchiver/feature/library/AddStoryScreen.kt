@@ -218,16 +218,19 @@ private fun ScreenHost.tabPickerField(
         LinearLayout.LayoutParams(dp(FIELD_ICON_DP), dp(FIELD_ICON_DP)).apply { marginEnd = dp(Space.SM + 2) },
     )
     row.contentDescription = "Save to tab: $current"
+    row.isEnabled = enabled
     row.isClickable = enabled
     row.isFocusable = enabled
     row.alpha = if (enabled) 1f else DISABLED_ALPHA
     val radius = dp(FIELD_RADIUS_DP).toFloat()
     row.background = ripple(fieldBackground(false), radius, colors.onSurface)
-    row.setOnClickListener {
-        showStyledOptionsDialog(
-            "Save to tab",
-            options.map { (id, name) -> name to { onPick(id) } },
-        )
+    if (enabled) {
+        row.setOnClickListener {
+            showStyledOptionsDialog(
+                "Save to tab",
+                options.map { (id, name) -> name to { onPick(id) } },
+            )
+        }
     }
     return row
 }

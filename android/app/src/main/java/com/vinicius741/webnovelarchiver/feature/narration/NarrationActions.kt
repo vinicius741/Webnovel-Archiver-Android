@@ -38,7 +38,7 @@ internal fun ScreenHost.playIfGenerated(
     storyId: String,
     chapterId: String,
     start: () -> Unit,
-) = container.listenStarts.playIfGenerated(ActivityListenStartUi(this), storyId, chapterId, start)
+) = container.listenStarts.playIfGenerated(ActivityListenStartUi(this), storyId, chapterId) { start() }
 
 /** Plays [chapterId] itself ([ListenStarts.playChapter]). */
 internal fun ScreenHost.playChapter(

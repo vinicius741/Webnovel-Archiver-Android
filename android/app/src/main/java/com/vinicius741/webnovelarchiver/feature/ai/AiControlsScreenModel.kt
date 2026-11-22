@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -173,6 +174,9 @@ internal interface AiControlsData {
 
     /** Stories whose finished cover result was not looked at yet (persisted). */
     val unseenCovers: StateFlow<Map<String, Any>>
+
+    /** Emits when the published library changes (e.g. a chapter downloads while the AI tab is open). */
+    val libraryChanges: Flow<Any?> get() = emptyFlow()
 
     fun aiSettings(): AiSettings
 
@@ -331,7 +335,14 @@ internal class AiControlsScreenModel(
                     charactersKey = null
                     coroutineScope {
                         launch { hydrateCoverWork() }
-                        merge(operations.ai, jobs.coverJobs, jobs.characterJobs, attention.state, data.unseenCovers).collect { refresh() }
+                        merge(
+                            operations.ai,
+                            jobs.coverJobs,
+                            jobs.characterJobs,
+                            attention.state,
+                            data.unseenCovers,
+                            data.libraryChanges,
+                        ).collect { refresh() }
                     }
                 }
         }

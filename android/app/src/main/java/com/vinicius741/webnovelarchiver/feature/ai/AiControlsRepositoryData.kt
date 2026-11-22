@@ -37,7 +37,9 @@ import com.vinicius741.webnovelarchiver.domain.model.StoryPhase
 import com.vinicius741.webnovelarchiver.domain.sha256Hex
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 
@@ -87,6 +89,8 @@ private class RepositoryAiControlsData(
     override fun story(storyId: String): Story? = repository.story(storyId)
 
     override val unseenCovers: StateFlow<Map<String, Any>> get() = repository.aiCoverUnseen
+
+    override val libraryChanges: Flow<Any?> get() = repository.downloadState
 
     override fun aiSettings(): AiSettings = repository.aiSettings.get()
 
@@ -195,8 +199,17 @@ private class RepositoryAiControlsData(
         return CharactersView(
             openId = openId,
             roster = roster,
-            thumbs = runCatching { repository.latestCharacterPortraits(storyId) }.getOrDefault(emptyMap()),
-            portraits = open?.let { runCatching { repository.characterPortraits(storyId, it.id) }.getOrNull() }.orEmpty(),
+            thumbs =
+                runCatching { repository.latestCharacterPortraits(storyId) }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .getOrDefault(emptyMap()),
+            portraits =
+                open
+                    ?.let {
+                        runCatching { repository.characterPortraits(storyId, it.id) }
+                            .onFailure { err -> if (err is CancellationException) throw err }
+                            .getOrNull()
+                    }.orEmpty(),
         )
     }
 

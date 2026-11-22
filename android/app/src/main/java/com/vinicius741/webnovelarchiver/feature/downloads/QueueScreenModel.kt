@@ -236,7 +236,11 @@ internal class QueueScreenModel(
         scope.launch {
             try {
                 // The change was confirmed on screen, so leaving the screen mid-save must not drop it.
-                withContext(NonCancellable) { data.apply(control) }
+                withContext(NonCancellable) {
+                    data.apply(control)
+                    // Start downloads only after the resumed/retried jobs have been persisted.
+                    if (control.startsDownloads) data.startDownloads()
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (
@@ -246,7 +250,6 @@ internal class QueueScreenModel(
                 messageChannel.trySend("Couldn't save that change")
             }
         }
-        if (control.startsDownloads) data.startDownloads()
     }
 
     /**

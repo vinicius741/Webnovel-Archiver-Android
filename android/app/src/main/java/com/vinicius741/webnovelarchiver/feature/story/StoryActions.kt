@@ -7,6 +7,7 @@ import com.vinicius741.webnovelarchiver.download.DownloadForegroundService
 import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
 import com.vinicius741.webnovelarchiver.feature.details.returnToStory
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.details.storyTabShowing
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -126,8 +127,8 @@ internal fun ScreenHost.syncStory(
         toast(StoryActionGuards.archivedActionMessage("Sync"))
         return
     }
-    // One run per story: a second Sync (Trends' "Sync now", a retry) would race the first.
-    if (storyOperation?.storyId == story.id) {
+    // One content operation at a time: sync, cleanup and EPUB share the content slot.
+    if (storyOperation != null) {
         toast("Please wait for the current operation to finish")
         return
     }
@@ -159,5 +160,5 @@ internal fun ScreenHost.syncStory(
         }
     }
     // Sync can start from the Library dialog or Trends; show the story so the inline progress is visible.
-    if (activeStory?.id != story.id) showDetails(story.id)
+    if (!storyTabShowing(story.id)) showDetails(story.id)
 }

@@ -43,6 +43,10 @@ private fun ScreenHost.runCleanup(
     story: Story,
     downloaded: List<Chapter>,
 ) {
+    if (storyOperation != null || operations.isSyncingFromUpdates(story.id)) {
+        toast("Please wait for the current operation to finish")
+        return
+    }
     // Undispatched, so the operation slot is taken before this returns and a second tap is refused.
     scope.launch(start = CoroutineStart.UNDISPATCHED) {
         try {

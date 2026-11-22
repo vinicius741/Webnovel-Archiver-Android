@@ -10,8 +10,10 @@ import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackUpdate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
@@ -149,6 +151,7 @@ internal class LibraryScreenModel(
 
     private var library = data.downloads.value.let { LibraryStories(it.libraryVersion, it.library) }
     private var continueCard: LibraryContinue? = null
+    private var continueLookup: Job? = null
     private val tabScroll = restored?.tabScroll.orEmpty().toMutableMap()
     private val messageChannel = Channel<String>(MESSAGE_BUFFER, BufferOverflow.DROP_OLDEST)
     private val mutableState = MutableStateFlow(compute())
@@ -380,13 +383,18 @@ internal class LibraryScreenModel(
 
     private fun lookUpContinueListening() {
         if (data.playback.value.snapshot != null) return
-        scope.launch {
-            val positions = runCatching { data.listeningPositions() }.getOrDefault(emptyList())
-            val dismissedThrough = preferences().continueListeningDismissedThrough
-            val target = TtsContinueListening.target(positions, dismissedThrough, data::story)
-            continueCard = target?.let { LibraryContinue(it, positions.maxOf(TtsStoryPosition::updatedAt)) }
-            refresh()
-        }
+        continueLookup?.cancel()
+        continueLookup =
+            scope.launch {
+                val positions =
+                    runCatching { data.listeningPositions() }
+                        .onFailure { if (it is CancellationException) throw it }
+                        .getOrDefault(emptyList())
+                val dismissedThrough = preferences().continueListeningDismissedThrough
+                val target = TtsContinueListening.target(positions, dismissedThrough, data::story)
+                continueCard = target?.let { LibraryContinue(it, positions.maxOf(TtsStoryPosition::updatedAt)) }
+                refresh()
+            }
     }
 
     private fun hideContinueListening() {
@@ -398,6 +406,7 @@ internal class LibraryScreenModel(
         operation: String,
         error: Throwable,
     ) {
+        if (error is CancellationException) throw error
         Timber.w(error, "Library operation failed: %s", operation)
         messageChannel.trySend(error.message ?: "Operation failed")
     }

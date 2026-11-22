@@ -340,6 +340,19 @@ class SettingsLiveModelsTest {
             model.speedTestShown()
             assertNull(model.speedTest.value)
         }
+
+    @Test
+    fun aFailingSpeedTestClearsItsRunningState() =
+        runTest(dispatcher) {
+            val data = FakeTtsData()
+            val model = TtsSettingsScreenModel(data, scope, UnsavedSetting(), scope)
+            model.startSpeedTest(BuiltInModel.KOKORO_V1)
+            runCurrent()
+
+            data.report.completeExceptionally(IllegalStateException("model missing"))
+            runCurrent()
+            assertNull("a failed speed test must not leave the progress state stuck", model.speedTest.value)
+        }
 }
 
 private class FakeAppUpdateData : AppUpdateData {
