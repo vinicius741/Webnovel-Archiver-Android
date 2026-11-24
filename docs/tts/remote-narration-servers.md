@@ -357,10 +357,11 @@ picks this one, the service restarts in 5 s.
   The allocator reads `MallocLargeCache` only as a process starts, so the server starts itself again
   with `MallocLargeCache=0` (same pid, so launchd is unaffected). Measured: 16 MB after an unload,
   about 250 MB less while generating, and the same speed. Workers (3.1) are started with it set.
-- **Workers on a Mac (3.1, not yet run there).** A worker is a child of the launchd agent; whether it
-  keeps the agent's `ProcessType` `Interactive` (rather than being held to the efficiency cores) and
-  its footprint reading (`proc_pid_rusage` on its pid) still need checking on the MacBook after
-  `setup.sh --service`.
+- **Workers on a Mac (3.1, checked 2026-11-24 on the M1 Pro).** A worker is a child of the launchd
+  agent and runs at its priority (nice 10, not held to the efficiency cores): Kokoro v1.0's fast path
+  at 10.5x with five in flight, as before. `workerMb` matched `footprint` on the worker's pid
+  (1119 MB). The server holds 2-3 MB of footprint idle; a `kill -9` of the worker mid-batch cost 503s
+  and a ~20 s pause, 50 of 50 sentences arrived, and the idle unload gave back 750 MB.
 - **No kernel backstop.** launchd offers no memory limit or kill-first setting for an agent, so the
   governor is the only protection. The agent sets `Nice` 10 (apps in use go first when the processor
   is contended; no cost otherwise) and `ProcessType` `Interactive` (see the table above).

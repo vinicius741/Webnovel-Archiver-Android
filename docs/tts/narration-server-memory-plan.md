@@ -147,8 +147,8 @@ Swap and pressure signals:
   - under `systemd-run --user -p MemoryMax=... -p OOMPolicy=continue`, a worker OOM kill leaves the
     parent answering.
 - Then reinstall with `setup.sh --service` and check `/v1/status`.
-- `cargo test`, `cargo clippy`; macOS needs a real run on the MacBook (launchd `ProcessType`
-  inheritance by the worker, `phys_footprint` of a child).
+- `cargo test`, `cargo clippy`; a real run on the MacBook (done 2026-11-24: the worker keeps the
+  agent's priority, 10.5x, and its `phys_footprint` reads right).
 
 ## Leads not taken
 
