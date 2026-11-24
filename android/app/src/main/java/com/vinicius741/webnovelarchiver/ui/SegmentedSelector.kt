@@ -4,14 +4,15 @@ import android.content.Context
 import android.graphics.Color
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * The v3 segmented control for any list of options: a rounded track with equal-width options, the
- * selected one raised. A count after a label shows faint (null or 0 shows none). [onSelect] gets
+ * The v3 segmented control for any list of options: a rounded track whose options share the spare
+ * width equally on top of their own label width (so a long label keeps one line), the selected one raised. A count after a label shows faint (null or 0 shows none). [onSelect] gets
  * the tapped index after the control has moved its highlight.
  */
 internal class SegmentedSelector(
@@ -45,6 +46,10 @@ internal class SegmentedSelector(
                 makeText(context, "", Type.LABEL_LARGE, colors.onSurfaceVariant).apply {
                     this.text = text
                     gravity = Gravity.CENTER
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    val sidePad = context.dp(Spacing.SM)
+                    setPadding(sidePad, 0, sidePad, 0)
                     isClickable = true
                     isFocusable = true
                     setOnClickListener {
@@ -53,7 +58,7 @@ internal class SegmentedSelector(
                     }
                 }
             buttons += button
-            view.addView(button, LinearLayout.LayoutParams(0, context.dp(BUTTON_HEIGHT_DP), 1f))
+            view.addView(button, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, context.dp(BUTTON_HEIGHT_DP), 1f))
         }
         select(selected)
     }
