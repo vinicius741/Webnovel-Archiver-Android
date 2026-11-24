@@ -22,6 +22,7 @@ mod models;
 mod openvino;
 mod phonon;
 mod sherpa;
+mod worker;
 
 use engine::{log, Engine, Settings};
 use memory::{Policy, MIB};
@@ -40,8 +41,9 @@ const USAGE: &str = "Usage: narration-server [options]
   --name NAME            name shown in the app (default: host name)
   --threads N            inference threads (default: one per performance core)
   --max-slots N          most sentences generating at once (default: 4 on 8+ cores)
-  --reserve-mb N         keep this much memory available for everything else (default: 20% of RAM, 1.5-4 GB)
-  --critical-mb N        stop and unload below this much available (default: a third of the reserve)
+  --reserve-mb N         grow slots only while this much stays available (default: 12% of RAM, 1-3 GB)
+  --critical-mb N        stop and unload below this much available (default: 4% of RAM, 384-768 MB);
+                         below half of it, end the model's process without waiting
   --idle-unload-s N      unload the model after this many idle seconds (default 300; 0 = never)
   --no-fast              run Kokoro v1.0 at full precision even where its fast path applies
   --verbose              log every request
@@ -278,10 +280,16 @@ fn policy(args: &Args) -> Policy {
         policy.critical = mb * MIB;
     }
     policy.critical = policy.critical.min(policy.reserve);
+    policy.emergency = policy.critical / 2;
     policy
 }
 
 fn main() {
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    if raw.first().map(String::as_str) == Some("--worker") {
+        // A model's own process, started by the server (see worker.rs).
+        worker::run(&raw);
+    }
     let args = match parse_args() {
         Ok(args) => args,
         Err(message) => {
@@ -296,9 +304,10 @@ fn main() {
         return;
     }
     memory::tune_allocator();
-    // Phonon's runtime computes on its own pool; one thread per performance core, like Kokoro.
-    xn::set_num_threads(args.threads);
     if let Some(rounds) = args.bench {
+        // Phonon's runtime computes on its own pool; one thread per performance core, like Kokoro.
+        // The server sets it in each worker instead, so its own process never starts that pool.
+        xn::set_num_threads(args.threads);
         bench(&args, rounds);
         return;
     }
@@ -346,16 +355,14 @@ fn main() {
         .name("governor".into())
         .spawn(move || loop {
             let snapshot = memory::snapshot();
-            let loaded: Vec<bool> = governed.engines.iter().map(|engine| engine.is_loaded()).collect();
-            for (index, engine) in governed.engines.iter().enumerate() {
-                let others_loaded = loaded.iter().enumerate().any(|(other, &is)| other != index && is);
-                engine.govern_with(snapshot, others_loaded);
+            for engine in &governed.engines {
+                engine.govern_with(snapshot);
             }
             std::thread::sleep(Duration::from_secs(1));
         })
         .unwrap_or_else(|_| fail("Could not start the memory governor"));
     log(&format!(
-        "Narration server '{}' ready on port {} with {} (sherpa-onnx {}, ptts 0.7.1; up to {} sentences at once x {} threads; reserve {} MB, stop below {} MB; models load on first use)",
+        "Narration server '{}' ready on port {} with {} (sherpa-onnx {}, ptts 0.7.1; up to {} sentences at once x {} threads; reserve {} MB, stop below {} MB; each model loads in its own process on first use)",
         args.name,
         args.port,
         installed.iter().map(|kind| kind.name()).collect::<Vec<_>>().join(", "),

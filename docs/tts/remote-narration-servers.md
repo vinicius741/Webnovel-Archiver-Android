@@ -29,11 +29,13 @@ The server runs every model it has installed under `models/`: `kokoro-en-v0_19`,
 library behind the app's `libptts_ffi.so`, with voices in `voices/<Name>.safetensors`). Each model
 is its own `Engine` (`src/models.rs`): it loads when a chapter first asks for it, has its own slots,
 and unloads after 5 idle minutes, so a server with all three holds none of them until asked. Before
-a model loads, the others that sit idle are unloaded (`Shared::make_room_for`), and while another
-model is loaded an engine does not learn its memory costs, since the process's memory is shared.
+a model loads, the others that sit idle are unloaded (`Shared::make_room_for`). Each model runs in its
+own worker process (3.1), so each engine learns its own memory costs even while another is loaded.
 `setup.sh` checks Phonon's files against the same SHA-256 sums the app pins.
-Measured on Bazzite: about 11 MB before any model loads; after Phonon and Kokoro v1.0 were used and
-unloaded, about 80 MB (Phonon's runtime keeps its thread pool for the life of the process).
+Since server 3.1 (2026-11-24) each loaded model runs in its own worker process, so an unloaded model
+leaves nothing behind: about 12 MB before any model loads and after any number of loads and unloads
+(before, in one process, it was 80 MB after one round and 320 MB after a few days, from native memory
+the runtimes never returned).
 `--bench --model NAME` measures one model; on Bazzite, four slots: Kokoro v1.0 7.7x (1.0 GB peak),
 Phonon 20.4x (0.75 GB). Since 2026-11-21 Kokoro v1.0 takes a fast path on both computers, 11.0x there and 10.6x on the Mac
 (see [Kokoro v1.0's fast path](#kokoro-v10s-fast-path-2026-11-21)). Apps before 3.0 send no `model` and
@@ -48,7 +50,8 @@ library as the phone's. The Python server ran the PyPI build 1.12.26.
 | File | Role |
 |---|---|
 | `src/sherpa.rs` | FFI to the sherpa-onnx C API (struct layouts from its `c-api.h` at v1.12.21). PCM conversion matches `TtsWavWriter` exactly (clamp, ×32767, round half up). |
-| `src/engine.rs` | **One shared model** and its generation slots: load on first use, recycle, unload when idle or short of memory. One engine per installed model. |
+| `src/engine.rs` | **One shared model** and its generation slots: load on first use, pause, recycle, unload when idle or short of memory. One engine per installed model. |
+| `src/worker.rs` | The model's own process (the same binary with `--worker`), framed requests over its stdin and stdout, and what the server does when the kernel kills it. |
 | `src/models.rs`, `src/phonon.rs` | The models the server knows, how each is checked, loaded and addressed (Kokoro by speaker number, Phonon by voice name); Phonon through the `ptts` crate. |
 | `src/fast.rs`, `src/openvino.rs` | Kokoro v1.0's fast path: the generator's trunk through OpenVINO at reduced precision, the rest as before; and the OpenVINO C API it needs, opened at run time so a server without it starts as before. |
 | `split_kokoro.py` | Cuts the Kokoro v1.0 export into the fast path's three models, written for the precision they will run in (`bf16` or `f16`). `setup.sh` runs it. |
@@ -84,8 +87,8 @@ Extreme, 8 cores), 32 sentences, same machine and day:
 | 1 model, 6 slots × 8 threads | 7.06x | 1.7 GB |
 
 Over HTTP with five sentences in flight (as the app sends them) and `Nice=10`: 6.67-6.82x, peak 1.4-1.6 GB.
-The Python server held about 3 GB from start to stop. The Rust server holds ~10 MB before the model
-loads, and ~60 MB after an idle unload.
+The Python server held about 3 GB from start to stop. The Rust server holds ~12 MB whenever no model
+is loaded (3.1; ~60 MB after an idle unload before that).
 
 Measured on the MacBook Pro (M1 Pro, 8 performance + 2 efficiency cores, 32 GB, macOS 26) with
 `--bench` (16 sentences), 2026-11-12. Speeds are from runs on a quiet machine:
@@ -282,35 +285,64 @@ the phone would change how it sounds and needs its own listening test.
 
 ### Memory
 
-The server checks memory every second and adapts. Thresholds come from the machine's RAM:
-- **Reserve**: memory kept free for everything else. 20% of RAM, 1.5-4 GB (3.1 GB on a 16 GB machine).
-- **Critical**: a third of the reserve, at least 600 MB.
+Server 3.1 (2026-11-24) reworked this after the journal showed the server slowing and stopping for the
+wrong reason. Over five days of Kokoro v1.0 on Bazzite it had spent 18.5 h at one slot and stopped 87
+times, and the median free memory at a stop was **3066 MB**: the rules on swap (zram three-quarters
+used → one slot; nearly full and under the 3.1 GB reserve → stop) fired while RAM was still there,
+and zram use only grows until a reboot. The plan and the two reviews behind it are in
+[narration-server-memory-plan.md](narration-server-memory-plan.md).
+
+**Each model runs in its own process.** Loading a model starts a worker (`narration-server --worker`,
+`src/worker.rs`); unloading it ends that process, so all of its memory, and any of it in swap, goes back
+at once. The server process itself never loads a model and holds ~12 MB. The worker raises its own
+`oom_score_adj` to 1000, so if memory still runs out the kernel kills the worker, not the server, the
+desktop or a game. It exits by itself when the server goes away (its stdin closes). Each engine
+measures its own worker (resident + swap), so the learned costs are right even with two models loaded.
+
+The governor checks memory every second. Thresholds come from the machine's RAM:
+- **Reserve**: slots grow only while this much stays available. 12% of RAM, 1-3 GB (1880 MB on 16 GB).
+- **Stop line**: 4% of RAM, 384-768 MB (626 MB on Bazzite); 384 MB higher while swap is nearly full
+  (< 5% free, left at ≥ 10%).
+- **Emergency line**: half the stop line.
+
+In order, as memory runs out:
 
 | Level | When | What the server does |
 |---|---|---|
 | Normal | Available above the reserve | Slots = those already paid for + as many more as fit above the reserve (learned cost per slot, 256 MB to start), up to `--max-slots`. |
-| Low | Available below the reserve, Linux PSI `some` ≥ 20%, swap (zram) three-quarters used, or macOS pressure "warning" | One slot. After 10 s at Low, it reloads the model once to give back what extra slots made ONNX Runtime keep. Its arena never shrinks on its own; measured 932 → 489 MB on Linux, 1030 → 520 MB on the Mac. It skips that reload when memory is so close to the critical line that the model could not load again, and keeps the one slot. |
-| Critical | Available below critical, PSI `full` ≥ 10%, swap almost gone while low, or macOS pressure "critical" | **Stops generating.** Requests get `503` + `Retry-After: 20`. The model is unloaded as soon as running sentences finish (→ ~40-60 MB), and `malloc_trim` hands the heap back. |
+| Low | Available under the reserve; PSI `some` ≥ 20% or macOS "warning" (one slot fewer); PSI `full` ≥ 10% (one slot) | **Free first:** new sentences are held back for up to 3 s (at most every 30 s) so the running ones finish and the worker frees its between-sentence buffers; an idle model unloads after 60 s instead of 5 min. **Then slow down:** one slot fewer per slot's worth of memory under the reserve, at least one. When slots sit two or more below what the worker grew for (or at one with more grown) for 10 s, the worker is **recycled** at the smaller size and keeps that slot count, if the reload fits; recycles are 60 s apart, doubling to 10 min when they keep coming. Kokoro v1.0 loads its normal path (about 0.7 GB less, same audio, 7.7x instead of 11x) when the fast path does not fit. |
+| Critical | Available under the stop line, PSI `full` ≥ 10% with available under the reserve, or macOS "critical" | **Stops generating.** Requests get `503` + `Retry-After: 20`; the worker ends as soon as running sentences finish. |
+| Emergency | Available under the emergency line, or PSI `full` ≥ 40% | The worker is killed at once; its sentences get `503` and the app retries them. |
 
-Hysteresis: a level is left only when memory clears its line by 384 MB, so zram holding memory right at a
-line does not make it flap. The model reloads only with room for it plus that 384 MB above the critical
-line (learned load cost, 900 MB to start), and not within 15 s of leaving Critical. That cooldown
-doubles, up to 5 minutes, each time a reload is followed by another stop within a minute. A refused
-request is told when to ask again. The learned costs drift back toward the defaults at each load, so
-one unusual chapter does not lower the slot count for good. While the model is unloaded, what the
-learned load cost holds above its default also halves every minute: the cost comes from the peak of
-a whole session, and only a load corrects it, so one long sentence once kept Kokoro v1.0 at the
-4 GB cap and refused every load on Bazzite with 4.6 GB available ("does not have the memory to load
-the model") until the service restarted. `/v1/status` shows each model's current load cost under
-`models` (`loadCostMb`). A model that fails to load twice in a row
-(missing or corrupt files) is reported as an error (`500`), not as busy. A process cgroup limit
-(systemd `MemoryMax`, a container) caps slots to what fits under it, separately from the machine's
-reserve. An idle model is unloaded after 5 minutes. It reloads in about a second (0.75-1.0 s measured) on
-the next request, and `/v1/info` starts loading it ahead of the first sentence. A sentence whose client
-hung up while it waited for a slot (the app paused or switched) is dropped instead of generated.
+Swap in use no longer slows anything down. Linux's `MemAvailable` already says what is left; only
+nearly full swap counts, and it raises the stop line. The server cannot shrink other programs' swap:
+their pages come back from zram only when they are used, or with
+`sudo swapoff /dev/zram0 && sudo swapon /dev/zram0` (needs enough free RAM). Every level change logs
+the rule that fired (`/v1/status` shows it as `memory.reason`); slot changes alone are logged with
+`--verbose`, as the fast path's buffers move them with nearly every sentence.
 
-Kernel backstops in the systemd unit: `OOMScoreAdjust=500` (if memory still runs out, the OOM killer takes
-this server before the desktop or a game, and systemd restarts it in 5 s), `MemoryMax=35%`, and `Nice=10`.
+Hysteresis: a level is left only when memory clears its line by 384 MB, and PSI once it falls to half
+its threshold. A model loads only when its variant's learned load cost (a measured peak, first sentence
+included; 900 MB and 1600 MB to start) fits above the stop line, and not within 15 s of leaving
+Critical. That cooldown doubles, up to 5 minutes, each time a reload is followed by another stop within
+a minute. A worker that dies (killed by the kernel, crashed) is forgotten at once, its sentences answer
+`503`, and the next one starts after 15 s, doubling up to 5 minutes if they keep dying. A worker that
+dies while loading counts as memory (`503`); only a load error the worker reports counts toward "broken"
+(`500` after two in a row). A worker that does not finish loading within 90 s, or hangs on a sentence for
+5 minutes, is killed. The learned costs drift back toward the defaults at each load, and while the
+model is unloaded what the learned load cost holds above its default halves every minute (one long
+sentence once kept Kokoro v1.0 at the 4 GB cap and refused every load on Bazzite with 4.6 GB available).
+`/v1/status` shows each model's `loadCostMb`, `variant`, `workerMb`, `workerSwapMb`, `lost`,
+`recycles` and `pauses`. A process cgroup limit (systemd `MemoryMax`, a container) caps slots to what
+fits under it, separately from the machine's reserve. An idle model is unloaded after 5 minutes. It
+reloads in about a second (0.9-1.5 s measured with workers) on the next request, and `/v1/info`
+starts loading it ahead of the first sentence. A sentence whose client hung up while it waited for a
+slot (the app paused or switched) is dropped instead of generated.
+
+Kernel backstops in the systemd unit: `OOMScoreAdjust=500` for the server (its workers raise theirs to
+1000), `OOMPolicy=continue` (with the default `stop`, systemd would stop the whole service when the
+kernel kills a worker), `MemoryMax=35%`, and `Nice=10`. `systemd-oomd` still acts on whole units: if it
+picks this one, the service restarts in 5 s.
 
 #### macOS
 
@@ -324,7 +356,11 @@ this server before the desktop or a game, and systemd restarts it in 5 s), `Memo
   to the process: after unloading the model the server still held 1560 MB, and no call releases them.
   The allocator reads `MallocLargeCache` only as a process starts, so the server starts itself again
   with `MallocLargeCache=0` (same pid, so launchd is unaffected). Measured: 16 MB after an unload,
-  about 250 MB less while generating, and the same speed.
+  about 250 MB less while generating, and the same speed. Workers (3.1) are started with it set.
+- **Workers on a Mac (3.1, not yet run there).** A worker is a child of the launchd agent; whether it
+  keeps the agent's `ProcessType` `Interactive` (rather than being held to the efficiency cores) and
+  its footprint reading (`proc_pid_rusage` on its pid) still need checking on the MacBook after
+  `setup.sh --service`.
 - **No kernel backstop.** launchd offers no memory limit or kill-first setting for an agent, so the
   governor is the only protection. The agent sets `Nice` 10 (apps in use go first when the processor
   is contended; no cost otherwise) and `ProcessType` `Interactive` (see the table above).
@@ -423,6 +459,17 @@ port 8790 open for LAN access.
 
 ## Verified
 
+- Server 3.1, workers and the memory ladder (2026-11-24, Bazzite): 39 unit tests, clippy clean. A test
+  instance beside the service: Kokoro v1.0 fast path 10.2-10.5x over HTTP with five in flight (11.0x
+  before; the pipes cost a little), v0.19 6.7x, Phonon answering; the server at 7 MB on start and 12 MB
+  after each model loaded and unloaded (320 MB before). `kill -9` of the worker mid-chapter: the five
+  sentences in it answered `503`, the next worker started after 15 s, 60 of 60 arrived. With the
+  reserve set 1.5 GB under what was free: slots stepped 4 → 3 → 2 → 1 and back as the fast path's
+  buffers came and went, 120 of 120 at 9.8x. With the stop line 1.2 GB under: Kokoro v1.0 loaded its
+  normal path, stopped below the line, gave back 1.1 GB and resumed after the cooldown, no failed
+  sentence. Under `systemd-run -p MemoryMax=1000M`: capped to one slot and recycled 4 → 1; with
+  `MemorySwapMax=0` the kernel OOM-killed the worker three times and the server kept its pid and the
+  unit stayed active (`OOMPolicy=continue`). `kill -9` of the server left no worker behind.
 - Waiting for the network (2026-11-14): `NarrationPlacePoolTest` (both computers out of reach for five seconds mid-chapter and generation going on by itself, the wait shown, the 15-minute limit, a wrong token ending the wait or refusing to start at once). Not yet tried on a phone between two Wi-Fi networks.
 - Several computers (2026-11-13): `NarrationPlacePoolTest` (sentences spread over two computers and their slots, one dropping mid-chapter, one coming back through the probe, every computer out with one message, the phone standing in and stepping back, a stop waited out and shown, a stop that lasts 15 minutes, one computer holding back while the other generates) and `NarrationGeneratorTest.computersSharingAChapterWriteItInOrderEvenWhenOneDrops`.
 

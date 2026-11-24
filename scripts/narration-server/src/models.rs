@@ -94,19 +94,26 @@ impl Kind {
         }
     }
 
-    /// Loads the model. With [fast], Kokoro v1.0 takes its fast path (`fast.rs`); if that fails to
-    /// load, it speaks through sherpa-onnx alone as before.
+    /// Loads the model in this process. With [fast], Kokoro v1.0 takes its fast path (`fast.rs`); if
+    /// that fails to load, it speaks through sherpa-onnx alone as before. The server loads models in
+    /// worker processes (`worker.rs`), which call this; `--bench` calls it directly.
     pub fn load(self, dir: &Path, threads: usize, fast: Option<&crate::fast::Options>) -> Result<Arc<dyn Synth>, String> {
+        self.load_reporting(dir, threads, fast).map(|(tts, _)| tts)
+    }
+
+    /// As [load], also saying whether the fast path is the one that loaded.
+    pub fn load_reporting(self, dir: &Path, threads: usize, fast: Option<&crate::fast::Options>) -> Result<(Arc<dyn Synth>, bool), String> {
         if let (Kind::KokoroV1, Some(options)) = (self, fast) {
             match crate::fast::Fast::load(dir, threads, options) {
-                Ok(model) => return Ok(Arc::new(model)),
+                Ok(model) => return Ok((Arc::new(model), true)),
                 Err(error) => crate::engine::log(&format!("{}: the fast path did not load ({error}); using the normal path", self.name())),
             }
         }
-        Ok(match self {
+        let tts: Arc<dyn Synth> = match self {
             Kind::KokoroV019 | Kind::KokoroV1 => Arc::new(crate::sherpa::Tts::load(self, dir, threads)?),
             Kind::Phonon => Arc::new(crate::phonon::Phonon::load(dir)?),
-        })
+        };
+        Ok((tts, false))
     }
 
     /// Voice names a Phonon folder offers (its `voices/*.safetensors`); empty for Kokoro.

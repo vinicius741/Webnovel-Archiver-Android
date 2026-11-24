@@ -297,8 +297,10 @@ if [ "${1:-}" = "--service" ]; then
     EXEC=""
     for arg in "${RUN[@]}"; do EXEC+="\"$arg\" "; done
     # The server watches memory itself (see the docs). These are the kernel's backstops: if memory
-    # still runs out, the OOM killer takes this server before anything else (it restarts in 5 s),
-    # and it can never grow past 35% of RAM. Nice keeps games and the desktop responsive.
+    # still runs out, the OOM killer takes a model's worker process first (each raises its own score
+    # to 1000), and OOMPolicy=continue keeps the server answering when it does (the default would
+    # stop the whole service); the server itself scores 500 and restarts in 5 s. It can never grow
+    # past 35% of RAM. Nice keeps games and the desktop responsive.
     cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Webnovel Archiver narration server
@@ -310,6 +312,7 @@ Restart=always
 RestartSec=5
 Nice=10
 OOMScoreAdjust=500
+OOMPolicy=continue
 MemoryMax=35%
 
 [Install]
