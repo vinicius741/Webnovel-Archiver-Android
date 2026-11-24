@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.core.view.ViewCompat
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -78,7 +79,7 @@ internal fun ScreenHost.showTabs() {
     val tabs = state.tabs
     screen(route = AppRoute.Tabs, title = "Manage tabs", subtitle = SettingsHubPlanning.plural(tabs.size, "tab"), scrollable = true) {
         capSettingsWidth(this)
-        settingsNote("Tabs group your library. Novels in a deleted tab become Unassigned.")
+        settingsNote("Tabs group your library. Drag a tab by its handle to reorder. Novels in a deleted tab become Unassigned.")
         spacer(Space.MD)
         row {
             val name = makeField(context, model.newTabName, "New tab name", InputType.TYPE_CLASS_TEXT)
@@ -90,44 +91,67 @@ internal fun ScreenHost.showTabs() {
         }
         spacer(Space.SM)
         if (tabs.isEmpty()) settingsNote("No tabs yet.")
+        val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val reorder = DragReorderList(list) { from, to -> model.move(from, to) }
         tabs.forEachIndexed { index, tab ->
             val novelCount = state.novelCounts[tab.id] ?: 0
-            addView(
-                card {
-                    setPadding(dp(Space.LG), dp(Space.SM), dp(Space.XS), dp(Space.SM))
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(
-                        LinearLayout(context).apply {
-                            orientation = LinearLayout.VERTICAL
-                            addView(makeText(context, tab.name, Type.TITLE_SMALL, colors.onSurface).apply { textSize = TITLE_SP })
-                            addView(
-                                makeText(
-                                    context,
-                                    SettingsHubPlanning.plural(novelCount, "novel"),
-                                    Type.BODY_SMALL,
-                                    colors.onSurfaceVariant,
-                                ).apply {
-                                    setPadding(0, dp(2), 0, 0)
-                                },
-                            )
-                        },
-                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-                    )
-                    tabActionButton(R.drawable.wna_up, "Move ${tab.name} up", enabled = index > 0) { model.move(index, index - 1) }
-                    tabActionButton(R.drawable.wna_down, "Move ${tab.name} down", enabled = index < tabs.lastIndex) {
-                        model.move(index, index + 1)
-                    }
-                    tabActionButton(R.drawable.wna_edit, "Rename ${tab.name}") {
-                        showRenameTabPrompt(tab.name) { renamed -> model.rename(tab.id, renamed) }
-                    }
-                    tabActionButton(R.drawable.wna_delete, "Delete ${tab.name}") {
-                        val novels = SettingsHubPlanning.plural(novelCount, "novel")
-                        confirm("Delete \"${tab.name}\"? $novels will become Unassigned.", confirmLabel = "Delete") { model.delete(tab.id) }
-                    }
-                }.apply { (layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(Space.SM) },
-            )
+            val row =
+                list
+                    .card {
+                        setPadding(dp(Space.XS), dp(Space.SM), dp(Space.XS), dp(Space.SM))
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        val handle =
+                            makeRowIconButton(context, R.drawable.wna_drag_handle, "Drag to reorder ${tab.name}", colors.faint) {}.apply {
+                                background = null
+                                isClickable = false
+                            }
+                        addView(handle)
+                        addView(
+                            LinearLayout(context).apply {
+                                orientation = LinearLayout.VERTICAL
+                                addView(makeText(context, tab.name, Type.TITLE_SMALL, colors.onSurface).apply { textSize = TITLE_SP })
+                                addView(
+                                    makeText(
+                                        context,
+                                        SettingsHubPlanning.plural(novelCount, "novel"),
+                                        Type.BODY_SMALL,
+                                        colors.onSurfaceVariant,
+                                    ).apply {
+                                        setPadding(0, dp(2), 0, 0)
+                                    },
+                                )
+                            },
+                            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                        )
+                        tabActionButton(R.drawable.wna_edit, "Rename ${tab.name}") {
+                            showRenameTabPrompt(tab.name) { renamed -> model.rename(tab.id, renamed) }
+                        }
+                        tabActionButton(R.drawable.wna_delete, "Delete ${tab.name}") {
+                            val novels = SettingsHubPlanning.plural(novelCount, "novel")
+                            confirm(
+                                "Delete \"${tab.name}\"? $novels will become Unassigned.",
+                                confirmLabel = "Delete",
+                            ) { model.delete(tab.id) }
+                        }
+                        reorder.attach(this, handle)
+                    }.apply { (layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(Space.SM) }
+            // Screen readers get move actions in place of the drag.
+            if (index > 0) {
+                ViewCompat.addAccessibilityAction(row, "Move ${tab.name} up") { _, _ ->
+                    model.move(index, index - 1)
+                    true
+                }
+            }
+            if (index < tabs.lastIndex) {
+                ViewCompat.addAccessibilityAction(row, "Move ${tab.name} down") { _, _ ->
+                    model.move(index, index + 1)
+                    true
+                }
+            }
+            list.addView(row)
         }
+        addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bindWhileAttached(scope, model.state) { next -> if (next != state) showTabs() }
     }
 }
@@ -158,16 +182,9 @@ private fun ScreenHost.showRenameTabPrompt(
 private fun LinearLayout.tabActionButton(
     iconRes: Int,
     description: String,
-    enabled: Boolean = true,
     action: () -> Unit,
 ) {
-    addView(
-        makeRowIconButton(context, iconRes, description, ThemeManager.colors.onSurfaceVariant, action).apply {
-            isEnabled = enabled
-            alpha = if (enabled) 1f else DISABLED_ALPHA
-        },
-    )
+    addView(makeRowIconButton(context, iconRes, description, ThemeManager.colors.onSurfaceVariant, action))
 }
 
 private const val TITLE_SP = 15f
-private const val DISABLED_ALPHA = 0.3f
