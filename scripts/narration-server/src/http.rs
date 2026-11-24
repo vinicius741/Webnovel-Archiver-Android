@@ -4,6 +4,7 @@
 use crate::engine::{log, Busy, Engine};
 use crate::memory::Level;
 use crate::models::Kind;
+use crate::worker::WorkerError;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -293,7 +294,13 @@ fn synthesize(body: &[u8], shared: &Shared, out: &mut TcpStream, keep: bool) -> 
         return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "The client hung up while waiting"));
     }
     let started = Instant::now();
-    let result = lease.tts().generate(&request.text, &voice);
+    let generation = lease.generation();
+    let result = lease.generate(&request.text, &voice);
+    if let Err(WorkerError::Lost(why)) = &result {
+        // Before the slot goes back: the last lease out of a draining worker would otherwise take it
+        // as a plain unload, with no cooldown before the next one starts.
+        engine.report_lost(generation, why, true);
+    }
     drop(lease);
     let generate_ms = started.elapsed().as_millis() as u64;
     match result {
@@ -312,7 +319,11 @@ fn synthesize(body: &[u8], shared: &Shared, out: &mut TcpStream, keep: bool) -> 
             let header = wav_header(rate, pcm.len());
             respond(out, 200, &headers, &[&header, &pcm], keep)
         }
-        Err(error) => {
+        Err(WorkerError::Lost(_)) => {
+            // Killed for memory, most likely: not this sentence's fault. The app retries it later.
+            respond_busy(out, &engine.busy_after_loss(), shared, keep)
+        }
+        Err(WorkerError::Failed(error)) => {
             engine.record(0, generate_ms, false);
             respond_json(out, 500, &serde_json::json!({"error": format!("Generation failed: {error}")}), keep, &[])
         }
