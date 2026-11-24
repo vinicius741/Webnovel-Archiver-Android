@@ -31,6 +31,10 @@ import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
 import com.vinicius741.webnovelarchiver.operations.AppListenStartData
 import com.vinicius741.webnovelarchiver.operations.ListenStarts
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.source.local.AndroidPdfPages
+import com.vinicius741.webnovelarchiver.source.local.LocalNovelReader
+import com.vinicius741.webnovelarchiver.source.local.LocalSourceProvider
+import com.vinicius741.webnovelarchiver.source.local.SafLocalLibraryFiles
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityStore
@@ -125,6 +129,12 @@ class AppContainer internal constructor(
     internal val downloadPacer = DownloadRequestPacer(nowMillis = time::nowMillis, sleep = time::sleep)
     val syncEngine: StorySyncEngine = StorySyncEngine(repository, network)
     val epubEngine: EpubEngine = EpubEngine(repository, network)
+
+    init {
+        // The local folder (Add story › Local folder): the local source reads novels through it.
+        LocalSourceProvider.install(LocalNovelReader(SafLocalLibraryFiles(appContext), AndroidPdfPages))
+    }
+
     val openRouter: OpenRouterClient = OpenRouterClient(client = simulation?.aiClient() ?: OpenRouterClient.defaultClient())
     val chapterEvidence = ChapterEvidenceStore(appContext.cacheDir)
     private val chapterEvidenceSelector = ChapterEvidenceSelector(repository, DecisionClient(openRouter, time::sleep), chapterEvidence)

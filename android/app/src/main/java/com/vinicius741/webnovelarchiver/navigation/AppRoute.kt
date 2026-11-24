@@ -14,6 +14,9 @@ sealed class AppRoute(
 
     data object AddStory : AppRoute("add_story")
 
+    /** Novels in the local folder (EPUB, PDF, TXT, Markdown, HTML), reached from Add story. */
+    data object LocalLibrary : AppRoute("local_library")
+
     /**
      * The story page. Its tabs are routes of their own so Back and deep links address them: this
      * route is the Overview tab, or the Chapters tab (with each chapter's audio) when [chapters] is
@@ -142,6 +145,7 @@ sealed class AppRoute(
                 is ChapterSelection -> Details(storyId)
                 is AuthorNovels -> Details(storyId)
                 is PatreonAccount -> storyId?.let(::Details) ?: Settings
+                LocalLibrary -> AddStory
                 Trending -> Updates
                 DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
                 else -> Library
@@ -185,6 +189,7 @@ object AppRouteCodec {
         return when (parts.firstOrNull()) {
             "library" -> AppRoute.Library
             "add_story" -> AppRoute.AddStory
+            "local_library" -> AppRoute.LocalLibrary
             "queue" -> AppRoute.Queue
             "updates" -> AppRoute.Updates
             "trending" -> AppRoute.Trending

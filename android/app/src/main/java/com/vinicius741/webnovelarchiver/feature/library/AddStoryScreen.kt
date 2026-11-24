@@ -13,6 +13,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.feature.browser.showBrowser
 import com.vinicius741.webnovelarchiver.feature.browser.sourcePickerRows
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -96,6 +97,20 @@ internal fun ScreenHost.showAddStory() {
                     (row.layoutParams as? LinearLayout.LayoutParams)?.topMargin = 0
                     addView(row)
                 }
+            },
+        )
+        section("Or add from this device")
+        addView(
+            makeListGroup(context).apply {
+                addView(
+                    makeListRow(
+                        context,
+                        "Local folder",
+                        "EPUB, PDF, TXT, Markdown and HTML files",
+                        leadIcon = R.drawable.wna_folder,
+                        chevron = true,
+                    ) { if (!state.fetching) showLocalLibrary(this@showAddStory) },
+                )
             },
         )
         bindWhileAttached(scope, model.state) { next ->

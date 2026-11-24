@@ -3,6 +3,8 @@ package com.vinicius741.webnovelarchiver.source
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
+import com.vinicius741.webnovelarchiver.source.local.LocalSourceProvider
+import com.vinicius741.webnovelarchiver.source.local.LocalSourceUrls
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceNetworkPolicy
 import kotlinx.coroutines.CancellationException
@@ -12,6 +14,15 @@ import java.util.Locale
 enum class SourceUrlKind {
     STORY,
     CHAPTER,
+}
+
+/** Where a source's stories come from. */
+enum class SourceKind {
+    /** A website read over HTTP(S). */
+    WEB,
+
+    /** Files in the user's local folder, addressed by `local://` URLs and never fetched over the network. */
+    LOCAL,
 }
 
 enum class SourceUserAgentMode {
@@ -62,7 +73,10 @@ data class SourceDescriptor(
     val cookieSeeds: List<SourceCookieSeed> = emptyList(),
     val renderedPageRules: List<SourceRenderedPageRule> = emptyList(),
     val featuredMetrics: List<SourceMetricKind> = emptyList(),
-)
+    val kind: SourceKind = SourceKind.WEB,
+) {
+    val isLocal: Boolean get() = kind == SourceKind.LOCAL
+}
 
 data class SourceMatch(
     val provider: SourceProvider,
@@ -125,6 +139,7 @@ object SourceRegistry {
             SufficientVelocityProvider,
             FanFictionProvider,
             Ao3Provider,
+            LocalSourceProvider,
         )
 
     init {
@@ -140,12 +155,13 @@ object SourceRegistry {
         requiredKind: SourceUrlKind? = null,
     ): SourceMatch? {
         val submitted = url.trim()
-        val host = sourceHost(submitted) ?: return null
-        val provider = providers.firstOrNull { host in it.descriptor.normalizedHosts } ?: return null
+        val (sourceKind, host) = sourceAddress(submitted) ?: return null
+        val provider = providers.firstOrNull { it.descriptor.kind == sourceKind && host in it.descriptor.normalizedHosts } ?: return null
         val kind = provider.classifyUrl(submitted) ?: return null
         if (requiredKind != null && kind != requiredKind) return null
         val normalized = if (kind == SourceUrlKind.STORY) provider.normalizeStoryUrl(submitted) else submitted
-        if (sourceHost(normalized) !in provider.descriptor.normalizedHosts) return null
+        val (normalizedKind, normalizedHost) = sourceAddress(normalized) ?: return null
+        if (normalizedKind != sourceKind || normalizedHost !in provider.descriptor.normalizedHosts) return null
         return SourceMatch(provider, kind, submitted, normalized)
     }
 
@@ -158,22 +174,32 @@ object SourceRegistry {
 
     fun getById(sourceId: String?): SourceProvider? = sourceId?.let { id -> providers.firstOrNull { it.id == id } }
 
+    /** The website that owns [host]; local sources own no network host. */
     fun providerForHost(host: String): SourceProvider? {
         val normalized = normalizeSourceHost(host)
-        return providers.firstOrNull { normalized in it.descriptor.normalizedHosts }
+        return web().firstOrNull { normalized in it.descriptor.normalizedHosts }
     }
 
     fun all(): List<SourceProvider> = providers
+
+    /** Sources read from websites: the ones to browse, pace, and keep web sessions for. */
+    fun web(): List<SourceProvider> = providers.filter { it.descriptor.kind == SourceKind.WEB }
 }
 
 private val SourceDescriptor.normalizedHosts: Set<String>
     get() = hosts.mapTo(mutableSetOf(), ::normalizeSourceHost)
 
-private fun sourceHost(url: String): String? =
+/** The kind of source a URL's scheme addresses and its normalized host, or null for any other URL. */
+private fun sourceAddress(url: String): Pair<SourceKind, String>? =
     runCatching {
         val uri = URI(url)
-        if (uri.scheme?.lowercase(Locale.US) !in setOf("http", "https")) return null
-        uri.host?.let(::normalizeSourceHost)
+        val kind =
+            when (uri.scheme?.lowercase(Locale.US)) {
+                "http", "https" -> SourceKind.WEB
+                LocalSourceUrls.SCHEME -> SourceKind.LOCAL
+                else -> return null
+            }
+        uri.host?.let { kind to normalizeSourceHost(it) }
     }.getOrNull()
 
 internal fun sourcePath(url: String): String? = runCatching { URI(url).path?.takeIf { it.startsWith('/') } }.getOrNull()

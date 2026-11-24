@@ -107,7 +107,7 @@ internal fun ScreenHost.showDownloadSettings() {
         }
         section("Per-site pace")
         settingsGroup {
-            SourceRegistry.all().forEach { provider ->
+            SourceRegistry.web().forEach { provider ->
                 val override = state.overrides[provider.id]
                 val summary = DownloadPacePlanning.overrideSummary(override)
                 navRow(

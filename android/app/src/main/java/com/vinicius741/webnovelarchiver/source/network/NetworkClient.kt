@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.source.network
 import android.content.Context
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -310,8 +311,12 @@ class NetworkClient(
         reliability.clearAccessBlock(parsed.host, keepBrowserTransport)
     }
 
-    /** True while [providerId]'s manual-verification circuit is open; the download loop pauses its lane. */
-    fun isSourceBlocked(providerId: String): Boolean = reliability.isManualVerificationRequired(providerId)
+    /**
+     * True while [providerId]'s manual-verification circuit is open; the download loop pauses its
+     * lane. A local source is never blocked, and asking must not create network state for it.
+     */
+    fun isSourceBlocked(providerId: String): Boolean =
+        SourceRegistry.getById(providerId)?.descriptor?.isLocal != true && reliability.isManualVerificationRequired(providerId)
 
     fun onNetworkChanged() {
         preparedPages.clear()

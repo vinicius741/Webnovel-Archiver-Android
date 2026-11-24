@@ -153,7 +153,7 @@ private fun ScreenHost.addTroubleshootingRows(
     }
     group.navRow(R.drawable.wna_restore, "Reset all source sessions", "Clears every site's cookies, browser storage and cooldowns") {
         confirm("Reset every source's browser session? The next request may need a quick check again.", confirmLabel = "Reset") {
-            resetSourceWebSessions(SourceRegistry.all().filter { it.descriptor.managesBrowserSession })
+            resetSourceWebSessions(SourceRegistry.web().filter { it.descriptor.managesBrowserSession })
         }
     }
 }

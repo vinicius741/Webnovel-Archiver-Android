@@ -20,7 +20,7 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 /**
  * Builds the list of registered source rows, ready to append into any screen body. Each row opens the
  * existing [showBrowser] Custom Tab at that source's [SourceProvider.baseUrl]. The rows are built
- * generically over [SourceRegistry.all], so adding a future source needs no change here — it only has
+ * generically over [SourceRegistry.web], so adding a future source needs no change here — it only has
  * to be registered in [SourceRegistry], per the rule in `android/AGENTS.md`.
  *
  * Reused from the legacy standalone "Browse Sources" picker; now embedded directly on the Add Story
@@ -29,7 +29,7 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 internal fun sourcePickerRows(
     context: android.content.Context,
     onOpen: (SourceProvider) -> Unit,
-): List<LinearLayout> = SourceRegistry.all().map { sourcePickerRow(context, it) { onOpen(it) } }
+): List<LinearLayout> = SourceRegistry.web().map { sourcePickerRow(context, it) { onOpen(it) } }
 
 /**
  * A large, tappable source row: a leading globe icon inside a tinted disc (echoing the empty-state
