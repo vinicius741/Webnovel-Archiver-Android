@@ -91,7 +91,15 @@ internal fun ScreenHost.openStoryCover(story: Story) {
 private fun ScreenHost.buildHeroPills(story: Story): View? {
     val colors = ThemeManager.colors
     val pills = mutableListOf<View>()
-    SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let { pills += buildSourceSiteBadge(story, it.name) }
+    SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let { provider ->
+        // A local novel has no page to open: its badge only names the source.
+        pills +=
+            if (provider.descriptor.isLocal) {
+                makeBadge(app, provider.name, colors.secondaryContainer, colors.onSecondaryContainer)
+            } else {
+                buildSourceSiteBadge(story, provider.name)
+            }
+    }
     publicationStatusBadge(story)?.let { pills += it }
     sourceAvailabilityBadge(story)?.let { pills += it }
     story.sourceMetadata.contentRating?.takeIf { it.isNotBlank() }?.let {

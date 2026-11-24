@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.download
 
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
+import com.vinicius741.webnovelarchiver.source.local.LocalEntryMissingException
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkOfflineException
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
@@ -15,6 +16,14 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 class DownloadErrorClassifierTest {
+    @Test
+    fun aLocalFileErrorIsNotReadFromItsFileName() {
+        val classified = DownloadErrorClassifier.classify(LocalEntryMissingException("Network Effect - Cancelled.epub"))
+
+        assertEquals("local_file", classified.category)
+        assertFalse(classified.retryable)
+    }
+
     @Test
     fun classifiesRateLimitHttpErrorsAsRetryable() {
         val classified = DownloadErrorClassifier.classify(IllegalStateException("HTTP 429 for chapter"))

@@ -30,6 +30,7 @@ object DevLaunchPlanning {
         TRENDS("trends"),
         AI_CONTROLS("aicontrols"),
         ADD_STORY("addstory"),
+        LOCAL_LIBRARY("local"),
         AI_SETTINGS("aisettings"),
         CLEANUP("cleanup"),
         PATREON("patreon"),
@@ -62,6 +63,7 @@ object DevLaunchPlanning {
             DevStartScreen.PATREON -> AppRoute.PatreonAccount()
             DevStartScreen.APP_UPDATE -> AppRoute.AppUpdate
             DevStartScreen.ADD_STORY -> AppRoute.AddStory
+            DevStartScreen.LOCAL_LIBRARY -> AppRoute.LocalLibrary
             DevStartScreen.DETAILS -> resolveDetails(storyOverride, libraryProvider)
             DevStartScreen.TRENDS -> pickStory(storyOverride, libraryProvider)?.let { AppRoute.Trends(it.id, null) }
             DevStartScreen.AI_CONTROLS -> resolveAiControls(storyOverride, libraryProvider)

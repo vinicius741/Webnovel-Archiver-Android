@@ -76,6 +76,20 @@ class SyncDownloadPlanningTest {
         assertEquals(21, plan.chapterIndexes.size)
     }
 
+    @Test
+    fun aLocalNovelReadsEveryMissingChapterOnImportAndRescan() {
+        val imported = story(List(30) { "c$it" }, pending = null, downloaded = setOf("c0"))
+
+        val plan = SyncDownloadPlanning.plan(before = null, synced = imported, readsEveryChapter = true)
+
+        assertEquals(SyncDownloadAction.AUTO_QUEUE, plan.action)
+        assertEquals((1 until 30).toList(), plan.chapterIndexes)
+        assertEquals(
+            SyncDownloadAction.NONE,
+            SyncDownloadPlanning.plan(imported, story(listOf("c0"), null, setOf("c0")), readsEveryChapter = true).action,
+        )
+    }
+
     private fun story(
         ids: List<String>,
         pending: List<String>?,

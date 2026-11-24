@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.EpubResult
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.source.local.LOCAL_COVERS_DIR
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.fetchImage
 import kotlinx.coroutines.Dispatchers
@@ -172,6 +173,15 @@ class EpubEngine(
 
     private suspend fun fetchCover(url: String): CoverAsset? =
         runCatching {
+            // A local novel's cover is a file the app saved (`file://`), not a web image.
+            if (url.startsWith("file:", ignoreCase = true)) {
+                val file = java.io.File(java.net.URI(url))
+                // Only the covers the local source saved, never another app file a story URL could name.
+                val coversDir = java.io.File(storage.root.parentFile, LOCAL_COVERS_DIR).canonicalFile
+                if (file.canonicalFile.parentFile != coversDir) return@runCatching null
+                val mediaType = getCoverMediaType(url)
+                return@runCatching CoverAsset(file.readBytes(), "images/cover.${getCoverExtension(url, mediaType)}", mediaType)
+            }
             // Route cover downloads through the shared client with a size cap. The response's
             // declared content type wins; the URL extension is only a fallback, so extensionless
             // or transformed URLs are not mislabeled.

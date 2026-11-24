@@ -27,7 +27,8 @@ object ShellNavigationPlanning {
     /** Full-screen flows (reading, playback, adding, selecting) hide the navigation bar and rail. */
     fun showsNavigation(route: AppRoute): Boolean =
         when (route) {
-            is AppRoute.Reader, is AppRoute.ChapterSelection, AppRoute.Player, AppRoute.AddStory, AppRoute.Working -> false
+            is AppRoute.Reader, is AppRoute.ChapterSelection, AppRoute.Player, AppRoute.Working -> false
+            AppRoute.AddStory, AppRoute.LocalLibrary -> false
             else -> true
         }
 

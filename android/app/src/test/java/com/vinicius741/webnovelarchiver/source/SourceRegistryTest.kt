@@ -12,14 +12,18 @@ class SourceRegistryTest {
     @Test
     fun descriptorsHaveUniqueStableIdsAndOwnedHosts() {
         val providers = SourceRegistry.all()
+        val web = SourceRegistry.web()
 
         assertEquals(providers.size, providers.map { it.id }.distinct().size)
         providers.forEach { provider ->
             assertTrue(provider.id.matches(Regex("[a-z][a-z0-9_]*")))
             assertTrue(provider.descriptor.hosts.isNotEmpty())
             assertSame(provider, SourceRegistry.getById(provider.id))
+        }
+        web.forEach { provider ->
             assertSame(provider, SourceRegistry.providerForHost(requireNotNull(URI(provider.baseUrl).host)))
         }
+        assertEquals(listOf("local"), (providers - web.toSet()).map { it.id })
     }
 
     @Test
@@ -31,6 +35,9 @@ class SourceRegistryTest {
                 Triple("https://www.scribblehub.com/series/99/title/", "scribble_hub", SourceUrlKind.STORY),
                 Triple("https://forums.spacebattles.com/threads/title.123/", "space_battles", SourceUrlKind.STORY),
                 Triple("https://forums.spacebattles.com/posts/456/", "space_battles", SourceUrlKind.CHAPTER),
+                Triple("local://library/My%20Novel", "local", SourceUrlKind.STORY),
+                Triple("local://library/My%20Novel/01.txt", "local", SourceUrlKind.CHAPTER),
+                Triple("local://library/Book.epub#OEBPS%2Fch1.xhtml", "local", SourceUrlKind.CHAPTER),
                 Triple("https://m.fanfiction.net/s/7347955/8/title?ref=x", "fanfiction_net", SourceUrlKind.STORY),
             )
 

@@ -113,6 +113,7 @@ Provider architecture and the workflow for extending supported novel sites.
 | File | Description |
 |------|-------------|
 | `adding-a-source.md` | Stable source descriptors, URL matching, parsing/fetching hooks, registration, fixtures, compatibility rules, and validation checklist for a new provider. |
+| `local-folder.md` | The Local source: the Mihon-style folder layout, how EPUB, PDF, TXT, Markdown and HTML become chapters, `details.json` and covers, `local://` ids, automatic reading after import and rescan, and emulator QA of the folder picker. |
 | `ao3.md` | AO3 imports, chapter identity, metadata, access limits, and provider validation. |
 | `royal-road-notices.md` | How Royal Road's injected anti-piracy notices are found by their markup, measurements from a real library, download and manual cleanup behavior, and the warning if the markup changes. |
 | `sufficient-velocity.md` | Sufficient Velocity imports, main threadmarks and RSS sync, shared XenForo reader downloads, separate source IDs, and access limits. |

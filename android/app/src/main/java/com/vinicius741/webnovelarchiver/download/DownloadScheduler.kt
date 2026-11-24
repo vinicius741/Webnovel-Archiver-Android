@@ -6,6 +6,7 @@ import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.source.local.LocalSourceException
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkOfflineException
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
@@ -130,6 +131,10 @@ object DownloadErrorClassifier {
     private const val RETRY_MAX_DELAY_MS = 60000L
 
     fun classify(error: Throwable): ClassifiedDownloadError {
+        // Checked by type first: its message names the user's files, which the text rules below would misread.
+        if (error is LocalSourceException) {
+            return ClassifiedDownloadError(error.message ?: "Could not read the local file", "local_file", "LOCAL_FILE", false)
+        }
         if (error is SourceAccessBlockedException) {
             return ClassifiedDownloadError(
                 error.message ?: "Source blocked automated access",

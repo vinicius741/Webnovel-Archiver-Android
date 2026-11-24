@@ -265,14 +265,14 @@ private class LibraryRenderer(
         container: LinearLayout,
         state: LibraryUiState,
     ) {
-        val sourceNames = SourceRegistry.all().joinToString(", ") { it.name }
+        val sourceNames = SourceRegistry.web().joinToString(", ") { it.name }
         container.addView(
             host.makeLibraryTabBar(container.context, state.tabs, state.stories, state.filter.selectedTabId, model::selectTab).view,
         )
         container.addView(
             makeEmptyState(
                 container.context,
-                message = "Paste a link from $sourceNames.",
+                message = "Paste a link from $sourceNames, or add books from your device.",
                 title = "Your library is empty",
                 iconRes = R.drawable.wna_menu_book,
                 actionLabel = "Add a story",
