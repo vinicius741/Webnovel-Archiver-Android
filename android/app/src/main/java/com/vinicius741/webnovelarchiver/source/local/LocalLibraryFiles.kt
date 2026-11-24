@@ -57,13 +57,25 @@ interface LocalLibraryFiles {
     ): String
 }
 
-/** Reads a PDF's text page by page and renders a cover from its first page. */
+/** Reads a PDF's text page by page, recognizes the text of scanned pages, and renders a cover from its first page. */
 interface PdfPages {
-    /** False when this device cannot read PDF text (it needs Android 15). */
+    /** False when this device cannot read a PDF's text layer (it needs Android 15); every page is then recognized. */
     val supported: Boolean
 
+    /** Each page's text layer: empty for a scanned page, which is only an image. */
     fun text(file: File): List<String>
 
     /** The first page as a JPEG, or null when it cannot be rendered. */
     fun firstPageImage(file: File): ByteArray?
+
+    /** Opens [file] to recognize the text printed on its page images (OCR). */
+    fun recognizer(file: File): PdfPageRecognizer
+}
+
+/** Recognizes the text on a PDF's page images, one page at a time. */
+interface PdfPageRecognizer : java.io.Closeable {
+    val pageCount: Int
+
+    /** The lines of text found on page [index], in reading order. */
+    fun recognize(index: Int): List<OcrLine>
 }

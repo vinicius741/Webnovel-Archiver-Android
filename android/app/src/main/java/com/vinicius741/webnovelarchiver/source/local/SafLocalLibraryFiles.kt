@@ -11,6 +11,9 @@ import java.io.File
 /** Where local novels' covers are saved, under the app's files directory. */
 const val LOCAL_COVERS_DIR = "local_source_covers"
 
+/** Where scanned PDFs' recognized page text is saved ([PdfOcrCache]), under the app's files directory. */
+const val LOCAL_OCR_DIR = "local_source_ocr"
+
 /**
  * The local folder through the Storage Access Framework. The folder's tree URI and its persisted
  * read grant belong to this device, so they live in this device's preferences rather than in the

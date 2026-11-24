@@ -246,6 +246,13 @@ dependencies {
     implementation 'net.java.dev.jna:jna:5.17.0@aar'
     // Commons Compress — unpacks the Kokoro model, published only as a .tar.bz2.
     implementation 'org.apache.commons:commons-compress:1.28.0'
+    // ML Kit text recognition (Latin script) — reads scanned PDF pages in the Local source
+    // (source/local/AndroidPdfPages). The bundled artifact ships the model and its native library in
+    // the APK (about 10 MB more to download for the two phone ABIs; the arm64 library is 11 MB once
+    // installed), so it works offline without Google Play services and the model changes only when
+    // this version does, which keeps recognized text, and chapter ids, stable. proguard-rules.pro
+    // keeps its component constructors for R8 full mode.
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'com.squareup.okhttp3:mockwebserver:5.5.1'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'

@@ -32,8 +32,10 @@ import com.vinicius741.webnovelarchiver.operations.AppListenStartData
 import com.vinicius741.webnovelarchiver.operations.ListenStarts
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.local.AndroidPdfPages
+import com.vinicius741.webnovelarchiver.source.local.LOCAL_OCR_DIR
 import com.vinicius741.webnovelarchiver.source.local.LocalNovelReader
 import com.vinicius741.webnovelarchiver.source.local.LocalSourceProvider
+import com.vinicius741.webnovelarchiver.source.local.PdfOcrCache
 import com.vinicius741.webnovelarchiver.source.local.SafLocalLibraryFiles
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
@@ -132,7 +134,13 @@ class AppContainer internal constructor(
 
     init {
         // The local folder (Add story › Local folder): the local source reads novels through it.
-        LocalSourceProvider.install(LocalNovelReader(SafLocalLibraryFiles(appContext), AndroidPdfPages))
+        LocalSourceProvider.install(
+            LocalNovelReader(
+                SafLocalLibraryFiles(appContext),
+                AndroidPdfPages,
+                PdfOcrCache(java.io.File(appContext.filesDir, LOCAL_OCR_DIR)),
+            ),
+        )
     }
 
     val openRouter: OpenRouterClient = OpenRouterClient(client = simulation?.aiClient() ?: OpenRouterClient.defaultClient())

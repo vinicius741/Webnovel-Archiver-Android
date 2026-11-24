@@ -42,10 +42,15 @@ Chapters come from each book's structure, not one per file:
   file adds nothing. Encoding: BOM, then UTF-8, then Windows-1252 (HTML honors its `<meta charset>`).
   Chapter keys come from the titles (a repeated title gets a counter), so a chapter added in the
   middle of a file does not change the ids of the chapters after it.
-- **PDF**: the platform `PdfRenderer` text API reads each page (Android 15, API 35, or newer; older
-  phones get a clear error). `PdfTextReflow` drops page numbers and short running headers/footers
+- **PDF**: the platform `PdfRenderer` text API reads each page (Android 15, API 35, or newer).
+  `PdfTextReflow` drops page numbers and short running headers/footers
   at the top and bottom of each page (never inside the text), joins hyphenated and hard-wrapped lines into paragraphs, and keeps headings on their
-  own lines; the text is then split like a TXT file. A scanned PDF has no text and fails clearly.
+  own lines; the text is then split like a TXT file.
+- **Scanned PDF** (most pages have no text of their own: under 50 letters in the text layer, so a
+  scanner's stamp, a page number or a watermark does not count): those pages are recognized on the
+  phone (OCR, see below) and read like a text PDF. Before Android 15 every PDF's pages are
+  recognized, since the text layer cannot be read. A text PDF's few blank pages (illustrations) are
+  not recognized. A scan in which nothing is recognized fails clearly.
 - **HTML**: one chapter per file, titled by its first `h1`/`h2` or `<title>`.
 
 When a subfolder holds several multi-chapter books (volumes), their chapter titles are prefixed with
@@ -82,9 +87,29 @@ the book's title.
   random access; the last six copies are kept.
 - `LocalNovelReader` keeps the last four parsed books, so reading a book's chapters parses it once,
   and reuses folder listings for 10 seconds while chapters are read. A scan parses one book at a
-  time. A book the app cannot read (scanned PDF, broken EPUB) is skipped when others in the folder
-  read; a failure to read the folder itself fails the scan, so a sync never marks chapters removed
-  because of a read error.
+  time. Each book is parsed under its own lock: reads of one book wait for its parse (a scan's
+  text recognition included), other books' do not. A book the app cannot read (a damaged or
+  password-protected PDF, a PDF with no recognizable text, a broken EPUB) is skipped when others in
+  the folder read; a failure to read the folder itself, or text recognition failing on a page,
+  fails the scan, so a sync never marks chapters removed because of a read error.
+- Text recognition (`AndroidPdfPages`) renders each page at about 3 megapixels and reads it with
+  ML Kit's bundled Latin-script recognizer (`com.google.mlkit:text-recognition`). The model ships in
+  the APK, so it works offline, without Google Play services, and only changes with the dependency
+  version. `OcrPageLayout` turns the recognized lines into page text: it puts them in reading order
+  itself (the recognizer can list a running header after the line below it), reads a two-column
+  page or two-page spread column by column when a clear gap separates them, joins pieces of one
+  visual line, and starts a paragraph at a first-line indent (further right than the lines around
+  it, so a block quote is not a paragraph per line) or at more space above a line than the page
+  usually leaves (so a double-spaced page is not either). It never starts one next to the lines at
+  a page's top and bottom, which may be a running header or page number; `PdfTextReflow` takes it
+  from there. The minified build keeps ML Kit's component constructors (`proguard-rules.pro`).
+- It runs while the novel is added (or synced), reporting "Recognizing text in "…": page N of M" on
+  the Local folder screen. Like any import it goes on if you leave the screen; if the app is closed
+  it stops at the next page, and adding the novel again resumes there. Each page's text is saved
+  at once under `files/local_source_ocr/<content hash>/` (`PdfOcrCache`), so a scan is recognized
+  once: rescans, syncs and chapter reads use the saved text, an interrupted import resumes at the
+  next page, and chapter ids stay steady. A renamed or moved file keeps its text; an edited file is
+  recognized again.
 - Errors are `LocalSourceException`s, which the download queue classifies by type (never retried)
   rather than by their message, which names the user's files.
 
@@ -106,11 +131,26 @@ completes after the process was recreated still arrives.
 - Only BOM, UTF-8 and Windows-1252 TXT files decode correctly (no GBK or Shift-JIS detection).
 - PDF paragraphs end at short lines that close a sentence; text laid out with full-width last lines
   runs together.
+- Recognized text has the usual OCR mistakes (`rn`/`m`, `l`/`I`/`1`, lost italics) and reaches the
+  reader and TTS as is. Only Latin-script text is recognized (no Chinese, Japanese or Korean model).
+  A novel page takes well under a second, so a long scan takes minutes. A chapter read that finds
+  a scan's saved text missing (data cleared) recognizes the whole book first, with no progress
+  shown.
+- Recognized text is kept as first saved: a later layout fix or ML Kit update does not redo it
+  (that would change chapter ids), and there is no "recognize again" action. Backups do not include
+  it: on a new phone or after clearing data, the next sync recognizes the book again, and an id can
+  change if a heading reads differently. A text PDF recognized before
+  Android 15 is read from its text layer after the upgrade, with the same risk.
+- Saved recognized text is not deleted with its novel (a book's text is a few hundred KB). ML Kit
+  sends Google anonymous usage statistics, never page images or text. A page whose text is two
+  columns crossed by more than one wide line, or a mid-page line spanning both, can read out of order.
 - Local covers are not deleted with their novel, and their `file://` path is absolute, so a restored
   backup shows the cover again after the next sync.
 
 ## QA
 
 Push sample books to `/sdcard/Documents/Novels` and cold-start onto the screen with
-`dev_start_screen local`. On the emulator, the system folder picker ignores instant synthetic taps:
+`dev_start_screen local`. For a scanned PDF, render text pages to images and join them into a PDF
+with no text layer (any image-to-PDF tool); `adb shell run-as <package> rm -r files/local_source_ocr`
+forces recognition again. On the emulator, the system folder picker ignores instant synthetic taps:
 use a short `longpress <x> <y> 150` to open folders and press "Use this folder".

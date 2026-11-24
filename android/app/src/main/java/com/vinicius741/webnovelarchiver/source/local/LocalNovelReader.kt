@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.publicationStatusFromSourceText
 import kotlinx.coroutines.CancellationException
 import org.jsoup.Jsoup
+import timber.log.Timber
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
@@ -57,23 +58,28 @@ data class LocalNovel(
  * novel of its own. Optional extras in a subfolder: a `cover.jpg`/`.png`/`.webp` image and a
  * Mihon-style `details.json` (title, author, description, genre, status).
  *
- * Parsed books are kept for a few reads, so downloading a book's chapters parses it once.
+ * Parsed books are kept for a few reads, so downloading a book's chapters parses it once. A
+ * scanned PDF's pages are recognized (OCR) once and saved in [ocr].
  */
 class LocalNovelReader(
     private val files: LocalLibraryFiles,
     private val pdf: PdfPages,
+    private val ocr: PdfOcrCache,
 ) {
     private val parsed =
         object : LinkedHashMap<String, ParsedBook>(PARSED_BOOKS, LOAD_FACTOR, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ParsedBook>?): Boolean = size > PARSED_BOOKS
         }
 
+    /** One lock object per book version being parsed (see [book]); a few bytes each. */
+    private val parsing = HashMap<String, Any>()
+
     private val listings = HashMap<String, Pair<Long, List<LocalDocument>>>()
 
     fun folderName(): String? = files.folderName()
 
     fun setFolder(treeUri: String) {
-        synchronized(this) { parsed.clear() }
+        synchronized(parsed) { parsed.clear() }
         synchronized(listings) { listings.clear() }
         files.setFolder(treeUri)
     }
@@ -104,8 +110,14 @@ class LocalNovelReader(
                 )
             }.sortedWith(compareBy(LocalNames.natural) { it.name })
 
-    /** Reads a novel's metadata and chapter list, saving its cover. */
-    fun novel(entryName: String): LocalNovel {
+    /**
+     * Reads a novel's metadata and chapter list, saving its cover. [progress] reports long work (a
+     * scanned PDF's text recognition) and may throw to cancel it.
+     */
+    fun novel(
+        entryName: String,
+        progress: (String) -> Unit = {},
+    ): LocalNovel {
         val entry = files.listRoot().firstOrNull { it.name == entryName } ?: throw LocalEntryMissingException(entryName)
         val children = if (entry.isDirectory) files.listChildren(entry) else emptyList()
         val bookDocs =
@@ -119,7 +131,7 @@ class LocalNovelReader(
         // One book at a time, so only the parse cache keeps book text alive during a rescan.
         bookDocs.forEach { document ->
             val book =
-                readableBook(document)
+                readableBook(document, progress)
                     .onFailure { skipped = skipped ?: it as? Exception }
                     .getOrNull() ?: return@forEach
             chapters += chapterInfos(entryName, entry.isDirectory, document, book, multiBook = bookDocs.size > 1)
@@ -151,14 +163,17 @@ class LocalNovelReader(
     }
 
     /**
-     * A book, or the reason this app cannot read it (a scanned PDF, a broken EPUB), which leaves the
+     * A book, or the reason this app cannot read it (a PDF with no recognizable text, a broken EPUB), which leaves the
      * folder's other books readable. A failure to read the folder itself is thrown: a sync that went
      * on without the book would mark its chapters removed.
      */
     @Suppress("TooGenericExceptionCaught")
-    private fun readableBook(document: LocalDocument): Result<ParsedBook> =
+    private fun readableBook(
+        document: LocalDocument,
+        progress: (String) -> Unit,
+    ): Result<ParsedBook> =
         try {
-            Result.success(book(document))
+            Result.success(book(document, progress))
         } catch (error: ZipException) {
             Result.failure(error)
         } catch (error: IOException) {
@@ -216,27 +231,43 @@ class LocalNovelReader(
         }
     }
 
-    @Synchronized
-    private fun book(document: LocalDocument): ParsedBook {
+    /**
+     * The parsed book, from [parsed] when it was read recently. Each book is parsed under its own
+     * lock, so the same book is parsed once while a scan's minutes of text recognition do not hold
+     * up chapter reads of other books.
+     */
+    private fun book(
+        document: LocalDocument,
+        progress: (String) -> Unit = {},
+    ): ParsedBook {
         val key = "${document.id}|${document.size}|${document.lastModified}"
-        parsed[key]?.let { return it }
-        val book =
-            when (LocalBookFormat.of(document.name)) {
-                LocalBookFormat.EPUB ->
-                    try {
-                        epub { files.cachedCopy(document) }
-                    } catch (_: ZipException) {
-                        error("\"${document.name}\" is damaged or is not an EPUB.")
-                    }
-                LocalBookFormat.PDF -> pdfBook { files.cachedCopy(document) }
-                LocalBookFormat.TEXT -> textBook(LocalTextChapters.decode(files.readBytes(document)), markdown = false)
-                LocalBookFormat.MARKDOWN -> textBook(LocalTextChapters.decode(files.readBytes(document)), markdown = true)
-                LocalBookFormat.HTML -> htmlBook(files.readBytes(document))
-                null -> error("Unsupported file: ${document.name}")
-            }
-        parsed[key] = book
-        return book
+        synchronized(parsed) { parsed[key] }?.let { return it }
+        val lock = synchronized(parsing) { parsing.getOrPut(key) { Any() } }
+        synchronized(lock) {
+            synchronized(parsed) { parsed[key] }?.let { return it }
+            val book = parse(document, progress)
+            synchronized(parsed) { parsed[key] = book }
+            return book
+        }
     }
+
+    private fun parse(
+        document: LocalDocument,
+        progress: (String) -> Unit,
+    ): ParsedBook =
+        when (LocalBookFormat.of(document.name)) {
+            LocalBookFormat.EPUB ->
+                try {
+                    epub { files.cachedCopy(document) }
+                } catch (_: ZipException) {
+                    error("\"${document.name}\" is damaged or is not an EPUB.")
+                }
+            LocalBookFormat.PDF -> pdfBook(document.name, progress) { files.cachedCopy(document) }
+            LocalBookFormat.TEXT -> textBook(LocalTextChapters.decode(files.readBytes(document)), markdown = false)
+            LocalBookFormat.MARKDOWN -> textBook(LocalTextChapters.decode(files.readBytes(document)), markdown = true)
+            LocalBookFormat.HTML -> htmlBook(files.readBytes(document))
+            null -> error("Unsupported file: ${document.name}")
+        }
 
     /** [copy] is asked again for each chapter: the cached copy may be evicted and recreated meanwhile. */
     private fun epub(copy: () -> File): ParsedBook =
@@ -261,11 +292,47 @@ class LocalNovelReader(
             )
         }
 
-    private fun pdfBook(copy: () -> File): ParsedBook {
-        if (!pdf.supported) throw UnsupportedOperationException("Reading PDF text needs Android 15 or newer.")
-        val text = PdfTextReflow.reflow(pdf.text(copy()))
-        check(text.isNotBlank()) { "This PDF has no text to read. Scanned pages are images, not text." }
+    /** A PDF's text layer, with scanned pages recognized instead (every page where the text layer cannot be read). */
+    private fun pdfBook(
+        name: String,
+        progress: (String) -> Unit,
+        copy: () -> File,
+    ): ParsedBook {
+        val file = copy()
+        val layer = if (pdf.supported) pdf.text(file) else null
+        val pages = if (layer != null && !PdfOcrPlanning.isScan(layer)) layer else recognizedPages(name, file, layer, progress)
+        val text = PdfTextReflow.reflow(pages)
+        check(text.isNotBlank()) { "No text found in this PDF." }
         return textBook(text, markdown = false, cover = { pdf.firstPageImage(copy())?.let { CoverImage(it, "jpg") } })
+    }
+
+    /** Pages whose text was recognized before come from [ocr]; each newly recognized page is saved there at once. */
+    private fun recognizedPages(
+        name: String,
+        file: File,
+        layer: List<String>?,
+        progress: (String) -> Unit,
+    ): List<String> {
+        val saved = ocr.book(file)
+        return pdf.recognizer(file).use { recognizer ->
+            val pageCount = recognizer.pageCount
+            val recognize = PdfOcrPlanning.pagesToRecognize(layer, pageCount)
+            var done = 0
+            var fresh = 0
+            val started = System.nanoTime()
+            (0 until pageCount)
+                .map { index ->
+                    if (index !in recognize) return@map layer?.getOrNull(index).orEmpty()
+                    done++
+                    saved.page(index) ?: run {
+                        progress("Recognizing text in \"$name\": page $done of ${recognize.size}")
+                        fresh++
+                        OcrPageLayout.text(recognizer.recognize(index)).also { saved.save(index, it) }
+                    }
+                }.also {
+                    if (fresh > 0) Timber.i("Recognized %d PDF pages in %d ms", fresh, (System.nanoTime() - started) / NANOS_PER_MILLI)
+                }
+        }
     }
 
     private fun textBook(
@@ -390,6 +457,7 @@ class LocalNovelReader(
         const val CHARSET_SNIFF_BYTES = 1024
         const val ROOT_LISTING = "\u0000root"
         const val LISTING_TTL_NANOS = 10_000_000_000L
+        const val NANOS_PER_MILLI = 1_000_000L
         val COVER_NAMES = setOf("cover", "folder", "poster")
         val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif")
 

@@ -12,6 +12,7 @@ import com.vinicius741.webnovelarchiver.source.SourceUrlKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
@@ -59,7 +60,14 @@ object LocalSourceProvider : SourceProvider {
     ): LoadedSourceStory {
         val address = requireNotNull(LocalSourceUrls.parse(url)) { "Not a local novel URL: $url" }
         progress("Reading \"${address.entry}\"...")
-        val novel = withContext(Dispatchers.IO) { reader.novel(address.entry) }
+        val novel =
+            withContext(Dispatchers.IO) {
+                // Recognizing a scanned PDF takes minutes; a cancelled import stops at the next page.
+                reader.novel(address.entry) { status ->
+                    coroutineContext.ensureActive()
+                    progress(status)
+                }
+            }
         return LoadedSourceStory(novel.metadata, novel.chapters, chaptersAreLatestOnly = false) { novel.chapters }
     }
 

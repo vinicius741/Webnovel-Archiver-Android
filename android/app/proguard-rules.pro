@@ -87,3 +87,8 @@
 -keep class * implements com.sun.jna.** { *; }
 -keep class com.vinicius741.webnovelarchiver.tts.phonon.** { *; }
 -dontwarn java.awt.**
+
+# ML Kit text recognition (scanned PDFs, source/local/AndroidPdfPages): its components are found by
+# class name and built through their no-argument constructors. firebase-components' own rule keeps
+# the classes but, in R8 full mode, not the constructors, and TextRecognition.getClient then crashes.
+-keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }

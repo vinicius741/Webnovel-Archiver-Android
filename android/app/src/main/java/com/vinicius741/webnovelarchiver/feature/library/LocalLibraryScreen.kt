@@ -305,7 +305,7 @@ private val ORGANIZE_HELP =
     """
     Make one subfolder per novel and put its files inside: EPUB, PDF, TXT, Markdown or HTML. Files are read in name order, so "Chapter 2" comes before "Chapter 10". A book file placed directly in the folder is a novel by itself.
 
-    Chapters come from each book: an EPUB's table of contents, the "Chapter 1" headings of a text or PDF, or one chapter per file. PDFs need Android 15 or newer and real text, not scanned pages.
+    Chapters come from each book: an EPUB's table of contents, the "Chapter 1" headings of a text or PDF, or one chapter per file. A scanned PDF is read with text recognition when you add it, which takes a few minutes for a long book.
 
     Optional: a cover.jpg or cover.png, and a details.json with "title", "author", "description", "genre" and "status". Scan again after adding files; syncing a novel picks up its new chapters.
     """.trimIndent()
