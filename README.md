@@ -2,8 +2,6 @@
 
 A local-first Android app for downloading, archiving, and reading webnovels offline. Built with native Kotlin. Requires Android 8.0 or newer.
 
-Supports **Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFiction.net, Archive of Our Own (AO3), and Ranobes**, plus your own **EPUB, PDF, TXT, Markdown and HTML** books from a folder on the phone.
-
 ## Main features
 
 - Five destinations, on a bottom bar (or a rail beside the thumb on a foldable's inner screen): **Library**, **Updates**, **Listen**, **Downloads** and **Settings**, with the playing chapter docked above them.
