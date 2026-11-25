@@ -13,10 +13,13 @@ import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatterBuilder
+import java.time.temporal.ChronoField
 import java.util.Locale
 
 /** The novel page, `/novels/<id>-<slug>.html`. */
@@ -49,7 +52,11 @@ internal fun parseRanobesMetadata(html: String): NovelMetadata {
                     .trim()
             }.ifBlank { "Unknown Author" }
     val spec = ranobesSpecValues(doc)
-    val status = doc.selectFirst(".r-fullstory-spec a[href*=/tags/status-end/]")?.ranobesText()
+    // The translation's status says whether chapters keep arriving here; the original's
+    // ("Status in COO") can be finished while the translation is still running.
+    val translationStatus = doc.selectFirst(".r-fullstory-spec a[href*=/tags/status-trs/]")?.ranobesText()
+    val originalStatus = doc.selectFirst(".r-fullstory-spec a[href*=/tags/status-end/]")?.ranobesText()
+    val status = translationStatus ?: originalStatus
     val genres = ranobesTags(doc, field = "genre", microdata = "genre")
     val events = ranobesTags(doc, field = "events", microdata = "keywords")
     return NovelMetadata(
@@ -65,9 +72,16 @@ internal fun parseRanobesMetadata(html: String): NovelMetadata {
         description = doc.selectFirst(".r-desription .cont-text")?.let(Element::ranobesSynopsis),
         tags = (genres + events).distinct().toMutableList().takeIf { it.isNotEmpty() },
         score = doc.selectFirst(".bl_full_rate .rate-stat-num .bold")?.ranobesText(),
-        canonicalUrl = doc.selectFirst("link[rel=canonical]")?.absUrl("href")?.takeIf(String::isNotBlank),
+        // Kept only as the novel's ranobes.net address: the sync stores it as the story's link.
+        canonicalUrl =
+            doc
+                .selectFirst("link[rel=canonical]")
+                ?.absUrl("href")
+                ?.let(RanobesAddress::parse)
+                ?.takeIf { it.chapterId == null }
+                ?.storyUrl,
         patreonUrl = findPatreonUrl(doc),
-        publicationStatus = publicationStatusFromSourceText(status) ?: PublicationStatus.unknown,
+        publicationStatus = ranobesPublicationStatus(status),
         sourceMetadata =
             SourceMetadata(
                 metrics = ranobesMetrics(doc, spec),
@@ -79,6 +93,13 @@ internal fun parseRanobesMetadata(html: String): NovelMetadata {
             ),
     )
 }
+
+/** The site marks a translation that stopped as "Inactive", which the shared wording does not cover. */
+private fun ranobesPublicationStatus(status: String?): PublicationStatus =
+    when {
+        status.equals("inactive", ignoreCase = true) -> PublicationStatus.hiatus
+        else -> publicationStatusFromSourceText(status) ?: PublicationStatus.unknown
+    }
 
 /** The specification rows by lowercase label, e.g. `views` to `264 706`. */
 private fun ranobesSpecValues(doc: Document): Map<String, String> =
@@ -142,12 +163,23 @@ private fun Element.ranobesSynopsis(): String? {
     val synopsis = clone()
     synopsis.select(".grey").remove()
     // The site separates paragraphs with two line breaks, which [blockText] folds into the one
-    // it gives a <br>. An empty block between them keeps the paragraphs apart.
-    synopsis.select("br + br").forEach { secondBreak ->
-        secondBreak.previousElementSibling()?.takeIf { it.tagName() == "br" }?.remove()
+    // it gives a <br>. An empty block between them keeps the paragraphs apart. Only breaks with
+    // nothing but whitespace between them count: `br + br` would also pair two single breaks
+    // that have a line of text between them.
+    synopsis.select("br").forEach { secondBreak ->
+        val firstBreak = secondBreak.previousNonBlankSibling() as? Element ?: return@forEach
+        if (firstBreak.tagName() != "br" || firstBreak.parent() == null) return@forEach
+        firstBreak.remove()
         secondBreak.replaceWith(Element("p"))
     }
     return synopsis.blockText().takeIf(String::isNotBlank)
+}
+
+/** The sibling before this node, skipping whitespace-only text. */
+private fun Node.previousNonBlankSibling(): Node? {
+    var node = previousSibling()
+    while (node is TextNode && node.isBlank) node = node.previousSibling()
+    return node
 }
 
 /**
@@ -265,7 +297,12 @@ internal fun ranobesChapterContent(html: String): String {
 private val ranobesTimestampFormatters =
     listOf("yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "d MMMM yyyy, HH:mm:ss", "d MMMM yyyy, HH:mm", "d MMMM yyyy")
         .map { pattern ->
-            DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern(pattern).toFormatter(Locale.US)
+            // A date without a time reads as its midnight.
+            DateTimeFormatterBuilder()
+                .parseCaseInsensitive()
+                .appendPattern(pattern)
+                .parseDefaulting(ChronoField.HOUR_OF_DAY, 0)
+                .toFormatter(Locale.US)
         }
 
 /**

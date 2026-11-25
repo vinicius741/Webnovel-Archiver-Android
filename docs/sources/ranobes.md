@@ -54,9 +54,12 @@ carries `+00:00` for the same clock time.
 
 The novel page supplies the title, the author list (joined with commas), the cover, and the
 synopsis with the catalog line the site appends to every synopsis removed. Genres and "events"
-become the story's tags. `Status in COO` becomes the publication status, and its text is kept as
-the source status. `Ongoing` and `Completed` are the two values seen; any other wording leaves the
-publication status to the one already stored.
+become the story's tags. The `Translation` row (`/tags/status-trs/`) becomes the publication
+status, and its text is kept as the source status: it says whether chapters keep arriving here,
+while `Status in COO` describes the original, which can be finished while the translation runs.
+`Active` reads as ongoing, `Completed` as completed and `Inactive` as on hiatus. A page without a
+translation row falls back to `Status in COO` (`Ongoing` or `Completed`). Any other wording leaves
+the publication status to the one already stored.
 
 | On the page | Stored as |
 |-------------|-----------|

@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.source.network.SourceChapterListIncompleteException
 import com.vinicius741.webnovelarchiver.source.network.SourceNetworkPolicy
+import java.net.URI
 
 /**
  * Ranobes (ranobes.net), a DataLife Engine site. The novel page carries the metadata and the newest
@@ -150,11 +151,13 @@ internal class RanobesAddress(
     val chapterUrl: String? get() = chapterId?.let { "${RanobesProvider.baseUrl}/$slug-$novelId/$it.html" }
 
     companion object {
-        private val STORY_PATH = Regex("""^/(?:novels/)?(\d+)-([^/]+?)\.html/?$""", RegexOption.IGNORE_CASE)
-        private val CHAPTER_PATH = Regex("""^/(.+)-(\d+)/(\d+)\.html/?$""", RegexOption.IGNORE_CASE)
+        // Ids never start with a zero, so one novel cannot get two story ids.
+        private val STORY_PATH = Regex("""^/(?:novels/)?([1-9]\d*)-([^/]+?)\.html/?$""", RegexOption.IGNORE_CASE)
+        private val CHAPTER_PATH = Regex("""^/([^/]+)-([1-9]\d*)/([1-9]\d*)\.html/?$""", RegexOption.IGNORE_CASE)
 
         fun parse(url: String): RanobesAddress? {
-            val path = sourcePath(url) ?: return null
+            // The raw path keeps a percent-encoded slug encoded, so the URLs rebuilt from it stay valid.
+            val path = runCatching { URI(url).rawPath?.takeIf { it.startsWith('/') } }.getOrNull() ?: return null
             STORY_PATH.matchEntire(path)?.let { return RanobesAddress(it.groupValues[1], it.groupValues[2], null) }
             CHAPTER_PATH.matchEntire(path)?.let {
                 return RanobesAddress(it.groupValues[2], it.groupValues[1], it.groupValues[3])

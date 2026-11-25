@@ -92,6 +92,8 @@ class RanobesProviderTest {
             "https://ranobes.top/24680-the-lorem-fox.html" to story,
             "https://ranobes.top/the-lorem-fox-24680/370002.html" to story,
             wrongSlug to wrongSlug,
+            // A percent-encoded slug stays encoded, so the address it resolves to is still a URL.
+            "https://ranobes.net/novels/24680-the%20lorem%20fox.html" to "https://ranobes.net/novels/24680-the%20lorem%20fox.html",
         ).forEach { (submitted, normalized) ->
             val match = requireNotNull(SourceRegistry.resolve(submitted, SourceUrlKind.STORY))
             assertSame(RanobesProvider, match.provider)
@@ -112,6 +114,9 @@ class RanobesProviderTest {
             "https://ranobes.top/chapters/24680/",
             "https://ranobes.net/tags/genre/Adventure/",
             "https://ranobes.net/",
+            // A chapter link has one directory, and ids never start with a zero.
+            "https://ranobes.net/tags/the-lorem-fox-24680/370002.html",
+            "https://ranobes.net/novels/024680-the-lorem-fox.html",
         ).forEach {
             assertNull(it, SourceRegistry.resolve(it))
             assertFalse(it, SourceUrlValidation.isImportableStoryUrl(it))
@@ -153,7 +158,7 @@ class RanobesProviderTest {
         assertEquals(listOf("Adventure", "Fantasy", "Clever Protagonist", "System"), metadata.tags.orEmpty())
 
         val source = metadata.sourceMetadata
-        assertEquals("Ongoing", source.sourceStatus)
+        assertEquals("Active", source.sourceStatus)
         assertEquals("English", source.language)
         assertEquals(listOf("Adventure", "Fantasy"), source.genres)
         assertEquals(Instant.parse("2024-02-03T09:15:00Z").toEpochMilli(), source.publishedAt)
@@ -171,12 +176,36 @@ class RanobesProviderTest {
 
     @Test
     fun readsTheStatusFromItsLinkAndFallsBackToHeadlineAndMicrodata() {
-        val completed =
+        // The original being finished does not finish a translation that is still running.
+        val originalDone =
             RanobesProvider.parseMetadata(
                 fixture("story").replace("status-end/Ongoing/\">Ongoing</a>", "status-end/Completed/\">Completed</a>"),
             )
-        assertEquals(PublicationStatus.completed, completed.publicationStatus)
-        assertEquals("Completed", completed.sourceMetadata.sourceStatus)
+        assertEquals(PublicationStatus.ongoing, originalDone.publicationStatus)
+        assertEquals("Active", originalDone.sourceMetadata.sourceStatus)
+
+        val translationDone =
+            RanobesProvider.parseMetadata(
+                fixture("story").replace("status-trs/Active/\">Active</a>", "status-trs/Completed/\">Completed</a>"),
+            )
+        assertEquals(PublicationStatus.completed, translationDone.publicationStatus)
+        assertEquals("Completed", translationDone.sourceMetadata.sourceStatus)
+
+        val translationStopped =
+            RanobesProvider.parseMetadata(
+                fixture("story").replace("status-trs/Active/\">Active</a>", "status-trs/Inactive/\">Inactive</a>"),
+            )
+        assertEquals(PublicationStatus.hiatus, translationStopped.publicationStatus)
+
+        // Without a translation row, the original's status is the one there is.
+        val noTranslationRow =
+            RanobesProvider.parseMetadata(
+                fixture("story")
+                    .replace(Regex("""<li title="English translation status">.*?</li>\n"""), "")
+                    .replace("status-end/Ongoing/\">Ongoing</a>", "status-end/Completed/\">Completed</a>"),
+            )
+        assertEquals(PublicationStatus.completed, noTranslationRow.publicationStatus)
+        assertEquals("Completed", noTranslationRow.sourceMetadata.sourceStatus)
 
         val sparse =
             RanobesProvider.parseMetadata(
@@ -194,6 +223,32 @@ class RanobesProviderTest {
         assertNull(sparse.description)
         assertNull(sparse.score)
         assertTrue(sparse.sourceMetadata.metrics.isEmpty())
+    }
+
+    @Test
+    fun keepsSingleSynopsisLineBreaksAndOnlyACanonicalNovelAddress() {
+        val page =
+            fixture("story")
+                .replace(
+                    "A fixture synopsis opens here.<br/><br/>It continues in a second paragraph.",
+                    "Line one<br>Line two<br>Line three<br><br>Second paragraph.",
+                ).replace(
+                    "<link rel=\"canonical\" href=\"https://ranobes.net/novels/24680-the-lorem-fox.html\">",
+                    "<link rel=\"canonical\" href=\"https://ranobes.top/24680-the-lorem-fox.html\">",
+                )
+        val metadata = RanobesProvider.parseMetadata(page)
+        assertEquals("Line one\nLine two\nLine three\n\nSecond paragraph.", metadata.description)
+        // The sync stores the canonical link as the story's address, so it is the ranobes.net novel page.
+        assertEquals(STORY, metadata.canonicalUrl)
+
+        val offSite =
+            RanobesProvider.parseMetadata(
+                fixture("story").replace(
+                    "href=\"https://ranobes.net/novels/24680-the-lorem-fox.html\">",
+                    "href=\"https://ranobes.net/\">",
+                ),
+            )
+        assertNull(offSite.canonicalUrl)
     }
 
     @Test
@@ -465,6 +520,7 @@ class RanobesProviderTest {
         assertEquals(updated, ranobesTimestamp(" 24 November 2026, 16:47 "))
         assertEquals(Instant.parse("2021-03-16T13:09:00Z").toEpochMilli(), ranobesTimestamp("16 March 2021, 13:09"))
         assertEquals(Instant.parse("2026-11-24T15:47:00Z").toEpochMilli(), ranobesTimestamp("2026-11-24T16:47:00+01:00"))
+        assertEquals(Instant.parse("2021-03-16T00:00:00Z").toEpochMilli(), ranobesTimestamp("16 March 2021"))
         assertNull(ranobesTimestamp("9 hours ago"))
         assertNull(ranobesTimestamp(""))
         assertNull(ranobesTimestamp(null))
