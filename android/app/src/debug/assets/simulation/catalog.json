@@ -445,7 +445,7 @@
       "id": "sources-all",
       "action": "sources",
       "screen": "queue",
-      "description": "Import and download all six provider fixtures"
+      "description": "Import and download all seven provider fixtures"
     },
     {
       "id": "patreon-public",
