@@ -20,7 +20,9 @@ import java.net.URI
  * stays the first host because the network coordinator names a source's first host in its events.
  *
  * The site locks a device out for about an hour once it reads too fast: 94 requests in 12 minutes
- * tripped it. The request budget stays well under that. The lockout's 403 "Too many requests" page
+ * tripped it. The request budget stays well under that. The lockout answers the app with a 403
+ * "Too many requests" page, or with a 503 and a one-minute Retry-After that it repeats for as long
+ * as the lockout lasts, while the same page still opens in a browser on the same connection. Either
  * blocks the whole source, as a Cloudflare challenge does, until the user opens it in the browser.
  */
 object RanobesProvider : SourceProvider {
@@ -41,7 +43,7 @@ object RanobesProvider : SourceProvider {
                     minimumRequestGapMillis = 3_000L,
                     maximumAttempts = 2,
                     retryableStatusCodes = setOf(429, 503),
-                    accessLimitStatusCodes = setOf(403),
+                    accessLimitStatusCodes = setOf(403, 503),
                     requestWindowMillis = 15L * 60L * 1_000L,
                     maximumRequestsPerWindow = 75,
                 ),

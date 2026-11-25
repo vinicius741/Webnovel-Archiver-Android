@@ -67,10 +67,10 @@ object SourceAccessBlockDetector {
     fun isRequestLimitPage(body: String): Boolean = body.isNotBlank() && isRequestLimitPage(Jsoup.parse(body.take(BODY_SCAN_LIMIT)))
 
     private fun isRequestLimitPage(document: org.jsoup.nodes.Document): Boolean =
-        document.title().trim().equals(REQUEST_LIMIT_TITLE, ignoreCase = true) ||
+        REQUEST_LIMIT_TITLE.matches(document.title().trim()) ||
             document.selectFirst(REQUEST_LIMIT_SELECTOR) != null
 
-    private const val REQUEST_LIMIT_TITLE = "403: Access temporarily limited"
+    private val REQUEST_LIMIT_TITLE = Regex("""^(?:\d{3}:\s*)?Access temporarily limited$""", RegexOption.IGNORE_CASE)
     private const val REQUEST_LIMIT_SELECTOR = "[data-forbidden-content]"
     private val CHALLENGE_CONFIG = Regex("""\b(?:window\s*\.\s*)?_cf_chl_opt\s*=""", RegexOption.IGNORE_CASE)
     private val CHALLENGE_ORCHESTRATION =

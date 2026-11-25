@@ -208,6 +208,11 @@ class SourceAccessBlockDetectorTest {
         assertTrue(SourceAccessBlockDetector.isRequestLimitPage(limitPage))
         // The in-app browser keeps waiting while the lockout page is on screen.
         assertTrue(SourceAccessBlockDetector.isChallengeHtml(limitPage))
+        assertTrue(
+            SourceAccessBlockDetector.isRequestLimitPage(
+                "<html><head><title>503: Access temporarily limited</title></head><body></body></html>",
+            ),
+        )
         val chapter =
             "<html><head><title>Chapter 9 | Ranobes</title></head><body><p>Too many requests came from your " +
                 "device in a short time, the system said.</p></body></html>"

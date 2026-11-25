@@ -11,9 +11,10 @@ data class SourceNetworkPolicy(
     /**
      * Statuses that mean the site has locked this device out when they carry `Retry-After` or the
      * site's own limit page. Ranobes answers a reader who requested too fast with a 403 "Too many
-     * requests" page and a deadline about an hour out, which a visit in the browser can lift
-     * sooner. Like a Cloudflare challenge, it blocks the whole source until the user opens it in
-     * the browser; a 403 without either signal stays an ordinary failure.
+     * requests" page and a deadline about an hour out, or with a 503 and a one-minute deadline it
+     * keeps repeating, while a visit in the browser still works. Like a Cloudflare challenge, it
+     * blocks the whole source until the user opens it in the browser; one of these statuses
+     * without either signal stays an ordinary failure.
      */
     val accessLimitStatusCodes: Set<Int> = emptySet(),
     val baseRetryDelayMillis: Long = 2_500L,

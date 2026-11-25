@@ -460,6 +460,21 @@ class NetworkClientTest {
         }
 
     @Test
+    fun repeatedServiceUnavailableWithRetryAfterBlocksTheSource() =
+        runBlocking {
+            // On mobile data the lockout is a 503 with a one-minute Retry-After, repeated for as
+            // long as it lasts; retrying every minute never got through while a browser did.
+            client = ranobesStylePolicyClient()
+            server.enqueue(MockResponse().setResponseCode(503).setHeader("Retry-After", "60"))
+
+            val error = runCatching { client.fetch(server.url("/locked").toString()) }.exceptionOrNull()
+
+            assertTrue(error is SourceAccessBlockedException)
+            assertTrue(client.reliability.isManualVerificationRequired(server.url("/").host))
+            assertEquals(1, server.requestCount)
+        }
+
+    @Test
     fun accessLimitPageWithoutRetryAfterAlsoBlocksTheSource() =
         runBlocking {
             client = ranobesStylePolicyClient()
@@ -493,7 +508,7 @@ class NetworkClientTest {
                     SourceNetworkPolicy(
                         maximumAttempts = 2,
                         retryableStatusCodes = setOf(429, 503),
-                        accessLimitStatusCodes = setOf(403),
+                        accessLimitStatusCodes = setOf(403, 503),
                         maximumJitterMillis = 0L,
                     )
                 },
