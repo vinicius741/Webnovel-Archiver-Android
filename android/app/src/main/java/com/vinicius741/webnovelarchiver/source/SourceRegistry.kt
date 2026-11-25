@@ -139,6 +139,7 @@ object SourceRegistry {
             SufficientVelocityProvider,
             FanFictionProvider,
             Ao3Provider,
+            RanobesProvider,
             LocalSourceProvider,
         )
 

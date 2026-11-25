@@ -6,7 +6,8 @@
     "https://forums.sufficientvelocity.com/threads/fixture-story.12345/",
     "https://forums.spacebattles.com/threads/fixture-story.1183048/",
     "https://archiveofourown.org/works/123",
-    "https://www.fanfiction.net/s/7347955/1/Dreaming-of-Sunshine"
+    "https://www.fanfiction.net/s/7347955/1/Dreaming-of-Sunshine",
+    "https://ranobes.net/novels/24680-the-lorem-fox.html"
   ],
   "routes": [
     {
@@ -118,6 +119,26 @@
       "asset": "simulation/replay/fanfiction/combined.html"
     },
     {
+      "url": "https://ranobes.net/novels/24680-the-lorem-fox.html",
+      "asset": "simulation/replay/ranobes/story.html"
+    },
+    {
+      "url": "https://ranobes.net/chapters/24680/",
+      "asset": "simulation/replay/ranobes/toc.html"
+    },
+    {
+      "url": "https://ranobes.net/the-lorem-fox-24680/370001.html",
+      "asset": "simulation/replay/ranobes/chapter.html"
+    },
+    {
+      "url": "https://ranobes.net/the-lorem-fox-24680/370002.html",
+      "asset": "simulation/replay/ranobes/chapter.html"
+    },
+    {
+      "url": "https://ranobes.net/the-lorem-fox-24680/370003.html",
+      "asset": "simulation/replay/ranobes/chapter.html"
+    },
+    {
       "url": "https://www.royalroad.com/covers/12345.jpg",
       "asset": "simulation/replay/cover.png",
       "contentType": "image/png"
@@ -128,12 +149,17 @@
       "contentType": "image/png"
     },
     {
-      "url": "https://forums.spacebattles.com/attachments/fixture-cover.1/",
+      "url": "https://forums.spacebattles.com/data/attachments/fixture-cover.jpg",
       "asset": "simulation/replay/cover.png",
       "contentType": "image/png"
     },
     {
       "url": "https://www.fanfiction.net/image/1740448/75/",
+      "asset": "simulation/replay/cover.png",
+      "contentType": "image/png"
+    },
+    {
+      "url": "https://ranobes.net/uploads/posts/2024-02/fixture-lorem-fox.jpg",
       "asset": "simulation/replay/cover.png",
       "contentType": "image/png"
     },

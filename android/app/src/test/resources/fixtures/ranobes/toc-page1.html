@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>The Lorem Fox | Chapters</title>
+</head><body>
+<div id="dle-content"><main>
+<div class="chapters__container" v-cloak>
+<div class="cat_block"><h5 class="ellipses grey ch-book"><a :href="book_link" v-html="book_title"></a></h5></div>
+<template v-if="chapters.length" v-for="chapter in chapters">
+<div class="cat_block cat_line"><a :href="chapter.link" :title="chapter.title"><div><h6 class="title">{{ chapter.title }}</h6></div></a></div>
+</template>
+<navigation id="navigation" v-if="pages_count > 1 && !search.trim()" :page_count="pages_count" :page_num="cstart" :base_url="'/chapters/' + book_id + '/'" :page_url="'/chapters/' + book_id + '/page/{page}/'"></navigation>
+</div></main>
+<script type="application/json" id="chapters-data">{"book_title":"The Lorem Fox","book_link":"https://ranobes.net/novels/24680-the-lorem-fox.html","book_id":24680,"chapters":[{"id":"370003","title":"Chapter 3: The Third Hour","date":"2026-08-20 18:30:00","comm_num":"0","showDate":"3 months ago","link":"https://ranobes.net/the-lorem-fox-24680/370003.html"},{"id":"370002","title":"Chapter 2: The Second Hour","date":"2025-06-11 07:05:09","comm_num":"1","showDate":"1 year ago","link":"https://ranobes.net/the-lorem-fox-24680/370002.html"}],"pages_count":2,"count_all":3,"cstart":1,"toc_rows":[[1,3,1,""]],"toc_from":2,"search":"","default":[],"searchTimeout":null}</script>
+</div>
+</body></html>

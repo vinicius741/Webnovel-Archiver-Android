@@ -73,7 +73,7 @@ chapters 1–3 and adult afterwards, so cover scenarios produce two story phases
 The synthetic library has stable story IDs `rr_990001`, `rr_990002`, and `ffn_990003`.
 The primary story's six chapter files are present in AI/manual-screen scenarios.
 Download scenarios start with undownloaded chapters. `sources-all` starts empty and
-imports the six supported provider fixtures. Existing `dev_start_screen` and story
+imports the seven supported provider fixtures. Existing `dev_start_screen` and story
 arguments still work while simulation is enabled.
 
 ## Scenarios
