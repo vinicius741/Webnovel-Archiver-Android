@@ -74,7 +74,7 @@ object DownloadQueueStatusCopy {
     /** Error categories in the user's words; the raw message and code stay behind "Error details". */
     fun failureReason(job: DownloadJob): String =
         when (job.errorCategory) {
-            "source_blocked" -> "blocked by Cloudflare"
+            "source_blocked" -> "blocked by the site"
             "rate_limit" -> "the site is limiting requests"
             "network" -> "network problem"
             "parse" -> "couldn't read the chapter"

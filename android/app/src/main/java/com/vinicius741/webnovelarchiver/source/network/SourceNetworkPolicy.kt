@@ -9,11 +9,13 @@ data class SourceNetworkPolicy(
     val maximumAttempts: Int = 1,
     val retryableStatusCodes: Set<Int> = emptySet(),
     /**
-     * Statuses that are a rate limit only when the response carries `Retry-After`. Ranobes answers
-     * a reader who requested too fast with a 403 "Too many requests" page and a deadline about an
-     * hour out; a 403 without one stays an ordinary failure.
+     * Statuses that mean the site has locked this device out when they carry `Retry-After` or the
+     * site's own limit page. Ranobes answers a reader who requested too fast with a 403 "Too many
+     * requests" page and a deadline about an hour out, which a visit in the browser can lift
+     * sooner. Like a Cloudflare challenge, it blocks the whole source until the user opens it in
+     * the browser; a 403 without either signal stays an ordinary failure.
      */
-    val retryAfterRateLimitStatusCodes: Set<Int> = emptySet(),
+    val accessLimitStatusCodes: Set<Int> = emptySet(),
     val baseRetryDelayMillis: Long = 2_500L,
     val maximumRetryDelayMillis: Long = 60_000L,
     val maximumRetryAfterMillis: Long = 30L * 60L * 1_000L,
@@ -28,12 +30,13 @@ data class SourceNetworkPolicy(
      */
     val browserTransportOnly: Boolean = false,
 ) {
-    fun isRateLimit(
+    fun isAccessLimit(
         statusCode: Int,
         retryAfterHeader: String?,
+        body: String,
     ): Boolean =
-        statusCode in retryableStatusCodes ||
-            (statusCode in retryAfterRateLimitStatusCodes && !retryAfterHeader.isNullOrBlank())
+        statusCode in accessLimitStatusCodes &&
+            (!retryAfterHeader.isNullOrBlank() || SourceAccessBlockDetector.isRequestLimitPage(body))
 }
 
 fun interface NetworkPolicyResolver {

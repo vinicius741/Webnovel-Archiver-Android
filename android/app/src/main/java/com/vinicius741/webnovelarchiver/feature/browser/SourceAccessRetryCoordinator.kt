@@ -66,8 +66,8 @@ internal fun ScreenHost.showSourceAccessBlockedDialog(
     val builder = AlertDialog.Builder(app)
     builder.setTitle("Source access required")
     builder.setMessage(
-        "Cloudflare is blocking automated access to this source. Open the in-app browser, pass the " +
-            "Cloudflare check, then return here and the request will retry automatically.",
+        "This source is blocking automated access. Open the in-app browser, pass any check the site " +
+            "shows, then return here and the request will retry automatically.",
     )
     // Primary: in-app WebView that shares CookieManager with source requests. The retry is armed
     // below and fired from MainActivity.onResume; the challenged host stays on Chromium transport.

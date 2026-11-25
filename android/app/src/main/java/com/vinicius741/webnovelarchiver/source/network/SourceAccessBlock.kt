@@ -11,7 +11,12 @@ class SourceAccessBlockedException(
     val blockedUrl: String,
     val manualVerificationRequired: Boolean = true,
     message: String = "Cloudflare is blocking automated access. Open the source in the browser, pass the check, then retry.",
-) : IOException(message)
+) : IOException(message) {
+    companion object {
+        const val REQUEST_LIMIT_MESSAGE =
+            "The site is limiting requests from this device. Open the source in the browser, then retry."
+    }
+}
 
 object SourceAccessBlockDetector {
     /**
@@ -44,6 +49,7 @@ object SourceAccessBlockDetector {
     fun isChallengeHtml(body: String): Boolean {
         val document = Jsoup.parse(body.take(BODY_SCAN_LIMIT))
         if (document.title().trim().equals("Just a moment...", ignoreCase = true)) return true
+        if (isRequestLimitPage(document)) return true
         if (document.selectFirst(ANUBIS_CHALLENGE_SELECTOR) != null) return true
         return document.select("script").any { script ->
             val source = script.attr("src")
@@ -54,6 +60,18 @@ object SourceAccessBlockDetector {
         }
     }
 
+    /**
+     * Ranobes's "Too many requests" lockout page. Matched on its title and marker element, never on
+     * prose, so a chapter that mentions too many requests is not mistaken for it.
+     */
+    fun isRequestLimitPage(body: String): Boolean = body.isNotBlank() && isRequestLimitPage(Jsoup.parse(body.take(BODY_SCAN_LIMIT)))
+
+    private fun isRequestLimitPage(document: org.jsoup.nodes.Document): Boolean =
+        document.title().trim().equals(REQUEST_LIMIT_TITLE, ignoreCase = true) ||
+            document.selectFirst(REQUEST_LIMIT_SELECTOR) != null
+
+    private const val REQUEST_LIMIT_TITLE = "403: Access temporarily limited"
+    private const val REQUEST_LIMIT_SELECTOR = "[data-forbidden-content]"
     private val CHALLENGE_CONFIG = Regex("""\b(?:window\s*\.\s*)?_cf_chl_opt\s*=""", RegexOption.IGNORE_CASE)
     private val CHALLENGE_ORCHESTRATION =
         Regex("""/cdn-cgi/challenge-platform/[^\s'"<>]*/orchestrate/""", RegexOption.IGNORE_CASE)

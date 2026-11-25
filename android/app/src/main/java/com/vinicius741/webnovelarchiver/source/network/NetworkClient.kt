@@ -192,7 +192,7 @@ class NetworkClient(
             }
             val result =
                 SourceRequestEvents.recording(request.url.host, attemptId, attempt, request.method, requestGate != null) {
-                    executeAttempt(url, request, callTimeoutMillis, read)
+                    executeAttempt(url, request, policy, callTimeoutMillis, read)
                 }
             when (result) {
                 is AttemptResult.Success -> {
@@ -212,7 +212,7 @@ class NetworkClient(
                         ok = false,
                         code = result.statusCode,
                     )
-                    val isRateLimited = policy.isRateLimit(result.statusCode, result.retryAfterHeader)
+                    val isRateLimited = result.statusCode in policy.retryableStatusCodes
                     if (isRateLimited) {
                         // R14: the accepted server deadline reaches the shared host coordinator as
                         // soon as the response arrives, so no other operation on this host can
@@ -244,6 +244,7 @@ class NetworkClient(
     private suspend fun <T> executeAttempt(
         url: String,
         request: Request,
+        policy: SourceNetworkPolicy,
         callTimeoutMillis: Long?,
         read: (Response) -> T,
     ): AttemptResult<T> =
@@ -265,6 +266,9 @@ class NetworkClient(
                     val responseBody = response.bodyStringPrefix(url, MAX_ERROR_BODY_BYTES)
                     if (SourceAccessBlockDetector.isChallengeResponse(response.headers, responseBody)) {
                         throw SourceAccessBlockedException(url)
+                    }
+                    if (policy.isAccessLimit(response.code, response.header("Retry-After"), responseBody)) {
+                        throw SourceAccessBlockedException(url, message = SourceAccessBlockedException.REQUEST_LIMIT_MESSAGE)
                     }
                     AttemptResult.HttpFailure(response.code, response.header("Retry-After"))
                 }
@@ -626,7 +630,10 @@ suspend fun NetworkClient.fetchImage(
             call.timeout().timeout(NetworkClient.DEFAULT_CALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
             call.executeCancellable { response ->
                 if (!response.isSuccessful) {
-                    if (response.code == 429 || policy.isRateLimit(response.code, response.header("Retry-After"))) {
+                    val retryAfter = response.header("Retry-After")
+                    if (policy.isAccessLimit(response.code, retryAfter, "")) {
+                        reliability.requireManualVerification(request.url.host)
+                    } else if (response.code == 429) {
                         reliability.recordRateLimit(
                             request.url.host,
                             policy,

@@ -133,7 +133,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
 
         statusText =
             TextView(this).apply {
-                text = "Solving Cloudflare challenge…"
+                text = "Opening the source page…"
                 setTextColor(colors.onSurfaceVariant)
                 setPadding(dp(16), dp(8), dp(16), dp(8))
                 gravity = Gravity.CENTER
@@ -304,7 +304,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
                     }
                 }
                 CloudflareSolvePageState.CHALLENGE_ACTIVE ->
-                    statusText?.text = "Cloudflare is still verifying this page. Complete the check, then tap Done."
+                    statusText?.text = "The site is still blocking this page. Complete any check, then tap Done."
                 CloudflareSolvePageState.PAGE_UNAVAILABLE ->
                     statusText?.text = "The page is still loading. Wait for it to open, then tap Done."
                 CloudflareSolvePageState.DIFFERENT_PAGE ->

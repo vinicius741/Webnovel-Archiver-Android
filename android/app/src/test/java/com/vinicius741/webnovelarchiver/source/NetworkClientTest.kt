@@ -445,25 +445,40 @@ class NetworkClientTest {
         }
 
     @Test
-    fun forbiddenWithRetryAfterDefersAsRateLimitWhenThePolicyNamesIt() =
+    fun accessLimitWithRetryAfterBlocksTheSourceForBrowserVerification() =
         runBlocking {
-            // Ranobes's "Too many requests" ban is a 403 with a Retry-After about an hour out.
+            // Ranobes's "Too many requests" lockout is a 403 with a Retry-After about an hour out.
             client = ranobesStylePolicyClient()
             server.enqueue(MockResponse().setResponseCode(403).setHeader("Retry-After", "3345"))
 
             val error = runCatching { client.fetch(server.url("/banned").toString()) }.exceptionOrNull()
 
-            assertTrue(error is RateLimitNetworkException)
-            assertEquals(403, (error as RateLimitNetworkException).statusCode)
-            assertEquals(3_345_000L, error.retryAfterMillis)
+            assertTrue(error is SourceAccessBlockedException)
+            assertEquals(SourceAccessBlockedException.REQUEST_LIMIT_MESSAGE, error?.message)
+            assertTrue(client.reliability.isManualVerificationRequired(server.url("/").host))
             assertEquals(1, server.requestCount)
         }
 
     @Test
-    fun forbiddenWithoutRetryAfterStaysAnHttpErrorUnderThatPolicy() =
+    fun accessLimitPageWithoutRetryAfterAlsoBlocksTheSource() =
         runBlocking {
             client = ranobesStylePolicyClient()
-            server.enqueue(MockResponse().setResponseCode(403))
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(403)
+                    .setBody("<html><head><title>403: Access temporarily limited</title></head><body></body></html>"),
+            )
+
+            val error = runCatching { client.fetch(server.url("/banned").toString()) }.exceptionOrNull()
+
+            assertTrue(error is SourceAccessBlockedException)
+        }
+
+    @Test
+    fun plainForbiddenStaysAnHttpErrorUnderAnAccessLimitPolicy() =
+        runBlocking {
+            client = ranobesStylePolicyClient()
+            server.enqueue(MockResponse().setResponseCode(403).setBody("ordinary forbidden"))
 
             val error = runCatching { client.fetch(server.url("/forbidden").toString()) }.exceptionOrNull()
 
@@ -478,8 +493,7 @@ class NetworkClientTest {
                     SourceNetworkPolicy(
                         maximumAttempts = 2,
                         retryableStatusCodes = setOf(429, 503),
-                        retryAfterRateLimitStatusCodes = setOf(403),
-                        maximumRetryAfterMillis = 90L * 60L * 1_000L,
+                        accessLimitStatusCodes = setOf(403),
                         maximumJitterMillis = 0L,
                     )
                 },

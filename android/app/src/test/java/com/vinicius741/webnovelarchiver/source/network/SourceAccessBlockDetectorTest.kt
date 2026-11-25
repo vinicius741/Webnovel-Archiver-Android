@@ -199,4 +199,19 @@ class SourceAccessBlockDetectorTest {
             ),
         )
     }
+
+    @Test
+    fun ranobesRequestLimitPageIsABlockButProseAboutItIsNot() {
+        val limitPage =
+            "<html><head><title>403: Access temporarily limited</title></head><body><main>" +
+                "<div class=\"content\" data-forbidden-content><h1>Too many requests</h1></div></main></body></html>"
+        assertTrue(SourceAccessBlockDetector.isRequestLimitPage(limitPage))
+        // The in-app browser keeps waiting while the lockout page is on screen.
+        assertTrue(SourceAccessBlockDetector.isChallengeHtml(limitPage))
+        val chapter =
+            "<html><head><title>Chapter 9 | Ranobes</title></head><body><p>Too many requests came from your " +
+                "device in a short time, the system said.</p></body></html>"
+        assertFalse(SourceAccessBlockDetector.isRequestLimitPage(chapter))
+        assertFalse(SourceAccessBlockDetector.isChallengeHtml(chapter))
+    }
 }
