@@ -176,6 +176,11 @@ class DownloadQueueSectionPlanningTest {
         assertEquals("After Worm", DownloadQueueStatusCopy.storyStatusLine(behind, null))
         assertEquals("Starting soon", DownloadQueueStatusCopy.storyStatusLine(story(QueueSection.UP_NEXT), null))
         assertEquals("Next chapter in 8 seconds", DownloadQueueStatusCopy.storyStatusLine(story(QueueSection.DOWNLOADING), wait))
+        val sourceLimit = DownloadPacingUiStatus(DownloadPacingUiKind.SOURCE_LIMIT_WAIT, "Ranobes", remainingSeconds = 380)
+        assertEquals(
+            "Ranobes request limit · next chapter in 6m 20s",
+            DownloadQueueStatusCopy.storyStatusLine(story(QueueSection.DOWNLOADING), sourceLimit),
+        )
         assertEquals(
             "Site asked to slow down · resuming in 4m",
             DownloadQueueStatusCopy.storyStatusLine(story(QueueSection.UP_NEXT), rateLimit),
@@ -195,6 +200,12 @@ class DownloadQueueSectionPlanningTest {
             DownloadQueueStatusCopy.chapterStatusLabel(retrying, false, null, 1_000),
         )
         assertEquals("Queued", DownloadQueueStatusCopy.chapterStatusLabel(job("a", 2, "rr", "pending"), false, null, 1_000))
+        val claimed = job("a", 3, "rr", "downloading")
+        assertEquals("Next request in 5 seconds", DownloadQueueStatusCopy.chapterStatusLabel(claimed, false, 5, 1_000))
+        assertEquals(
+            "Site request limit · next request in 2m",
+            DownloadQueueStatusCopy.chapterStatusLabel(claimed, false, 120, 1_000, sourceLimit = true),
+        )
         assertFalse(DownloadQueueStatusCopy.chapterStatusLabel(failed, false, null, 1_000).contains("network ("))
     }
 

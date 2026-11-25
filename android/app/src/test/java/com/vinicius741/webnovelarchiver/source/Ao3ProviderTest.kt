@@ -197,7 +197,7 @@ class Ao3ProviderTest {
                 com.vinicius741.webnovelarchiver.domain.model
                     .Chapter(id = "ao3_chapter_950", url = "$WORK/chapters/950")
             val content =
-                Ao3Provider.fetchChapterContent(WORK, chapter, 1, NetworkClient(client = client, sleep = {})) { claim ->
+                Ao3Provider.fetchChapterContent(WORK, chapter, 1, NetworkClient(client = client, sleep = {})) { claim, _ ->
                     gateCalls++
                     claim()
                 }

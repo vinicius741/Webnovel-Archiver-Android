@@ -22,6 +22,9 @@ object DownloadQueueStatusCopy {
             return "Site asked to slow down · resuming in $seconds"
         }
         if (seconds != null && pacing?.kind == DownloadPacingUiKind.RETRY_WAIT) return "Retrying in $seconds"
+        if (seconds != null && pacing?.kind == DownloadPacingUiKind.SOURCE_LIMIT_WAIT) {
+            return DownloadPacingUiPlanning.sourceLimitLine(pacing)
+        }
         return when (story.section) {
             QueueSection.DOWNLOADING ->
                 if (seconds != null && pacing?.kind == DownloadPacingUiKind.CONFIGURED_WAIT) {
@@ -42,12 +45,16 @@ object DownloadQueueStatusCopy {
         }
     }
 
-    /** A chapter row's status line. [waitSeconds] is the configured-delay countdown for a claimed job. */
+    /**
+     * A chapter row's status line. [waitSeconds] is the pre-request countdown for a claimed job;
+     * [sourceLimit] marks it as the site's request budget rather than the configured delay.
+     */
     fun chapterStatusLabel(
         job: DownloadJob,
         blocked: Boolean,
         waitSeconds: Long?,
         nowMillis: Long,
+        sourceLimit: Boolean = false,
     ): String {
         val retryIn =
             job.nextRetryAt
@@ -62,7 +69,10 @@ object DownloadQueueStatusCopy {
                     else -> "Queued"
                 }
             DownloadJobStatus.Downloading ->
-                waitSeconds?.let { "Next request in ${DownloadPacingUiPlanning.formatDuration(it)}" } ?: "Downloading"
+                waitSeconds?.let {
+                    val prefix = if (sourceLimit) "Site request limit · next request in " else "Next request in "
+                    prefix + DownloadPacingUiPlanning.formatDuration(it)
+                } ?: "Downloading"
             DownloadJobStatus.Paused -> "Paused"
             DownloadJobStatus.Completed -> "Downloaded"
             DownloadJobStatus.Cancelled -> "Cancelled"

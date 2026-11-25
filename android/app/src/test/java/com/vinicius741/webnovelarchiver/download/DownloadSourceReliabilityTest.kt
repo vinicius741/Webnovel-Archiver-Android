@@ -153,7 +153,7 @@ class DownloadSourceReliabilityTest {
             val store = InMemoryDownloadQueueStore()
             val batch = (1..PREFLIGHT_BATCH).map { downloadJob("rr-$it", royalRoad, url = url) }
             val reliability = reliability(store)
-            val gate = NetworkRequestGate { claim -> claim() }
+            val gate = NetworkRequestGate { claim, _ -> claim() }
 
             val small = reliability.preflightSourceIfNeeded(royalRoad, batch[0], batch.take(PREFLIGHT_BATCH - 1), gate)
             val first = reliability.preflightSourceIfNeeded(royalRoad, batch[0], batch, gate)

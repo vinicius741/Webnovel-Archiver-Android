@@ -156,7 +156,7 @@ class NetworkClientTest {
             var gateCalls = 0
             client = NetworkClient(nowMillis = { now })
             val gate =
-                NetworkRequestGate { claimSourcePermission ->
+                NetworkRequestGate { claimSourcePermission, _ ->
                     gateCalls += 1
                     now = 1_000L
                     claimSourcePermission()
@@ -241,7 +241,7 @@ class NetworkClientTest {
             val clearedUrl = server.url("/cleared").toString()
             var gateCalls = 0
             val gate =
-                NetworkRequestGate { claimSourcePermission ->
+                NetworkRequestGate { claimSourcePermission, _ ->
                     gateCalls += 1
                     claimSourcePermission()
                 }

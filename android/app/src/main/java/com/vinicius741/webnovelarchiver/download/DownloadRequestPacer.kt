@@ -29,6 +29,8 @@ data class DownloadPacingSnapshot(
     val jobId: String,
     val chapterTitle: String,
     val nextRequestAtMillis: Long,
+    /** The wait is the site's own request budget or cooldown, not the user's configured delay. */
+    val sourceLimit: Boolean = false,
 )
 
 /**
@@ -69,6 +71,10 @@ class DownloadRequestPacer(
      * worker sleeping under stale settings. [claimSourcePermission] runs while the per-source lock
      * is held, and the actual start timestamp is recorded only after that process-wide claim
      * succeeds. This prevents a source cooldown from bunching already-paced requests when it ends.
+     *
+     * A source budget wait (e.g. Ranobes' 75 requests per 15 minutes) can run for minutes. It is
+     * waited out here, before the claim, so it is published as a countdown and a pause or removal
+     * ends it within a second instead of holding the source's download lane until the budget frees.
      */
     suspend fun awaitTurn(
         providerName: String,
@@ -76,6 +82,7 @@ class DownloadRequestPacer(
         jobId: String,
         chapterTitle: String,
         claimSourcePermission: suspend () -> Unit = {},
+        sourceReadyAt: () -> Long = { 0L },
         settingsProvider: () -> SourceDownloadSettings,
     ) {
         val state = sourceStates.getOrPut(providerName) { SourceState() }
@@ -107,6 +114,25 @@ class DownloadRequestPacer(
                             selectedDelay = selectDelay(delayRange)
                         }
                     }
+                }
+
+                while (true) {
+                    val readyAt = sourceReadyAt()
+                    val now = nowMillis()
+                    if (readyAt <= now) break
+                    publishWaiting(
+                        DownloadPacingSnapshot(
+                            providerName = providerName,
+                            storyId = storyId,
+                            jobId = jobId,
+                            chapterTitle = chapterTitle,
+                            nextRequestAtMillis = readyAt,
+                            sourceLimit = true,
+                        ),
+                    )
+                    sleep(minOf(readyAt - now, SETTINGS_RECHECK_INTERVAL_MILLIS))
+                    // Throws once the job is paused, cancelled or removed.
+                    settingsProvider()
                 }
 
                 claimSourcePermission()

@@ -5,6 +5,9 @@ import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 
 enum class DownloadPacingUiKind {
     CONFIGURED_WAIT,
+
+    /** The site's own request budget or cooldown, which can last minutes (e.g. Ranobes' 75 per 15 minutes). */
+    SOURCE_LIMIT_WAIT,
     RETRY_WAIT,
     RATE_LIMIT_WAIT,
     QUEUED_BEHIND,
@@ -43,7 +46,12 @@ object DownloadPacingUiPlanning {
                     ?.let {
                         snapshot.jobId to
                             DownloadPacingUiStatus(
-                                kind = DownloadPacingUiKind.CONFIGURED_WAIT,
+                                kind =
+                                    if (snapshot.sourceLimit) {
+                                        DownloadPacingUiKind.SOURCE_LIMIT_WAIT
+                                    } else {
+                                        DownloadPacingUiKind.CONFIGURED_WAIT
+                                    },
                                 providerName = snapshot.providerName,
                                 remainingSeconds = remainingSeconds(snapshot.nextRequestAtMillis, nowMillis),
                                 chapterTitle = snapshot.chapterTitle,
@@ -106,6 +114,7 @@ object DownloadPacingUiPlanning {
         when (status.kind) {
             DownloadPacingUiKind.CONFIGURED_WAIT ->
                 "Waiting for delay · next request starts in ${formatDuration(requireNotNull(status.remainingSeconds))}"
+            DownloadPacingUiKind.SOURCE_LIMIT_WAIT -> sourceLimitLine(status)
             DownloadPacingUiKind.RETRY_WAIT ->
                 "Retrying in ${formatDuration(requireNotNull(status.remainingSeconds))}"
             DownloadPacingUiKind.RATE_LIMIT_WAIT ->
@@ -123,6 +132,11 @@ object DownloadPacingUiPlanning {
             null, DownloadPacingUiKind.CONFIGURED_WAIT -> null
             else -> storyHeadline(status)
         }
+
+    /** "Ranobes request limit · next chapter in 6m 20s": a long wait must say why it is not stuck. */
+    fun sourceLimitLine(status: DownloadPacingUiStatus): String =
+        "${status.providerName.ifBlank { "Site" }} request limit · next chapter in " +
+            formatDuration(requireNotNull(status.remainingSeconds))
 
     internal fun remainingSeconds(
         targetMillis: Long,

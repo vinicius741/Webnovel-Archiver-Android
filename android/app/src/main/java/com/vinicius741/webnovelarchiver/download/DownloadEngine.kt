@@ -449,7 +449,7 @@ internal class DownloadRequestGateFactory(
         sourceId: String,
         job: DownloadJob,
     ): NetworkRequestGate =
-        NetworkRequestGate { claimSourcePermission ->
+        NetworkRequestGate { claimSourcePermission, sourceReadyAt ->
             val providerName = SourceRegistry.getById(sourceId)?.name ?: sourceId
             downloadPacer.awaitTurn(
                 providerName = providerName,
@@ -457,6 +457,7 @@ internal class DownloadRequestGateFactory(
                 jobId = job.id,
                 chapterTitle = job.chapter.title,
                 claimSourcePermission = claimSourcePermission,
+                sourceReadyAt = sourceReadyAt,
             ) {
                 ensureJobActive(job.id)
                 val settings = repository.settings.get()

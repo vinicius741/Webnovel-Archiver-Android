@@ -90,6 +90,31 @@ class SourceReliabilityCoordinator(
         }
     }
 
+    /**
+     * When [awaitPermission] could next claim a slot for [host], without claiming one: the later of
+     * the cooldown, the minimum gap and the rolling request budget. 0 when a claim would not wait,
+     * including while the manual circuit is open, since that claim fails at once instead of waiting.
+     * Lets a caller show and cancel a long budget wait that it would otherwise sleep through blind.
+     */
+    fun permissionReadyAt(
+        host: String,
+        policy: SourceNetworkPolicy,
+    ): Long {
+        val state = stateFor(host)
+        return synchronized(state) {
+            if (state.manualVerificationRequired) return@synchronized 0L
+            val now = nowMillis()
+            pruneRequestWindow(state, now, policy.requestWindowMillis)
+            val windowReadyAt =
+                if (state.recentRequests.size >= policy.maximumRequestsPerWindow.coerceAtLeast(1)) {
+                    state.recentRequests.first() + policy.requestWindowMillis
+                } else {
+                    0L
+                }
+            max(max(state.nextAllowedAt, state.cooldownUntil), windowReadyAt).takeIf { it > now } ?: 0L
+        }
+    }
+
     /** Waits for both the cooldown and rolling request budget, then atomically claims one slot. */
     suspend fun awaitPermission(
         url: String,

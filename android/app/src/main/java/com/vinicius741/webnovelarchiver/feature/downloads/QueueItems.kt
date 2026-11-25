@@ -154,6 +154,7 @@ internal fun buildQueueItems(
                                     blocked,
                                     waiting[job.id]?.remainingSeconds,
                                     nowMillis,
+                                    sourceLimit = waiting[job.id]?.kind == DownloadPacingUiKind.SOURCE_LIMIT_WAIT,
                                 ),
                             tone = if (blocked) QueueTone.WARNING else chapterTone(job.status),
                             jobStatus = job.status,

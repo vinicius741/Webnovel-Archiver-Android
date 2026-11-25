@@ -278,4 +278,67 @@ class DownloadRequestPacerTest {
             assertEquals(listOf(500L to 500L), ranges)
             assertEquals(600L, now)
         }
+
+    @Test
+    fun sourceLimitWaitIsPublishedAndEndsWhenTheJobIsRemoved() =
+        runBlocking {
+            var now = 0L
+            var jobActive = true
+            var claimed = false
+            val published = mutableListOf<DownloadPacingSnapshot>()
+            lateinit var pacer: DownloadRequestPacer
+            pacer =
+                DownloadRequestPacer(
+                    nowMillis = { now },
+                    sleep = { millis ->
+                        published += pacer.snapshots.value.values
+                        now += millis
+                        if (now >= 3_000L) jobActive = false
+                    },
+                )
+
+            val error =
+                runCatching {
+                    pacer.awaitTurn(
+                        providerName = "Ranobes",
+                        storyId = "story-a",
+                        jobId = "job-1",
+                        chapterTitle = "Chapter 48",
+                        claimSourcePermission = { claimed = true },
+                        sourceReadyAt = { 400_000L },
+                    ) {
+                        if (!jobActive) throw DownloadJobInactiveException("job-1")
+                        SourceDownloadSettings()
+                    }
+                }.exceptionOrNull()
+
+            assertTrue(error is DownloadJobInactiveException)
+            assertFalse(claimed)
+            assertEquals(3_000L, now)
+            assertTrue(published.all { it.sourceLimit && it.nextRequestAtMillis == 400_000L && it.jobId == "job-1" })
+            assertEquals(3, published.size)
+            assertTrue(pacer.snapshots.value.isEmpty())
+        }
+
+    @Test
+    fun sourceLimitWaitClaimsOnceTheBudgetFrees() =
+        runBlocking {
+            var now = 0L
+            var claimedAt: Long? = null
+            val pacer = DownloadRequestPacer(nowMillis = { now }, sleep = { now += it })
+
+            pacer.awaitTurn(
+                providerName = "Ranobes",
+                storyId = "story-a",
+                jobId = "job-1",
+                chapterTitle = "Chapter 48",
+                claimSourcePermission = { claimedAt = now },
+                sourceReadyAt = { 2_500L },
+            ) {
+                SourceDownloadSettings()
+            }
+
+            assertEquals(2_500L, claimedAt)
+            assertTrue(pacer.snapshots.value.isEmpty())
+        }
 }

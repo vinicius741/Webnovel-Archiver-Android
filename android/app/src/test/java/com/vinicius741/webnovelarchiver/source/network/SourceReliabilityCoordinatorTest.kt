@@ -200,4 +200,32 @@ class SourceReliabilityCoordinatorTest {
         assertEquals("scribble_hub", persisted.key)
         assertTrue(restored.browserTransportActive("www.scribblehub.com"))
     }
+
+    @Test
+    fun permissionReadyAtReportsAFullRequestWindowWithoutClaiming() =
+        runBlocking {
+            var now = 1_000L
+            val coordinator = SourceReliabilityCoordinator(nowMillis = { now }, sleep = { now += it })
+            val policy = SourceNetworkPolicy(requestWindowMillis = 900_000L, maximumRequestsPerWindow = 2)
+
+            assertEquals(0L, coordinator.permissionReadyAt("ranobes.net", policy))
+            coordinator.awaitPermission("https://ranobes.net/a", "ranobes.net", policy)
+            now = 5_000L
+            coordinator.awaitPermission("https://ranobes.net/b", "ranobes.net", policy)
+
+            // The window holds 2 requests: the next slot opens when the first one ages out.
+            assertEquals(901_000L, coordinator.permissionReadyAt("ranobes.net", policy))
+            assertEquals(901_000L, coordinator.permissionReadyAt("ranobes.net", policy))
+            assertEquals(2L, coordinator.snapshots().single().requestCount)
+            now = 901_000L
+            assertEquals(0L, coordinator.permissionReadyAt("ranobes.net", policy))
+        }
+
+    @Test
+    fun permissionReadyAtDoesNotWaitOnAnOpenManualCircuit() {
+        val coordinator = SourceReliabilityCoordinator(nowMillis = { 1_000L })
+        coordinator.requireManualVerification("ranobes.net")
+
+        assertEquals(0L, coordinator.permissionReadyAt("ranobes.net", SourceNetworkPolicy(minimumRequestGapMillis = 3_000L)))
+    }
 }

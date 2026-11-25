@@ -30,9 +30,16 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.min
 import kotlin.random.Random
 
-/** Per-request gate around the shared source-safety claim; must invoke [claimSourcePermission] exactly once. */
+/**
+ * Per-request gate around the shared source-safety claim; must invoke [claimSourcePermission] exactly
+ * once. [sourceReadyAt] reports when that claim could proceed without waiting (0 = now), so a gate
+ * can wait out a long source budget itself: visibly, and abortably, rather than inside the claim.
+ */
 fun interface NetworkRequestGate {
-    suspend fun awaitRequest(claimSourcePermission: suspend () -> Unit)
+    suspend fun awaitRequest(
+        claimSourcePermission: suspend () -> Unit,
+        sourceReadyAt: () -> Long,
+    )
 }
 
 class NetworkClient(
@@ -188,7 +195,9 @@ class NetworkClient(
             if (requestGate == null) {
                 claimSourcePermission()
             } else {
-                requestGate.awaitRequest(claimSourcePermission)
+                requestGate.awaitRequest(claimSourcePermission) {
+                    reliability.permissionReadyAt(request.url.host, policy)
+                }
             }
             val result =
                 SourceRequestEvents.recording(request.url.host, attemptId, attempt, request.method, requestGate != null) {
