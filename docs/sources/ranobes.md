@@ -89,9 +89,20 @@ These limits match the forum sources; the site's own tolerance has not been meas
 
 The site sits behind DDoS-Guard, not Cloudflare. The novel, table-of-contents and chapter pages
 read for this integration on 24 November 2026, requested with the app's mobile User-Agent, came
-back without a challenge. The app recognises only Cloudflare's challenges, so if DDoS-Guard ever
-interposes one it will surface as a parse failure ("novel page was not recognized", "chapter
-content not found") and not open the browser verification.
+back without a challenge.
+
+The site also runs its own image captcha ("If you are human, click on the similar image"), titled
+`Just a moment...` and answered with a `503`. The app recognises it by that title and opens the
+browser verification. Answering it sets a `vb_uam` pass cookie for about three days, bound to the
+client IP and to the exact User-Agent that answered. The site's service worker
+(`/service-worker.js`) makes every page navigation itself, and a WebView applies an assigned
+User-Agent to the page but never to its service workers. With the rewritten Chrome string the
+answer was accepted and the navigation that followed, sent by the service worker with the
+WebView's own string, got a new captcha, so verification looped forever while Chrome passed.
+Ranobes therefore uses `SourceUserAgentMode.WEBVIEW`: the page, the service worker and OkHttp all
+send the WebView's own User-Agent, and one pass covers all of them. Diagnosed on 25 November 2026
+by replaying the WebView's cookies: the same pass returned the novel page with the page's
+User-Agent and the captcha with the service worker's.
 
 Guests can read everything a download needs. The novel's external links are hidden until sign-in,
 so a Ranobes novel never picks up a Patreon link from its page and one has to be entered by hand.

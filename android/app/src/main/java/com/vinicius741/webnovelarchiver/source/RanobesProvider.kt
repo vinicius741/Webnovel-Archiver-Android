@@ -24,6 +24,12 @@ import java.net.URI
  * "Too many requests" page, or with a 503 and a one-minute Retry-After that it repeats for as long
  * as the lockout lasts, while the same page still opens in a browser on the same connection. Either
  * blocks the whole source, as a Cloudflare challenge does, until the user opens it in the browser.
+ *
+ * The site's image captcha issues a pass cookie bound to the User-Agent that answered it, and the
+ * site's service worker makes every page navigation itself. A WebView applies an assigned
+ * User-Agent to the page but not to its service workers, so with the rewritten Chrome string the
+ * pass never matched the navigation after it and the captcha came back forever. The source keeps
+ * the WebView's own string everywhere, so the page, the service worker and OkHttp all send one.
  */
 object RanobesProvider : SourceProvider {
     private const val ID_PREFIX = "ranobes_"
@@ -47,6 +53,7 @@ object RanobesProvider : SourceProvider {
                     requestWindowMillis = 15L * 60L * 1_000L,
                     maximumRequestsPerWindow = 75,
                 ),
+            userAgentMode = SourceUserAgentMode.WEBVIEW,
             featuredMetrics =
                 listOf(
                     SourceMetricKind.READERS,

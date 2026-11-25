@@ -119,6 +119,9 @@ class SourceUserAgentTest {
     @Test
     fun onlyWebViewModeSourcesKeepTheWebViewDefault() {
         assertTrue(SourceUserAgent.keepsWebViewDefault("https://www.scribblehub.com/read/1-x/chapter/2/"))
+        // Ranobes's service worker navigates with the WebView's own string, and its captcha pass is bound to one.
+        assertTrue(SourceUserAgent.keepsWebViewDefault("https://ranobes.net/novels/1-example.html"))
+        assertTrue(SourceUserAgent.keepsWebViewDefault("https://ranobes.top/novels/1-example.html"))
         assertTrue(!SourceUserAgent.keepsWebViewDefault("https://www.royalroad.com/fiction/1/example"))
         assertTrue(!SourceUserAgent.keepsWebViewDefault("https://www.fanfiction.net/s/1/1/title"))
         assertTrue(!SourceUserAgent.keepsWebViewDefault("https://www.patreon.com/api/posts"))
