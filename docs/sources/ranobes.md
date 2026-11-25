@@ -7,16 +7,19 @@ picker, source settings, library filters, and download scheduler discover it thr
 ## Imports and chapters
 
 Paste a novel page such as
-`https://ranobes.net/novels/752990-reincarnated-as-a-fox-with-system-v71134.html`. Two more
-addresses import the same novel, so following one from any of its pages never creates a second
-book:
+`https://ranobes.net/novels/752990-reincarnated-as-a-fox-with-system-v71134.html`. Three more
+kinds of address import the same novel, so following one from any of its pages never creates a
+second book:
 
 - the same page at the site root,
   `https://ranobes.net/752990-reincarnated-as-a-fox-with-system-v71134.html`, which is where the
   site's own breadcrumbs point (the site redirects it to `/novels/`);
 - a chapter page,
   `https://ranobes.net/reincarnated-as-a-fox-with-system-v71134-752990/3440587.html`, which names
-  its novel in its path. Importing one adds the whole novel, from its first chapter.
+  its novel in its path. Importing one adds the whole novel, from its first chapter;
+- either of them on the site's former address, such as
+  `https://ranobes.top/novels/752990-reincarnated-as-a-fox-with-system-v71134.html`. The app treats
+  it as the `ranobes.net` link and makes every request to `ranobes.net`.
 
 Tracking parameters and fragments are discarded. The slug is kept as submitted: the site redirects
 a wrong slug to the novel's page by id. The table of contents (`/chapters/<id>/`), its `/first`
@@ -91,25 +94,38 @@ Guests can read everything a download needs. The novel's external links are hidd
 so a Ranobes novel never picks up a Patreon link from its page and one has to be entered by hand.
 No account-login flow is implemented.
 
-`ranobes.top` serves the same catalog under its own address, behind Cloudflare. It is not
-registered, and a URL on it is reported as unsupported.
+`ranobes.top` is the site's former address. It still serves the same catalog under its own address,
+behind Cloudflare. It is registered so that links to it import, but the app sends no request to it:
+a link on it resolves to the same `ranobes.net` page and story ID, so a novel imported from either
+address is one book.
 
 ## Validation
 
 Synthetic fixtures under `src/test/resources/fixtures/ranobes/` keep the public site's novel,
 table-of-contents, and chapter structure with invented content. `RanobesProviderTest` covers URL
-ownership and normalization, metadata and counters, status, chapter-list order, dates and stable
-ids, incomplete and withheld lists, the seam duplicate, the one-page update check and its
-fallback, the latest-chapter merge against the stored novel, chapter text cleanup, and malformed
-pages.
+ownership and normalization, the former address and the requests a link on it leads to, metadata
+and counters, status, chapter-list order, dates and stable ids, incomplete and withheld lists, the
+seam duplicate, the one-page update check and its fallback, the latest-chapter merge against the
+stored novel, chapter text cleanup, and malformed pages.
 
 The same parser was run over novel, table-of-contents, and chapter pages downloaded from the site
-on 24 November 2026, and its output was compared with those pages.
+on 24 November 2026, and its output was compared with those pages. On 25 November 2026 the former
+address was asked for a novel page, the same page at its root, and a chapter page, once each. It
+answered without a Cloudflare challenge: the novel and chapter pages carry the markup this
+integration reads, under the same paths, and the root form redirects to `/novels/`, as on
+`ranobes.net`.
 
 On 24 November 2026 the release gate (`:app:lintKotlin :app:releaseCheck`) passed with this
-change, 2,128 unit tests among them. On the `webnovel_api36` debug build the offline `sources-all`
-scenario passed: it imported the seven provider fixtures and downloaded 16 chapters, the three
-Ranobes chapters among them. The Add Story picker, the library card, the Details page, and the
-reader were checked on the inner and the cover displays.
+change, 2,128 unit tests among them, and the offline `sources-all` scenario passed on the
+`webnovel_api36` debug build: it imported the seven provider fixtures and downloaded 16 chapters,
+the three Ranobes chapters among them. The Add Story picker, the library card, the Details page,
+and the reader were checked on the inner and the cover displays.
 
-Not run: an import from the live site through the app. Live site checks need an explicit request.
+On 25 November 2026 the gate passed again with the former address registered, 2,129 unit tests
+among them. On the same emulator its link was then pasted into Add Story in an offline session.
+The fixture novel was imported from the `ranobes.net` pages, the session recorded no request to
+`ranobes.top` and none denied, and importing the novel again from its `ranobes.net` link left one
+book in the library.
+
+Not run: an import from either address through the app against the live site. Live site checks
+need an explicit request.

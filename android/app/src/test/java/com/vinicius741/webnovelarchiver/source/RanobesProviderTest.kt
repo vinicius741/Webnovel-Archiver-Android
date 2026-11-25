@@ -34,10 +34,12 @@ class RanobesProviderTest {
         private val respond: (path: String) -> String?,
     ) : Interceptor {
         val requests = mutableListOf<String>()
+        val hosts = mutableSetOf<String>()
 
         override fun intercept(chain: Interceptor.Chain): Response {
             val path = chain.request().url.encodedPath
             requests.add(path)
+            hosts.add(chain.request().url.host)
             val body = respond(path)
             return Response
                 .Builder()
@@ -85,6 +87,10 @@ class RanobesProviderTest {
             story to story,
             "http://www.ranobes.net/24680-the-lorem-fox.html?from=share#top" to story,
             "https://ranobes.net/the-lorem-fox-24680/370002.html" to story,
+            // The site's former address names the same novel.
+            "https://ranobes.top/novels/24680-the-lorem-fox.html" to story,
+            "https://ranobes.top/24680-the-lorem-fox.html" to story,
+            "https://ranobes.top/the-lorem-fox-24680/370002.html" to story,
             wrongSlug to wrongSlug,
         ).forEach { (submitted, normalized) ->
             val match = requireNotNull(SourceRegistry.resolve(submitted, SourceUrlKind.STORY))
@@ -93,17 +99,17 @@ class RanobesProviderTest {
             assertEquals("ranobes_24680", RanobesProvider.getStoryId(submitted))
         }
         assertSame(RanobesProvider, SourceRegistry.providerForHost("www.ranobes.net"))
+        assertSame(RanobesProvider, SourceRegistry.providerForHost("ranobes.top"))
         assertEquals("ranobes_370002", RanobesProvider.getChapterId("https://ranobes.net/the-lorem-fox-24680/370002.html"))
         assertNull(RanobesProvider.getChapterId(story))
 
         listOf(
-            // The mirror serves the same catalog, but behind another protection service.
-            "https://ranobes.top/novels/24680-the-lorem-fox.html",
             "https://ranobes.net.evil.org/novels/24680-the-lorem-fox.html",
             "https://example.com/import?next=$story",
             "https://ranobes.net/chapters/24680/",
             "https://ranobes.net/chapters/24680/first",
             "https://ranobes.net/novels/24680.html",
+            "https://ranobes.top/chapters/24680/",
             "https://ranobes.net/tags/genre/Adventure/",
             "https://ranobes.net/",
         ).forEach {
@@ -111,6 +117,26 @@ class RanobesProviderTest {
             assertFalse(it, SourceUrlValidation.isImportableStoryUrl(it))
         }
     }
+
+    @Test
+    fun aLinkOnTheFormerAddressIsReadFromTheCurrentOne() =
+        runBlocking {
+            val former = "https://ranobes.top/novels/24680-the-lorem-fox.html"
+            val match = requireNotNull(SourceRegistry.resolve(former, SourceUrlKind.STORY))
+
+            // The same novel as its ranobes.net link, so importing both never makes two books.
+            assertEquals(STORY, match.normalizedUrl)
+            assertEquals(RanobesProvider.getStoryId(STORY), RanobesProvider.getStoryId(former))
+
+            // The sync engine loads the novel link the address resolves to.
+            val site = fixtureSite()
+            val loaded = RanobesProvider.loadStory(match.normalizedUrl, preferLatestChapters = false, network = network(site))
+
+            assertEquals("The Lorem Fox", loaded.metadata.title)
+            assertEquals(3, loaded.chapters.size)
+            assertEquals(setOf("ranobes.net"), site.hosts)
+            assertTrue(loaded.chapters.all { it.url.startsWith("https://ranobes.net/") })
+        }
 
     @Test
     fun parsesNovelMetadataWithCountersStatusAndUtcDates() {

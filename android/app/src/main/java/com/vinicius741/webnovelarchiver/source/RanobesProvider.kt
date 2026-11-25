@@ -13,6 +13,10 @@ import com.vinicius741.webnovelarchiver.source.network.SourceNetworkPolicy
  * Ranobes (ranobes.net), a DataLife Engine site. The novel page carries the metadata and the newest
  * chapters; the complete table of contents is paginated, about 25 chapters per page, so an update
  * check reads one page and only a full sync walks them all.
+ *
+ * The site moved from ranobes.top, which still serves the same catalog. A link on the former address
+ * belongs to this source: it names the same novel, and every request is made to ranobes.net, which
+ * stays the first host because the network coordinator names a source's first host in its events.
  */
 object RanobesProvider : SourceProvider {
     private const val ID_PREFIX = "ranobes_"
@@ -25,7 +29,7 @@ object RanobesProvider : SourceProvider {
             id = "ranobes",
             displayName = "Ranobes",
             browseUrl = "https://ranobes.net",
-            hosts = setOf("ranobes.net"),
+            hosts = setOf("ranobes.net", "ranobes.top"),
             capabilities = SourceCapabilities(latestChapterSync = true),
             networkPolicy =
                 SourceNetworkPolicy(
