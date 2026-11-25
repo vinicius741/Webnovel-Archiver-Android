@@ -18,6 +18,10 @@ import java.net.URI
  * The site moved from ranobes.top, which still serves the same catalog. A link on the former address
  * belongs to this source: it names the same novel, and every request is made to ranobes.net, which
  * stays the first host because the network coordinator names a source's first host in its events.
+ *
+ * The site bans an address for about an hour once it reads too fast: 94 requests in 12 minutes
+ * tripped it. The request budget stays well under that, and the ban's 403 "Too many requests" page
+ * carries a Retry-After, so the source pauses until the ban lifts instead of failing every chapter.
  */
 object RanobesProvider : SourceProvider {
     private const val ID_PREFIX = "ranobes_"
@@ -34,10 +38,13 @@ object RanobesProvider : SourceProvider {
             capabilities = SourceCapabilities(latestChapterSync = true),
             networkPolicy =
                 SourceNetworkPolicy(
-                    minimumRequestGapMillis = 1_500L,
+                    minimumRequestGapMillis = 3_000L,
                     maximumAttempts = 2,
                     retryableStatusCodes = setOf(429, 503),
-                    maximumRequestsPerWindow = 30,
+                    retryAfterRateLimitStatusCodes = setOf(403),
+                    maximumRetryAfterMillis = 90L * 60L * 1_000L,
+                    requestWindowMillis = 15L * 60L * 1_000L,
+                    maximumRequestsPerWindow = 75,
                 ),
             featuredMetrics =
                 listOf(

@@ -445,6 +445,47 @@ class NetworkClientTest {
         }
 
     @Test
+    fun forbiddenWithRetryAfterDefersAsRateLimitWhenThePolicyNamesIt() =
+        runBlocking {
+            // Ranobes's "Too many requests" ban is a 403 with a Retry-After about an hour out.
+            client = ranobesStylePolicyClient()
+            server.enqueue(MockResponse().setResponseCode(403).setHeader("Retry-After", "3345"))
+
+            val error = runCatching { client.fetch(server.url("/banned").toString()) }.exceptionOrNull()
+
+            assertTrue(error is RateLimitNetworkException)
+            assertEquals(403, (error as RateLimitNetworkException).statusCode)
+            assertEquals(3_345_000L, error.retryAfterMillis)
+            assertEquals(1, server.requestCount)
+        }
+
+    @Test
+    fun forbiddenWithoutRetryAfterStaysAnHttpErrorUnderThatPolicy() =
+        runBlocking {
+            client = ranobesStylePolicyClient()
+            server.enqueue(MockResponse().setResponseCode(403))
+
+            val error = runCatching { client.fetch(server.url("/forbidden").toString()) }.exceptionOrNull()
+
+            assertTrue(error is HttpNetworkException)
+            assertEquals(1, server.requestCount)
+        }
+
+    private fun ranobesStylePolicyClient() =
+        NetworkClient(
+            policyResolver =
+                NetworkPolicyResolver {
+                    SourceNetworkPolicy(
+                        maximumAttempts = 2,
+                        retryableStatusCodes = setOf(429, 503),
+                        retryAfterRateLimitStatusCodes = setOf(403),
+                        maximumRetryAfterMillis = 90L * 60L * 1_000L,
+                        maximumJitterMillis = 0L,
+                    )
+                },
+        )
+
+    @Test
     fun serverRetryAfterWithinTheBackoffBudgetIsSleptAndRetried() =
         runBlocking {
             client =

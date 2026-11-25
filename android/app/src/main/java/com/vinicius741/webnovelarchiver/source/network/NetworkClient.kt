@@ -212,7 +212,7 @@ class NetworkClient(
                         ok = false,
                         code = result.statusCode,
                     )
-                    val isRateLimited = result.statusCode in policy.retryableStatusCodes
+                    val isRateLimited = policy.isRateLimit(result.statusCode, result.retryAfterHeader)
                     if (isRateLimited) {
                         // R14: the accepted server deadline reaches the shared host coordinator as
                         // soon as the response arrives, so no other operation on this host can
@@ -626,7 +626,7 @@ suspend fun NetworkClient.fetchImage(
             call.timeout().timeout(NetworkClient.DEFAULT_CALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
             call.executeCancellable { response ->
                 if (!response.isSuccessful) {
-                    if (response.code == 429) {
+                    if (response.code == 429 || policy.isRateLimit(response.code, response.header("Retry-After"))) {
                         reliability.recordRateLimit(
                             request.url.host,
                             policy,
