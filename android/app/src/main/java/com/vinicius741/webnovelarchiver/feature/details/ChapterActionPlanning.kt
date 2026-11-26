@@ -10,6 +10,8 @@ internal data class ChapterAudioInfo(
     val state: ChapterAudioState,
     val bytes: Long = 0L,
     val durationMs: Long = 0L,
+    /** A published pack exists, even while the chapter is queued to regenerate. */
+    val hasPack: Boolean = state == ChapterAudioState.READY,
 )
 
 /** What the On this phone card shows about a story's audio. */
@@ -33,6 +35,9 @@ internal object ChapterActionPlanning {
     const val TEXT_DOWNLOADED: Byte = 1
     const val TEXT_DOWNLOADING: Byte = 2
 
+    /** Waiting in the download queue (pending or paused): shown, but not pulsing. */
+    const val TEXT_WAITING: Byte = 3
+
     /** Audio bar states. */
     const val AUDIO_READY: Byte = 1
     const val AUDIO_QUEUED: Byte = 2
@@ -41,12 +46,14 @@ internal object ChapterActionPlanning {
     fun textStates(
         chapters: List<Chapter>,
         downloading: Set<String>,
+        waiting: Set<String> = emptySet(),
     ): ByteArray =
         ByteArray(chapters.size) { index ->
             val chapter = chapters[index]
             when {
                 chapter.downloaded -> TEXT_DOWNLOADED
                 chapter.id in downloading -> TEXT_DOWNLOADING
+                chapter.id in waiting -> TEXT_WAITING
                 else -> 0
             }
         }
@@ -76,17 +83,31 @@ internal object ChapterActionPlanning {
         var heard = 0
         chapters.forEachIndexed { index, chapter ->
             val info = audio[chapter.id] ?: return@forEachIndexed
-            if (info.state == ChapterAudioState.READY) {
+            if (info.hasPack) {
                 ready++
                 bytes += info.bytes
                 duration += info.durationMs
                 if (index < bookmarkIndex) heard++
-            } else {
-                pending++
             }
+            if (info.state != ChapterAudioState.READY) pending++
         }
         return StoryAudioSummary(ready, pending, bytes, duration, heard)
     }
+
+    /**
+     * Where "already heard" ends and a break's kept chapters start: the earlier of the bookmark and
+     * the listening place, so audio between a bookmark read ahead and where listening stopped is
+     * never treated as heard; whichever exists when only one does; -1 with neither.
+     */
+    fun anchorIndex(
+        bookmarkIndex: Int,
+        listenIndex: Int,
+    ): Int =
+        when {
+            bookmarkIndex >= 0 && listenIndex >= 0 -> minOf(bookmarkIndex, listenIndex)
+            bookmarkIndex >= 0 -> bookmarkIndex
+            else -> listenIndex.coerceAtLeast(-1)
+        }
 
     /** Chapters before the bookmark with any audio, queued included: what was already heard. */
     fun heard(
@@ -101,7 +122,7 @@ internal object ChapterActionPlanning {
     /**
      * Taking a break: every chapter with audio except the [keep] chapters starting at the bookmark
      * (the bookmarked one included), so listening picks up instantly later. Queued chapters past
-     * them leave the queue too.
+     * them leave the queue too. Without a bookmark (-1) nothing is suggested to keep, so nothing goes.
      */
     fun breakDeletions(
         chapters: List<Chapter>,
@@ -109,7 +130,8 @@ internal object ChapterActionPlanning {
         keep: Int,
         audio: Map<String, ChapterAudioInfo>,
     ): List<String> {
-        val start = bookmarkIndex.coerceAtLeast(0)
+        if (bookmarkIndex < 0) return emptyList()
+        val start = bookmarkIndex
         val kept = start until start + keep.coerceAtLeast(0)
         return chapters.mapIndexedNotNull { index, chapter -> chapter.id.takeIf { it in audio && index !in kept } }
     }
@@ -154,11 +176,11 @@ internal object ChapterActionPlanning {
         audio: Map<String, ChapterAudioInfo>,
     ): Long = ids.sumOf { audio[it]?.bytes ?: 0L }
 
-    /** Of [ids], how many are queued or generating rather than generated. */
+    /** Of [ids], how many are only queued or generating, with no generated audio yet. */
     fun pendingOf(
         ids: Collection<String>,
         audio: Map<String, ChapterAudioInfo>,
-    ): Int = ids.count { id -> audio[id]?.state.let { it != null && it != ChapterAudioState.READY } }
+    ): Int = ids.count { id -> audio[id]?.let { !it.hasPack } == true }
 
     /** "Ch. 120–149, 153–211", at most three runs then "+2 more"; [indexes] are 0-based. */
     fun rangeLabel(indexes: Collection<Int>): String {

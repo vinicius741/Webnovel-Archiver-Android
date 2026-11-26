@@ -95,7 +95,7 @@ internal enum class SelectionPurpose { DOWNLOAD, AUDIO }
 
 /**
  * Select, opened from the On this phone card's sheets: Download lists the chapters not downloaded
- * from the bookmark on; Audio lists every chapter with audio.
+ * from the bookmark on; Audio lists every chapter.
  */
 internal fun showChapterSelectionFor(
     host: ScreenHost,
@@ -105,11 +105,16 @@ internal fun showChapterSelectionFor(
     when (purpose) {
         SelectionPurpose.DOWNLOAD -> {
             selectionScopes[storyId] = SelectionScope.NOT_DOWNLOADED
-            selectionFilters[storyId] = setOf(SelectionFilter.FROM_BOOKMARK)
+            // From the bookmark only when chapters are left there, or the list would open empty.
+            val story = host.repository.story(storyId)
+            val bookmark = story?.let(::bookmarkIndexOf) ?: -1
+            val leftAfter = story?.chapters?.drop(bookmark.coerceAtLeast(0))?.any { !it.downloaded } == true
+            selectionFilters[storyId] = if (bookmark >= 0 && leftAfter) setOf(SelectionFilter.FROM_BOOKMARK) else emptySet()
         }
         SelectionPurpose.AUDIO -> {
+            // Every chapter, so the list offers both generating and deleting.
             selectionScopes[storyId] = SelectionScope.ALL
-            selectionFilters[storyId] = setOf(SelectionFilter.HAS_AUDIO)
+            selectionFilters[storyId] = emptySet()
         }
     }
     host.showChapterSelection(storyId)
@@ -292,6 +297,8 @@ internal fun ScreenHost.showChapterSelection(
             }
         adapter = ChapterSelectionAdapter(items, selectedIds, bookmarkPosition, ::handleTap)
         list.adapter = adapter
+        // Open at the bookmark rather than chapter 1 when earlier chapters are listed too.
+        if (bookmarkPosition > 0) chapterLayout.scrollToPositionWithOffset(bookmarkPosition, dp(BOOKMARK_OFFSET_DP))
         list.addItemDecoration(CardListDecoration(context) { true })
         list.addOnItemTouchListener(
             ChapterDragSelectionTouchListener(
@@ -515,7 +522,8 @@ private class SelectionActions(
             actions.action("Delete") {
                 val ids = delete.map { it.chapter.id }
                 if (ids.isEmpty()) return@action
-                ChapterSheets(host).confirmDelete(story, ids, audioInfo, null)
+                // Back to the chapters once confirmed, as before, so nothing shows the audio about to go.
+                ChapterSheets(host).confirmDelete(story, ids, audioInfo, null) { host.showStoryChapters(story.id) }
             }
         val footer =
             LinearLayout(context).apply {
@@ -609,4 +617,5 @@ private class SelectionActions(
 
 private const val ACTION_HEIGHT_DP = 40
 private const val QUICK_NEXT = 10
+private const val BOOKMARK_OFFSET_DP = 96
 private const val ADD_LETTER_SPACING = 0.08f

@@ -8,10 +8,14 @@ internal data class StoryAudioFacts(
     val chapterIds: List<String>,
     /** -1 without a bookmark. */
     val bookmarkIndex: Int,
+    /** Where listening stopped; -1 if never. */
+    val listenIndex: Int = -1,
     /** Generated audio size by chapter id. */
     val bytes: Map<String, Long>,
     /** When listening last stopped in this story, if ever. */
     val lastListenedAt: Long?,
+    /** Chapters waiting in the generation queue: they go with the audio, or the queue would make it again. */
+    val queued: Set<String> = emptySet(),
 )
 
 /** A clean-up the Listen screen offers: the chapters to delete, by story, and what it frees. */
@@ -28,10 +32,12 @@ internal data class ListenSuggestion(
 }
 
 /**
- * Clean-ups worked out from each story's bookmark and last listen: a finished story (bookmark on
- * its last chapter) loses all its audio; a story not listened to for [IDLE_DAYS] keeps only the
- * [KEEP_ON_BREAK] chapters from its bookmark; every other story's audio before its bookmark is
- * offered together as already heard. A suggestion that would free nothing is left out.
+ * Clean-ups worked out from each story's bookmark and last listen. Each story's place is the earlier
+ * of its bookmark and its listening place (whichever exists if only one does), so audio not yet
+ * heard is never offered. A finished story (place on its last chapter) loses all its audio; a story
+ * not listened to for [IDLE_DAYS] keeps only the [KEEP_ON_BREAK] chapters from its place; every
+ * other story's audio before its place is offered together as already heard. Queued chapters in
+ * those ranges go too. A suggestion that would free nothing is left out.
  */
 internal object ListenSuggestionPlanning {
     const val IDLE_DAYS = 14
@@ -45,20 +51,20 @@ internal object ListenSuggestionPlanning {
         val result = mutableListOf<ListenSuggestion>()
         val heard = mutableListOf<Pair<StoryAudioFacts, List<String>>>()
         stories.filter { it.bytes.isNotEmpty() }.forEach { story ->
-            val withAudio = story.chapterIds.filter { it in story.bytes }
+            val withAudio = story.chapterIds.filter { it in story.bytes || it in story.queued }
             val idleDays = story.lastListenedAt?.let { ((now - it) / DAY_MS).toInt() } ?: 0
+            val place = placeOf(story)
             when {
-                story.chapterIds.isNotEmpty() && story.bookmarkIndex == story.chapterIds.lastIndex ->
-                    result += suggestion(ListenSuggestion.Kind.FINISHED, story, withAudio)
+                place < 0 || withAudio.isEmpty() -> Unit
+                place == story.chapterIds.lastIndex -> result += suggestion(ListenSuggestion.Kind.FINISHED, story, withAudio)
                 idleDays >= IDLE_DAYS -> {
-                    val start = story.bookmarkIndex.coerceAtLeast(0)
-                    val kept = story.chapterIds.subList(start, (start + KEEP_ON_BREAK).coerceAtMost(story.chapterIds.size)).toSet()
+                    val kept = story.chapterIds.subList(place, (place + KEEP_ON_BREAK).coerceAtMost(story.chapterIds.size)).toSet()
                     val delete = withAudio.filter { it !in kept }
-                    if (delete.isNotEmpty()) result += suggestion(ListenSuggestion.Kind.ON_BREAK, story, delete, idleDays)
+                    if (delete.any { it in story.bytes }) result += suggestion(ListenSuggestion.Kind.ON_BREAK, story, delete, idleDays)
                 }
-                story.bookmarkIndex > 0 -> {
-                    val before = story.chapterIds.take(story.bookmarkIndex).filter { it in story.bytes }
-                    if (before.isNotEmpty()) heard += story to before
+                place > 0 -> {
+                    val before = story.chapterIds.take(place).filter { it in story.bytes || it in story.queued }
+                    if (before.any { it in story.bytes }) heard += story to before
                 }
             }
         }
@@ -73,6 +79,13 @@ internal object ListenSuggestionPlanning {
         }
         return result
     }
+
+    private fun placeOf(story: StoryAudioFacts): Int =
+        when {
+            story.bookmarkIndex >= 0 && story.listenIndex >= 0 -> minOf(story.bookmarkIndex, story.listenIndex)
+            story.bookmarkIndex >= 0 -> story.bookmarkIndex
+            else -> story.listenIndex
+        }
 
     private fun suggestion(
         kind: ListenSuggestion.Kind,

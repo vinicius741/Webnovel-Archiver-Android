@@ -145,20 +145,20 @@ internal class StoryPhoneCard(
 
     private fun renderText() {
         val chapters = story.chapters
-        val downloading =
-            statuses.filterValues { it == DownloadJobStatus.Pending || it == DownloadJobStatus.Downloading }.keys
+        val downloading = statuses.filterValues { it == DownloadJobStatus.Downloading }.keys
+        val waiting = statuses.filterValues { it == DownloadJobStatus.Pending || it == DownloadJobStatus.Paused }.keys
         val done = chapters.count { it.downloaded }
         val left = chapters.size - done
         textTitle.text = "${"%,d".format(done)} of ${"%,d".format(chapters.size)} downloaded"
         textSub.text = if (left > 0) "${"%,d".format(left)} to go" else "Everything is downloaded"
         textBar.bindStates(
-            ChapterActionPlanning.textStates(chapters, downloading),
-            intArrayOf(0, colors.outline, colors.primary),
+            ChapterActionPlanning.textStates(chapters, downloading, waiting),
+            intArrayOf(0, colors.outline, colors.primary, colors.primaryContainer),
             ChapterActionPlanning.TEXT_DOWNLOADING.toInt(),
             bookmarkFraction(),
             "$done of ${chapters.size} chapters downloaded" + bookmarkSpoken(),
         )
-        val active = downloading.count { id -> chapters.any { it.id == id && !it.downloaded } }
+        val active = (downloading + waiting).count { id -> chapters.any { it.id == id && !it.downloaded } }
         downloadLine.text = "Downloading · ${"%,d".format(active)} left"
         downloadLine.visibility = if (active > 0) View.VISIBLE else View.GONE
     }
@@ -191,12 +191,14 @@ internal class StoryPhoneCard(
     /** "Generating Ch. 230 · 11% · 6 more queued", or how many wait behind other novels. */
     private fun renderLive() {
         val progress = host.narration.progress.value
-        val job = progress?.job?.takeIf { it.storyId == story.id }
-        val queued = audio.values.count { it.state == ChapterAudioState.QUEUED }
+        val number =
+            progress?.job?.takeIf { it.storyId == story.id }?.let { job -> story.chapters.indexOfFirst { it.id == job.chapterId } + 1 } ?: 0
+        // A chapter of another story, or one no longer in this story, shows no generating line.
+        val job = progress?.job?.takeIf { number > 0 }
+        val queued = audio.count { (id, info) -> info.state == ChapterAudioState.QUEUED && id != job?.chapterId }
         liveLine.text =
             when {
                 job != null -> {
-                    val number = story.chapters.indexOfFirst { it.id == job.chapterId } + 1
                     val percent =
                         if (progress.preparing ||
                             progress.total <= 0
@@ -207,6 +209,7 @@ internal class StoryPhoneCard(
                         }
                     "Generating Ch. $number · $percent" + if (queued > 0) " · $queued more queued" else ""
                 }
+                queued > 0 && host.narration.queueState.value.paused -> "$queued queued · generation is paused"
                 queued > 0 -> "$queued queued, waiting for other novels"
                 else -> ""
             }
@@ -222,7 +225,11 @@ internal class StoryPhoneCard(
         observer =
             host.scope.launch {
                 launch {
-                    combine(coordinator.queueState.map { it.jobs }, coordinator.packsRevision, running) { _, _, _ -> Unit }
+                    combine(
+                        coordinator.queueState.map { it.jobs }.distinctUntilChanged(),
+                        coordinator.packsRevision,
+                        running,
+                    ) { _, _, _ -> Unit }
                         .collect {
                             audio = chapterAudioInfo(host.narration, story)
                             renderAudio()

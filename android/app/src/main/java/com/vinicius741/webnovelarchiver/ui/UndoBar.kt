@@ -26,9 +26,11 @@ internal fun Activity.showUndoBar(
     val colors = ThemeManager.colors
     val radius = dp(Spacing.MD).toFloat()
     lateinit var bar: LinearLayout
+    var handled = false
 
     fun hide() {
         if (bar.parent == null) return
+        bar.isEnabled = false
         bar
             .animate()
             .alpha(0f)
@@ -48,6 +50,10 @@ internal fun Activity.showUndoBar(
             minHeight = dp(MIN_TOUCH_DP)
             background = ripple(roundedBg(android.graphics.Color.TRANSPARENT, radius), radius, colors.primaryContainer)
             setOnClickListener {
+                // Once: a second tap during the fade-out does nothing.
+                if (handled) return@setOnClickListener
+                handled = true
+                isEnabled = false
                 hide()
                 onUndo()
             }
@@ -72,11 +78,14 @@ internal fun Activity.showUndoBar(
             .getRootWindowInsets(content)
             ?.getInsets(WindowInsetsCompat.Type.systemBars())
             ?.bottom ?: 0
+    // Above the shelf (mini player and navigation) when it shows; otherwise above the gesture bar.
+    val shelf = content.findViewWithTag<View>(BOTTOM_SHELF_TAG)?.takeIf { it.isShown && it.height > 0 }
+    val clearance = shelf?.height?.plus(dp(Spacing.SM)) ?: (bottomInset + dp(Spacing.LG))
     val side = dp(Spacing.MD)
     content.addView(
         bar,
         FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-            setMargins(side, 0, side, bottomInset + dp(BOTTOM_CLEARANCE_DP))
+            setMargins(side, 0, side, clearance)
             width = minOf(content.width - 2 * side, dp(MAX_WIDTH_DP)).takeIf { it > 0 } ?: ViewGroup.LayoutParams.MATCH_PARENT
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         },
@@ -96,6 +105,4 @@ private const val HIDE_MS = 160L
 private const val MIN_TOUCH_DP = 44
 private const val BAR_ELEVATION_DP = 6f
 
-/** Clears the bottom navigation shelf and mini player. */
-private const val BOTTOM_CLEARANCE_DP = 92
 private const val MAX_WIDTH_DP = 560

@@ -9,6 +9,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
+import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.narration.NarrationScreenPlanning
@@ -16,6 +17,7 @@ import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.feature.narration.narrationScope
 import com.vinicius741.webnovelarchiver.feature.narration.queueNarration
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
+import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
 import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
@@ -35,9 +37,12 @@ import com.vinicius741.webnovelarchiver.ui.showUndoBar
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import timber.log.Timber
+import java.util.concurrent.atomic.AtomicBoolean
 
 /*
  * The On this phone card's sheets: Download text (the next chapters after the bookmark,
@@ -63,12 +68,25 @@ internal class ChapterSheets(
         with(host) {
             val story = repository.story(storyId) ?: return
             if (!StoryActionGuards.canQueueDownloads(story)) {
-                toast(StoryActionGuards.archivedActionMessage("Downloading"))
+                toast(
+                    if (StoryActionGuards.canModifyStory(story)) {
+                        "This novel’s source is unavailable, so nothing can download"
+                    } else {
+                        StoryActionGuards.archivedActionMessage("Downloading")
+                    },
+                )
                 return
             }
             val chapters = story.chapters
             val bookmark = bookmarkIndexOf(story)
-            val left = chapters.indices.filter { !chapters[it].downloaded }
+            val downloading =
+                storyPageModel(storyId)
+                    .refresh()
+                    .chapterStatuses
+                    .filterValues {
+                        it == DownloadJobStatus.Pending || it == DownloadJobStatus.Downloading || it == DownloadJobStatus.Paused
+                    }.keys
+            val left = chapters.indices.filter { !chapters[it].downloaded && chapters[it].id !in downloading }
             val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
             lateinit var sheet: BottomSheetHandle
 
@@ -77,7 +95,7 @@ internal class ChapterSheets(
                 sheet.dismissThen { queueDownload(story, indexes) }
             }
             val from = bookmark.coerceAtLeast(0)
-            val nextIndexes = { ChapterActionPlanning.nextToDownload(chapters, from, ChapterSheetMemory.downloadNext) }
+            val nextIndexes = { ChapterActionPlanning.nextToDownload(chapters, from, ChapterSheetMemory.downloadNext, downloading) }
             val next =
                 SheetOption(
                     app,
@@ -120,9 +138,12 @@ internal class ChapterSheets(
     ) {
         with(host) {
             val story = repository.story(storyId) ?: return
+            val screen = navigator.current.stableKey
             scope.launch {
                 val position = runCatching { repository.getTtsStoryPosition(story.id) }.getOrNull()
                 val listenIndex = DetailsActionPlanning.listenPlace(story, position)?.number?.minus(1)
+                // The read is quick, but the screen may have changed meanwhile; a sheet over another screen would be lost.
+                if (navigator.current.stableKey != screen || app.isFinishing || app.isDestroyed) return@launch
                 buildAudio(story, listenIndex, fromListen)
             }
         }
@@ -138,6 +159,8 @@ internal class ChapterSheets(
             val chapters = story.chapters
             val audio = chapterAudioInfo(narration, story)
             val bookmark = bookmarkIndexOf(story)
+            val anchor = ChapterActionPlanning.anchorIndex(bookmark, listenIndex ?: -1)
+            val anchorName = if (anchor == bookmark) "your bookmark" else "where you’re listening"
             val summary = ChapterActionPlanning.summary(chapters, bookmark, audio)
             val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
             lateinit var sheet: BottomSheetHandle
@@ -193,32 +216,36 @@ internal class ChapterSheets(
                 }
                 option.setCount(ids().size, sizeLabel(ChapterActionPlanning.bytesOf(ids(), audio)))
             }
-            val heardIds = { ChapterActionPlanning.heard(chapters, bookmark, audio) }
+            val heardIds = { ChapterActionPlanning.heard(chapters, anchor, audio) }
             val heard =
                 SheetOption(
                     app,
                     R.drawable.wna_bookmark,
                     "What you already heard",
-                    if (bookmark >
+                    if (anchor >
                         0
                     ) {
-                        "Everything before your bookmark (Ch. ${bookmark + 1})"
+                        "Everything before $anchorName (Ch. ${anchor + 1})"
                     } else {
-                        "Needs a bookmark past the first chapter"
+                        "Needs a bookmark or listening place past Ch. 1"
                     },
                     iconTint = colors.bookmark,
                 )
-            deleteOption(heard, heardIds, if (bookmark >= 0) "Audio from Ch. ${bookmark + 1} on stays" else null)
+            deleteOption(heard, heardIds, if (anchor >= 0) "Audio from Ch. ${anchor + 1} on stays" else null)
             body.addView(heard.view)
 
-            val breakIds = { ChapterActionPlanning.breakDeletions(chapters, bookmark, ChapterSheetMemory.keepOnBreak, audio) }
-            val keepFrom = bookmark.coerceAtLeast(0) + 1
+            val breakIds = { ChapterActionPlanning.breakDeletions(chapters, anchor, ChapterSheetMemory.keepOnBreak, audio) }
+            val keepFrom = anchor + 1
             val pause =
                 SheetOption(
                     app,
                     R.drawable.wna_pause,
                     "Taking a break: keep only the next few",
-                    "Keeps the chapters from your bookmark so you can pick up instantly; clears the queue",
+                    if (anchor >= 0) {
+                        "Keeps the chapters from $anchorName (Ch. $keepFrom) so you can pick up instantly; clears the rest of the queue"
+                    } else {
+                        "Needs a bookmark or a listening place"
+                    },
                 )
             deleteOption(pause, breakIds, null)
             pause.onClick = {
@@ -230,7 +257,9 @@ internal class ChapterSheets(
                             story,
                             chosen,
                             audio,
-                            "Keeps Ch. $keepFrom–${keepFrom + keep - 1}",
+                            ChapterActionPlanning
+                                .rangeLabel((keepFrom - 1 until minOf(keepFrom - 1 + keep, chapters.size)).toList())
+                                .replace("Ch.", "Keeps Ch."),
                         )
                     }
                 }
@@ -288,12 +317,14 @@ internal class ChapterSheets(
         ids: List<String>,
         audio: Map<String, ChapterAudioInfo>,
         keepNote: String?,
+        onConfirmed: () -> Unit = {},
     ) {
         with(host) {
             val pending = ChapterActionPlanning.pendingOf(ids, audio)
             val ready = ids.size - pending
             val bytes = ChapterActionPlanning.bytesOf(ids, audio)
-            val indexes = story.chapters.mapIndexedNotNull { index, chapter -> index.takeIf { chapter.id in ids } }
+            val withPack = ids.filterTo(HashSet()) { audio[it]?.hasPack == true }
+            val indexes = story.chapters.mapIndexedNotNull { index, chapter -> index.takeIf { chapter.id in withPack } }
             val lines =
                 listOfNotNull(
                     if (ready >
@@ -315,6 +346,7 @@ internal class ChapterSheets(
             ) {
                 val freed = if (bytes > 0) " · ${NarrationPlanning.formatBytes(bytes)}" else ""
                 deleteWithUndo(mapOf(story.id to ids), "Deleting audio of ${NarrationScreenPlanning.chapters(ids.size)}$freed")
+                onConfirmed()
             }
         }
     }
@@ -327,33 +359,53 @@ internal class ChapterSheets(
         with(host) {
             val coordinator = narration
             val appScope = narrationScope
-            // A delete still waiting runs now, so two in a row both happen.
-            PendingAudioDelete.job?.cancel()
-            PendingAudioDelete.commit?.let { previous -> appScope.launch { previous() } }
-            val commit: suspend () -> Unit = {
-                chapters.forEach { (storyId, ids) -> runCatching { coordinator.deleteAudio(storyId, ids) } }
+            val previous = PendingAudioDelete.current
+            // The same chapters again (a double tap) keep the delete already waiting and its Undo.
+            if (previous != null && previous.chapters == chapters && !previous.claimed.get()) return
+            // A different delete still waiting runs now, so two in a row both happen.
+            if (previous != null && previous.claimed.compareAndSet(false, true)) appScope.launch { previous.commit(coordinator) }
+            val pending = PendingAudioDelete(chapters)
+            PendingAudioDelete.current = pending
+            appScope.launch {
+                delay(UNDO_WINDOW_MS)
+                if (pending.claimed.compareAndSet(false, true)) pending.commit(coordinator)
             }
-            PendingAudioDelete.commit = commit
-            val job =
-                appScope.launch {
-                    delay(UNDO_WINDOW_MS)
-                    if (PendingAudioDelete.commit === commit) PendingAudioDelete.commit = null
-                    commit()
-                }
-            PendingAudioDelete.job = job
             app.showUndoBar(message, UNDO_WINDOW_MS) {
-                job.cancel()
-                if (PendingAudioDelete.commit === commit) PendingAudioDelete.commit = null
-                toast("Kept the audio")
+                // Undo wins only if the delete has not started; otherwise say so instead of claiming it was kept.
+                if (pending.claimed.compareAndSet(
+                        false,
+                        true,
+                    )
+                ) {
+                    toast("Kept the audio")
+                } else {
+                    toast("Too late: that audio is already deleted")
+                }
             }
         }
     }
 }
 
-/** The delete waiting behind the Undo bar; a newer one commits it at once. */
-private object PendingAudioDelete {
-    var job: Job? = null
-    var commit: (suspend () -> Unit)? = null
+/**
+ * A delete waiting behind the Undo bar. [claimed] decides, once, whether the timer (or a newer
+ * delete) runs it or Undo cancels it; the delete then runs to the end even if its scope is cancelled.
+ */
+private class PendingAudioDelete(
+    val chapters: Map<String, List<String>>,
+) {
+    val claimed = AtomicBoolean(false)
+
+    suspend fun commit(coordinator: NarrationCoordinator) =
+        withContext(NonCancellable) {
+            chapters.forEach { (storyId, ids) ->
+                runCatching { coordinator.deleteAudio(storyId, ids) }.onFailure { Timber.e(it, "Could not delete the audio") }
+            }
+        }
+
+    companion object {
+        /** The newest delete started; read and written on the main thread. */
+        var current: PendingAudioDelete? = null
+    }
 }
 
 /** A size beside an option's count; none when there is nothing to free. */

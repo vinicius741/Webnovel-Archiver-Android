@@ -145,9 +145,12 @@ internal fun ScreenHost.buildChaptersTab(
             setBackgroundColor(ThemeManager.colors.elevation1)
         }
     footer?.addView(holdings, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-    renderHeader = {
+    // Only the story or its audio change the holdings line, never a search keystroke.
+    val renderHoldings = {
         holdings.text = chapterHoldingsLine(story, chapterAudioInfo(narration, story))
         holdings.visibility = if (holdings.text.isNullOrEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+    }
+    renderHeader = {
         renderChapterChips(chips, story, audio.size, filter, ::pick)
         val shown = adapter.shownCount()
         countLine.text = "%,d chapter%s".format(shown, if (shown == 1) "" else "s")
@@ -163,6 +166,7 @@ internal fun ScreenHost.buildChaptersTab(
         )
     adapter.show(story, query, filter, state.chapterStatuses, state.waitingChapterIds, audio)
     renderHeader()
+    renderHoldings()
     search.doAfterTextChanged {
         query = it?.toString().orEmpty()
         routeMemory.queries[memoryKey] = query
@@ -176,6 +180,7 @@ internal fun ScreenHost.buildChaptersTab(
     observeChapterAudio(list) {
         audio = chapterAudioLabels(story)
         render()
+        renderHoldings()
     }
     StoryTabMemory.focusChapter.remove(story.id)?.let { focusId ->
         if (adapter.positionOf(focusId) < 0) pick(ALL_FILTER)
@@ -198,6 +203,7 @@ internal fun ScreenHost.buildChaptersTab(
         audio = chapterAudioLabels(story)
         adapter.show(story, query, filter, latest.chapterStatuses, latest.waitingChapterIds, audio)
         renderHeader()
+        renderHoldings()
     }
 }
 

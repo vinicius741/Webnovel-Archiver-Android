@@ -45,7 +45,8 @@ internal class RepositoryListenData(
 
     override fun freeBytes(): Long = narration.freeBytes()
 
-    override suspend fun listenedAt(): Map<String, Long> = repository.getTtsStoryPositions().associate { it.storyId to it.updatedAt }
+    override suspend fun listenPlaces(): Map<String, ListenPlaceTime> =
+        repository.getTtsStoryPositions().associate { it.storyId to ListenPlaceTime(it.chapterId, it.updatedAt) }
 
     override fun voiceCanUseComputers(): Boolean = KokoroVoices.model(narration.currentVoice().engine) != null
 

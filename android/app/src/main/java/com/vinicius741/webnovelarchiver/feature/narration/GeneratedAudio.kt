@@ -20,6 +20,7 @@ import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import com.vinicius741.webnovelarchiver.ui.toast
 
 /**
  * The Listen hub's Generated section: every story with generated audio (chapters, length, size,
@@ -43,7 +44,7 @@ internal fun LinearLayout.generatedSection(
             bottomMargin = context.dp(Spacing.MD)
         },
     )
-    if (content.suggestions.isNotEmpty()) suggestionsCard(host, content.suggestions)
+    if (content.suggestions.isNotEmpty()) suggestionsCard(host, model, content.suggestions)
     if (attached.isEmpty()) {
         listenHint("No chapter audio yet. ${NarrationScreenPlanning.HOW_TO_GENERATE}")
     } else {
@@ -77,6 +78,7 @@ internal fun LinearLayout.generatedSection(
  */
 private fun LinearLayout.suggestionsCard(
     host: ScreenHost,
+    model: ListenScreenModel,
     suggestions: List<ListenSuggestion>,
 ) {
     val colors = ThemeManager.colors
@@ -110,12 +112,22 @@ private fun LinearLayout.suggestionsCard(
                     Triple("Audio you already heard", "Before the bookmark in $title · frees $bytes", "Clear heard audio")
             }
         val button =
-            makeButton(context, action, if (suggestion.kind == ListenSuggestion.Kind.FINISHED) Btn.ERROR else Btn.SURFACE) {
-                ChapterSheets(host).deleteWithUndo(
-                    suggestion.chapters,
-                    "Deleting audio of ${NarrationScreenPlanning.chapters(suggestion.chapterCount)} · $bytes",
-                )
-            }.apply {
+            makeButton(context, action, if (suggestion.kind == ListenSuggestion.Kind.FINISHED) Btn.ERROR else Btn.SURFACE) {}.apply {
+                setOnClickListener { button ->
+                    // Once per row; the screen rebuilds when the delete lands.
+                    button.isEnabled = false
+                    button.alpha = DISABLED_SUGGESTION_ALPHA
+                    val now = model.suggestionNow(suggestion)
+                    if (now == null) {
+                        host.toast("Nothing to clean up there any more")
+                    } else {
+                        ChapterSheets(host).deleteWithUndo(
+                            now.chapters,
+                            "Deleting audio of ${NarrationScreenPlanning.chapters(now.chapterCount)} · " +
+                                NarrationPlanning.formatBytes(now.bytes),
+                        )
+                    }
+                }
                 minHeight = context.dp(SUGGESTION_BUTTON_DP)
                 minimumHeight = context.dp(SUGGESTION_BUTTON_DP)
                 setPadding(context.dp(Spacing.LG), 0, context.dp(Spacing.LG), 0)
@@ -196,6 +208,7 @@ internal fun packSummary(packs: List<NarrationPack>): String {
 }
 
 private const val SUGGESTION_BUTTON_DP = 36
+private const val DISABLED_SUGGESTION_ALPHA = 0.45f
 private const val SUGGESTION_ICON_DP = 24
 private const val SUGGESTION_LETTER_SPACING = 0.08f
 private const val COVER_WIDTH_DP = 40

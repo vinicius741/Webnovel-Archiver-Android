@@ -33,8 +33,17 @@ class ChapterActionPlanningTest {
             listOf("c1", "c2", "c3", "c6", "c7"),
             ChapterActionPlanning.breakDeletions(chapters, bookmarkIndex = 4, keep = 2, audio = audio),
         )
-        // Without a bookmark the kept chapters start at the first one.
-        assertEquals(listOf("c3", "c4", "c5", "c6", "c7"), ChapterActionPlanning.breakDeletions(chapters, -1, 3, audio))
+        // Without an anchor there is no place to keep, so nothing is deleted.
+        assertEquals(emptyList<String>(), ChapterActionPlanning.breakDeletions(chapters, -1, 3, audio))
+    }
+
+    @Test
+    fun anchorIsTheEarlierOfBookmarkAndListeningPlace() {
+        assertEquals(119, ChapterActionPlanning.anchorIndex(bookmarkIndex = 199, listenIndex = 119))
+        assertEquals(50, ChapterActionPlanning.anchorIndex(bookmarkIndex = 50, listenIndex = 80))
+        assertEquals(149, ChapterActionPlanning.anchorIndex(bookmarkIndex = -1, listenIndex = 149))
+        assertEquals(7, ChapterActionPlanning.anchorIndex(bookmarkIndex = 7, listenIndex = -1))
+        assertEquals(-1, ChapterActionPlanning.anchorIndex(bookmarkIndex = -1, listenIndex = -1))
     }
 
     @Test
@@ -65,8 +74,8 @@ class ChapterActionPlanningTest {
     @Test
     fun statesFollowTextAndAudio() {
         assertArrayEquals(
-            byteArrayOf(1, 1, 1, 1, 1, 1, 2, 0, 0, 0),
-            ChapterActionPlanning.textStates(chapters, downloading = setOf("c6")),
+            byteArrayOf(1, 1, 1, 1, 1, 1, 2, 3, 0, 0),
+            ChapterActionPlanning.textStates(chapters, downloading = setOf("c6"), waiting = setOf("c7")),
         )
         assertArrayEquals(
             byteArrayOf(0, 1, 1, 1, 1, 1, 3, 2, 0, 0),

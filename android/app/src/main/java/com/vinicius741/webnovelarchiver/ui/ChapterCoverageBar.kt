@@ -49,6 +49,9 @@ class ChapterCoverageBar(
 
     /** Per-slot states and their colours when bound with [bindStates]; null for the downloaded-only form. */
     private var states: ByteArray? = null
+
+    /** [states] coalesced once per bind, so a pulsing bar does not rebuild them every frame. */
+    private var stateRuns: List<Pair<IntRange, Int>> = emptyList()
     private var palette: IntArray = IntArray(0)
     private var liveState: Int = -1
     private var stateDescription: String? = null
@@ -92,6 +95,8 @@ class ChapterCoverageBar(
     ) {
         this.downloaded = downloaded
         this.bookmarkFraction = bookmarkFraction
+        states = null
+        stateDescription = null
         describe()
         invalidate()
     }
@@ -109,6 +114,8 @@ class ChapterCoverageBar(
         description: String,
     ) {
         this.states = states
+        // Live runs last, so a widened pulsing run is drawn over its neighbours rather than under them.
+        stateRuns = ChapterCoveragePlanning.stateRuns(states).sortedBy { it.second == liveState }
         this.palette = palette
         this.liveState = liveState
         this.bookmarkFraction = bookmarkFraction
@@ -188,7 +195,7 @@ class ChapterCoverageBar(
         val slotWidth = width.toFloat() / total
         val minLive = LIVE_MIN_WIDTH_DP * density
         var live = false
-        for ((range, state) in ChapterCoveragePlanning.stateRuns(slots)) {
+        for ((range, state) in stateRuns) {
             var left = range.first * slotWidth
             var right = (range.last + 1) * slotWidth
             var alpha = FULL_ALPHA
@@ -196,7 +203,7 @@ class ChapterCoverageBar(
                 live = true
                 if (right - left < minLive) {
                     val mid = (left + right) / 2f
-                    left = (mid - minLive / 2f).coerceAtLeast(0f)
+                    left = (mid - minLive / 2f).coerceIn(0f, (width - minLive).coerceAtLeast(0f))
                     right = (left + minLive).coerceAtMost(width.toFloat())
                 }
                 alpha = livePulseAlpha()

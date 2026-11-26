@@ -85,7 +85,11 @@ class AppShell internal constructor(
             orientation = LinearLayout.HORIZONTAL
             clipChildren = false
         }
-    private val shelf = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    private val shelf =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = BOTTOM_SHELF_TAG
+        }
     private val rail =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -416,3 +420,6 @@ private fun ShellDestination.icon(): Int =
         ShellDestination.DOWNLOADS -> R.drawable.wna_download
         ShellDestination.SETTINGS -> R.drawable.wna_settings
     }
+
+/** Tag of the bottom shelf (mini player and navigation), so an overlay can sit above it. */
+internal const val BOTTOM_SHELF_TAG = "app_shell_bottom_shelf"

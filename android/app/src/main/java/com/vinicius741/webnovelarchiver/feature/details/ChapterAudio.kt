@@ -87,8 +87,11 @@ internal fun chapterAudioInfo(
             val state = if (job.id == running) ChapterAudioState.GENERATING else ChapterAudioState.QUEUED
             info.putIfAbsent(job.chapterId, ChapterAudioInfo(state))
         }
+    // A chapter queued to regenerate still has its pack: keep its size, which a delete frees too.
     runCatching { narration.store.packsFor(story.id) }.getOrDefault(emptyList()).forEach { pack ->
-        info.putIfAbsent(pack.chapterId, ChapterAudioInfo(ChapterAudioState.READY, pack.index.bytes, pack.index.totalDurationMs))
+        val job = info[pack.chapterId]
+        info[pack.chapterId] =
+            ChapterAudioInfo(job?.state ?: ChapterAudioState.READY, pack.index.bytes, pack.index.totalDurationMs, hasPack = true)
     }
     return info
 }

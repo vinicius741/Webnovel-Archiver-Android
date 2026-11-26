@@ -61,4 +61,30 @@ class ListenSuggestionPlanningTest {
             ListenSuggestionPlanning.suggestions(listOf(story("f", 20, 3, 5..9, 30).copy(lastListenedAt = null)), now),
         )
     }
+
+    @Test
+    fun heardStopsAtTheListeningPlaceWhenItIsBehindTheBookmark() {
+        // Bookmark read ahead to index 15, listening stopped at index 6: only 0–5 count as heard.
+        val result = ListenSuggestionPlanning.suggestions(listOf(story("g", 20, 15, 0..12, 1).copy(listenIndex = 6)), now)
+        assertEquals((0..5).map { "g$it" }, result.single().chapters["g"])
+    }
+
+    @Test
+    fun aBreakAnchorsOnTheListeningPlaceAndTakesQueuedChapters() {
+        val idle = story("h", 40, -1, 0..30, 30).copy(listenIndex = 20, queued = setOf("h35"))
+        val result = ListenSuggestionPlanning.suggestions(listOf(idle), now)
+        // Keeps 20–29; deletes 0–19, 30 and the queued 35.
+        assertEquals((0..19).map { "h$it" } + listOf("h30", "h35"), result.single().chapters["h"])
+    }
+
+    @Test
+    fun noBookmarkAndNoListeningPlaceMeansNoSuggestion() {
+        assertEquals(emptyList<ListenSuggestion>(), ListenSuggestionPlanning.suggestions(listOf(story("i", 20, -1, 0..9, 30)), now))
+    }
+
+    @Test
+    fun listeningBehindALastChapterBookmarkIsNotFinished() {
+        val result = ListenSuggestionPlanning.suggestions(listOf(story("j", 10, 9, 0..9, 1).copy(listenIndex = 4)), now)
+        assertEquals(ListenSuggestion.Kind.HEARD, result.single().kind)
+    }
 }
