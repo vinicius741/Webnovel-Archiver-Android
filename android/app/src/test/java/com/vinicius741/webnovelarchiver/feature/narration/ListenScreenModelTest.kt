@@ -421,6 +421,8 @@ private class FakeListenData(
         return used
     }
 
+    override suspend fun listenedAt(): Map<String, Long> = emptyMap()
+
     override fun freeBytes() = 9_000L
 
     override fun voiceCanUseComputers() = voiceUsesComputers

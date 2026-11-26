@@ -192,7 +192,7 @@ internal class StoryPageRenderer(
     private fun patchDownloads(state: StoryPageUiState) {
         val story = state.story ?: return
         hero?.let { hero ->
-            hero.coverage?.render(story)
+            hero.coverage?.render(story, state.chapterStatuses)
             host.renderDetailsCta(hero.ctaSlot, story, state.download, state.isBusy)
             host.renderHeroDownloadBanner(hero.bannerSlot, story, state.download, state.pacing)
         }

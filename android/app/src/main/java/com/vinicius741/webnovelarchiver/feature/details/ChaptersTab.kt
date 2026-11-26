@@ -13,6 +13,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.narration.narration
+import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.CardListDecoration
@@ -59,6 +60,7 @@ internal fun ScreenHost.buildChaptersTab(
     initial: Story,
     state: StoryPageUiState,
     memoryKey: String,
+    footer: LinearLayout? = null,
 ): ChaptersTab {
     var story = initial
     var query = routeMemory.queries[memoryKey].orEmpty()
@@ -136,7 +138,16 @@ internal fun ScreenHost.buildChaptersTab(
         val position = adapter.positionOf(id)
         if (position >= 0) (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(position + 1, dp(Spacing.XL * 2))
     }
+    // What the novel holds on the phone, docked under the list: audio and its size, queued, not downloaded.
+    val holdings =
+        makeText(app, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+            setPadding(dp(Spacing.LG), dp(Spacing.SM + 2), dp(Spacing.LG), dp(Spacing.SM + 2))
+            setBackgroundColor(ThemeManager.colors.elevation1)
+        }
+    footer?.addView(holdings, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     renderHeader = {
+        holdings.text = chapterHoldingsLine(story, chapterAudioInfo(narration, story))
+        holdings.visibility = if (holdings.text.isNullOrEmpty()) android.view.View.GONE else android.view.View.VISIBLE
         renderChapterChips(chips, story, audio.size, filter, ::pick)
         val shown = adapter.shownCount()
         countLine.text = "%,d chapter%s".format(shown, if (shown == 1) "" else "s")
@@ -188,6 +199,20 @@ internal fun ScreenHost.buildChaptersTab(
         adapter.show(story, query, filter, latest.chapterStatuses, latest.waitingChapterIds, audio)
         renderHeader()
     }
+}
+
+/** "107 audio · 590 MB · 7 queued · 36 not downloaded"; empty when there is nothing to report. */
+private fun chapterHoldingsLine(
+    story: Story,
+    audio: Map<String, ChapterAudioInfo>,
+): String {
+    val summary = ChapterActionPlanning.summary(story.chapters, bookmarkIndexOf(story), audio)
+    val notDownloaded = story.chapters.count { !it.downloaded }
+    return listOfNotNull(
+        if (summary.ready > 0) "${"%,d".format(summary.ready)} audio · ${NarrationPlanning.formatBytes(summary.bytes)}" else null,
+        if (summary.pending > 0) "${summary.pending} queued" else null,
+        if (notDownloaded > 0) "${"%,d".format(notDownloaded)} not downloaded" else null,
+    ).joinToString(" · ")
 }
 
 /** The shown count's row: jump to the bookmark (ivory) and Select chapters. */

@@ -33,6 +33,23 @@ object ChapterCoveragePlanning {
     }
 
     /**
+     * Coalesces contiguous slots of the same non-zero state into `(start..end, state)` runs, the
+     * multi-state form of [downloadedRuns]; state 0 is the empty track and is skipped.
+     */
+    fun stateRuns(states: ByteArray): List<Pair<IntRange, Int>> {
+        val runs = mutableListOf<Pair<IntRange, Int>>()
+        var index = 0
+        while (index < states.size) {
+            val state = states[index].toInt()
+            var end = index
+            while (end + 1 < states.size && states[end + 1].toInt() == state) end++
+            if (state != 0) runs += (index..end) to state
+            index = end + 1
+        }
+        return runs
+    }
+
+    /**
      * Resolves a 0..1 bookmark fraction to the slot it lands in, clamped into the valid range so
      * the marker always sits inside a real chapter's slot (a bookmark on chapter 1 centres in the
      * leftmost slot instead of clipping against the bar's edge). `null` when there is no bookmark

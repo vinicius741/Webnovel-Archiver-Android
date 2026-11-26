@@ -61,4 +61,11 @@ class ChapterCoveragePlanningTest {
         assertEquals(99, ChapterCoveragePlanning.bookmarkSlot(1.5f, 100))
         assertEquals(0, ChapterCoveragePlanning.bookmarkSlot(-0.2f, 100))
     }
+
+    @Test
+    fun stateRunsGroupEqualNonZeroStates() {
+        val runs = ChapterCoveragePlanning.stateRuns(byteArrayOf(0, 1, 1, 2, 0, 0, 2, 3))
+        assertEquals(listOf((1..2) to 1, (3..3) to 2, (6..6) to 2, (7..7) to 3), runs)
+        assertEquals(emptyList<Pair<IntRange, Int>>(), ChapterCoveragePlanning.stateRuns(ByteArray(3)))
+    }
 }

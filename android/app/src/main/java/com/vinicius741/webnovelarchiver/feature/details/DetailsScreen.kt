@@ -30,7 +30,7 @@ internal fun ScreenHost.showDetails(
     ) { frame ->
         val pageStory = frame.state.story ?: story
         if (chapters) {
-            val tab = buildChaptersTab(this, frame.model, pageStory, frame.state, route.stableKey)
+            val tab = buildChaptersTab(this, frame.model, pageStory, frame.state, route.stableKey, frame.footer)
             chaptersTab = tab
             frame.chaptersTab = tab
         } else {

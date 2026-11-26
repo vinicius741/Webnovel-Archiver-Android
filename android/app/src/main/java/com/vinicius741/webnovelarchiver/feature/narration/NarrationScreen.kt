@@ -50,7 +50,7 @@ private const val SIDE_BY_SIDE_MIN_DP = 720
 private fun ScreenHost.listenModel(): ListenScreenModel =
     screenModels.get(AppRoute.Narration.stableKey) {
         ListenScreenModel(
-            RepositoryListenData(narration, RepositoryPlayerData(repository, narration, ttsEngine)),
+            RepositoryListenData(narration, RepositoryPlayerData(repository, narration, ttsEngine), repository),
             ServicePlaybackControls(this),
         )
     }
