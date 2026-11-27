@@ -122,6 +122,15 @@ time and size so applying another version refreshes the visible cover even when 
 ## Storage, cost, and failure handling
 
 - One active display copy per story under `files/webnovel_archiver/covers/`, written atomically.
+- **Compact storage.** A generated image arrives as a JPEG or PNG (about 500 KB for an 832×1248
+  JPEG q95). `AiCoverArtEngine` re-encodes it once, on arrival, as lossy WebP at
+  `AiCoverPlanning.COMPACT_COVER_WEBP_QUALITY` (85) through `CoverWebpEncoder`, so the draft, its
+  version-history copy and the applied cover share the same bytes and version ids (content hashes)
+  stay stable. `AiCoverPlanning.compactCover` sniffs the magic bytes and keeps the original when it
+  is already WebP, under 256 KB, fails to decode, or would shrink by less than a tenth. Quality was
+  picked by eye on the library's covers at the full-screen viewer's scale and at 2–3× zoom: q75
+  smooths fine grain, q85 matches the original. Covers already on the device are never re-encoded;
+  they are paid generations.
   `ai_cover_versions/<safeName(id)>/` retains immutable image files with prompt metadata. Image
   hashes deduplicate repeated saves; metadata commits after the bytes. Legacy applied covers are
   preserved before replacement, with an unavailable-prompt message when no prompt survives.
@@ -156,6 +165,15 @@ Full backups retain the applied cover as described below.
   when it is exactly the story's `coverFiles` entry — the path comes from untrusted backup JSON
   and is re-resolved against the live root, so anything else (dangling, traversal, or pointing at
   another file) is cleared rather than probed on the filesystem.
+- **Full-backup cover compaction.** The export re-encodes a large JPEG or PNG cover as WebP (same
+  `compactCover` rule) into a cache staging file and ships it as `covers/<name>.webp`, rewriting
+  both the `coverFiles` path and the story's `aiCoverPath` in the manifest so the two still match
+  (`FullBackupPaths.compactCoverPath`; a name another cover already owns keeps the original).
+  The file is renamed rather than keeping `.jpg` over WebP bytes because `preserveAppliedCover`
+  and the version strip derive the media type from the extension. This is a lossy copy for the
+  backup only: the device's cover is untouched, but a restore from such a backup brings the WebP
+  copy back. Every app version that ships covers in backups accepts `.webp` cover paths. Cover
+  entries are written `STORED` (no deflate), since image data does not compress.
 
 ## Code map
 

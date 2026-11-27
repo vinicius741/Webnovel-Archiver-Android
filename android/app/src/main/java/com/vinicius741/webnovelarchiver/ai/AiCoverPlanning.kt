@@ -180,6 +180,43 @@ object AiCoverPlanning {
             else -> "png"
         }
 
+    /**
+     * Lossy WebP quality for stored covers. Picked by eye on the library's 832×1248 covers at the
+     * full-screen viewer's scale and beyond: 75 visibly smooths fine grain, 85 matches the
+     * original. It roughly halves a JPEG q95 cover (docs/ai/ai-cover-generation.md).
+     */
+    const val COMPACT_COVER_WEBP_QUALITY = 85
+
+    /** A JPEG or PNG cover smaller than this is kept as it is; re-encoding would gain little. */
+    internal const val COMPACT_COVER_MIN_BYTES = 256 * 1024
+
+    /** The container of [bytes] by magic number: `jpg`, `png`, `webp`, or null when unknown. */
+    fun sniffCoverFormat(bytes: ByteArray): String? {
+        fun at(
+            offset: Int,
+            vararg expected: Int,
+        ) = bytes.size >= offset + expected.size && expected.indices.all { (bytes[offset + it].toInt() and 0xFF) == expected[it] }
+        return when {
+            at(0, 0xFF, 0xD8, 0xFF) -> "jpg"
+            at(0, 0x89, 0x50, 0x4E, 0x47) -> "png"
+            at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50) -> "webp"
+            else -> null
+        }
+    }
+
+    /**
+     * WebP bytes for a large JPEG or PNG cover, or null to keep [bytes] unchanged: already WebP,
+     * unknown, small, the encoder failed, or the result saves less than a tenth.
+     */
+    fun compactCover(
+        bytes: ByteArray,
+        encodeWebp: (ByteArray) -> ByteArray?,
+    ): ByteArray? {
+        if (bytes.size < COMPACT_COVER_MIN_BYTES || sniffCoverFormat(bytes) !in setOf("jpg", "png")) return null
+        val webp = encodeWebp(bytes) ?: return null
+        return webp.takeIf { sniffCoverFormat(it) == "webp" && it.size.toLong() * 10 <= bytes.size.toLong() * 9 }
+    }
+
     /** Optional image-request parameters; every field null = send only model + prompt. */
     data class ImageRequestParams(
         val aspectRatio: String?,
