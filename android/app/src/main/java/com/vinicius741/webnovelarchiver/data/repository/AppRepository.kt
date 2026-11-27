@@ -171,12 +171,13 @@ class AppRepository private constructor(
     /**
      * Loads the current library + queue + settings into the state flows. Call once at startup.
      * [preloadedLibrary] lets startup reuse the one library pass it already ran instead of
-     * re-reading every story document.
+     * re-reading every story document. The repository adopts those instances without a defensive
+     * copy, so the caller hands them over: it may read them afterwards but must never mutate them.
      */
     fun refresh(preloadedLibrary: List<Story>? = null) {
         synchronized(transactionLock) {
             val storage = requiredStorage
-            val library = (preloadedLibrary ?: storyStore.stories()).map(StoryMutations::snapshot)
+            val library = preloadedLibrary?.toList() ?: storyStore.stories().map(StoryMutations::snapshot)
             val queue = storyStore.queue().map(::snapshotJob)
             libraryById.clear()
             library.forEach { libraryById[it.id] = it }
