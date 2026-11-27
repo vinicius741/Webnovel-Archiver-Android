@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.tickerFlow
+import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -103,6 +104,7 @@ internal class StoryPageRenderer(
 
     fun start() {
         root.bindWhileAttached(host.scope, model.state) { apply(it) }
+        root.bindWhileAttached(host.scope, model.messages) { host.toast(it) }
     }
 
     private fun apply(next: StoryPageUiState) {
