@@ -63,7 +63,9 @@ class AppStorage(
     internal val appVersion: String = appVersionOf(context),
 ) {
     internal val context: Context = context.applicationContext
-    internal val gson: Gson = SharedGson.pretty
+
+    /** Compact: storage documents are parsed at every cold start; readers accept pretty files too. */
+    internal val gson: Gson = SharedGson.plain
     internal val root = File(this.context.filesDir, "webnovel_archiver").apply { mkdirs() }
     internal val storyDir = File(root, "stories").apply { mkdirs() }
     internal val metricDir = File(root, "metrics").apply { mkdirs() }
