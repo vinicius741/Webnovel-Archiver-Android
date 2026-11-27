@@ -211,6 +211,7 @@ class AppContainer internal constructor(
                 val migrationsFinishedAt = System.currentTimeMillis()
 
                 storage.recoverInterruptedDownloads()
+                // The repository adopts this pass's instances uncopied; below they are only read.
                 repository.refresh(stories)
                 val readyAt = System.currentTimeMillis()
                 Timber.i(
