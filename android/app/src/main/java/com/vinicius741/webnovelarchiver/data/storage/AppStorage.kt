@@ -240,6 +240,18 @@ class AppStorage(
     }
 
     /**
+     * Rewrites a story the caller knows is already in the library (the repository's working state
+     * mirrors the index), without re-reading the index or the story; the caller carries
+     * `dateAdded` over. When a write-blocking fence is up on either document it takes the
+     * [addOrUpdateStory] path, whose re-reads can lift a fence that has healed since.
+     */
+    @Synchronized
+    internal fun saveLibraryMember(story: Story) {
+        if (writeBlockingIssue(libraryIndex) != null || writeBlockingIssue(storyFile(story.id)) != null) return addOrUpdateStory(story)
+        saveStoryOnly(story)
+    }
+
+    /**
      * Reads the recorded metric-history for [id]. Returns an empty history when the file is absent
      * (a story that has never been synced since the trend feature shipped, or whose history was
      * deleted with the story).
@@ -485,39 +497,6 @@ class AppStorage(
     /** Removes a temporary import snapshot directory once the import has committed successfully. */
     internal fun discardJsonImportSnapshot(snapshot: JsonImportSnapshot) {
         snapshot.root.deleteRecursively()
-    }
-
-    /**
-     * Atomic read-modify-write of the queue: [transform] runs under the storage monitor so the read
-     * and the write cannot be interleaved by another queue writer (e.g. the download process loop).
-     * Non-suspending and fast (one small JSON file), so callers on the main thread don't block on a
-     * coroutine mutex. [AppRepository] uses this same `storage` monitor for its multi-document RMW
-     * (story + queue together) via `synchronized(storage)`, so this method, the repository, and the
-     * download engine all share one serialization point — there is no separate transaction mutex;
-     * the JVM monitor on this [AppStorage] instance is the real lock.
-     */
-    @Synchronized
-    fun mutateQueueInPlace(transform: (MutableList<DownloadJob>) -> List<DownloadJob>): List<DownloadJob> {
-        val current = read<MutableList<DownloadJob>>(queueFile) ?: mutableListOf()
-        val updated = transform(current)
-        write(queueFile, updated)
-        return updated
-    }
-
-    /**
-     * Atomically persists an enqueued [story] (with its status/lastUpdated already mutated by the
-     * caller) together with the new [jobs] queue, under one storage monitor acquisition. This is the
-     * enqueue equivalent of [mutateQueueInPlace]: the story save + queue save can't be interleaved by
-     * a concurrent writer, and no coroutine mutex blocking is involved (Reliability R3 — single-owner
-     * without ANR risk from [runBlocking] on the main thread).
-     */
-    @Synchronized
-    fun saveEnqueue(
-        story: Story,
-        jobs: List<DownloadJob>,
-    ) {
-        addOrUpdateStory(story)
-        write(queueFile, jobs)
     }
 
     @Synchronized
@@ -796,12 +775,14 @@ class AppStorage(
         }
     }
 
+    private fun writeBlockingIssue(file: File): StorageHealthIssue? =
+        _storageHealth.value.issues.firstOrNull {
+            it.document == file.name &&
+                it.kind in setOf(StorageHealthKind.UnsupportedSchema, StorageHealthKind.IoFailure)
+        }
+
     private fun ensureHealthyForWrite(file: File) {
-        val blockedIssue =
-            _storageHealth.value.issues.firstOrNull {
-                it.document == file.name &&
-                    it.kind in setOf(StorageHealthKind.UnsupportedSchema, StorageHealthKind.IoFailure)
-            }
+        val blockedIssue = writeBlockingIssue(file)
         check(blockedIssue == null) {
             "Refusing to overwrite unhealthy ${file.name}: ${blockedIssue?.detail}"
         }

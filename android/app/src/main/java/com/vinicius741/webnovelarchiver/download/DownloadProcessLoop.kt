@@ -15,7 +15,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /** Completion-driven coordinator for fair, independent source download lanes. */
 internal class DownloadProcessLoop(
-    private val storage: DownloadQueueStore,
+    private val queueStore: DownloadQueueStore,
     private val wakeSignals: ReceiveChannel<Unit>,
     private val cleanupUnsupportedSourceJobs: () -> Unit,
     private val processJob: suspend (DownloadJob) -> Unit,
@@ -43,8 +43,8 @@ internal class DownloadProcessLoop(
                 // Selection and wake planning must share a timestamp: a deadline can pass while
                 // publishing progress, and dropping it then would exit with runnable jobs pending.
                 val now = nowMillis()
-                synchronized(storage.lock) {
-                    queue = storage.queue()
+                synchronized(queueStore.lock) {
+                    queue = queueStore.queue()
                     val activeCounts = activeWorkers.values.groupingBy(ActiveWorker::sourceId).eachCount()
                     // Sources under manual verification keep their jobs pending; without this the
                     // loop would start each one, hit the open circuit, and fail it without any
@@ -68,12 +68,12 @@ internal class DownloadProcessLoop(
                             redeferredBlockedJobs = true
                         }
                     }
-                    if (redeferredBlockedJobs) storage.saveQueue(queue)
+                    if (redeferredBlockedJobs) queueStore.saveQueue(queue)
                     pending =
                         DownloadScheduler.selectEligibleJobs(
                             jobs = queue,
                             now = now,
-                            maxParallelSources = storage.maxParallelSources() ?: 2,
+                            maxParallelSources = queueStore.maxParallelSources() ?: 2,
                             activeCounts = activeCounts,
                             nextAllowedAt = emptyMap(),
                             lastScheduledSource = lastScheduledSource,
@@ -82,7 +82,7 @@ internal class DownloadProcessLoop(
                         )
                     if (pending.isNotEmpty()) {
                         pending.forEach(DownloadJobTransitions::claim)
-                        storage.saveQueue(queue)
+                        queueStore.saveQueue(queue)
                     }
                 }
                 // Re-deferred jobs persisted new nextRetryAt values; publish so the visible queue

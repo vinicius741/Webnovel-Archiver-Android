@@ -46,6 +46,7 @@ class DownloadEngine(
     private val time: AppTime = AppTime.Real,
 ) {
     private val storage: AppStorage = repository.storage
+    private val queueStore = repository.downloadQueueStore()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
     private val acceptsWorkerResults = AtomicBoolean(true)
@@ -53,7 +54,7 @@ class DownloadEngine(
     private val noticeMarkerMonitor = InsertedNoticeMarkerMonitor()
     private val sourceReliability =
         DownloadSourceReliability(
-            storage.downloadQueueStore(),
+            queueStore,
             network,
             acceptsWorkerResults::get,
             nowMillis = time::nowMillis,
@@ -62,11 +63,11 @@ class DownloadEngine(
         }
     private val processLoop =
         DownloadProcessLoop(
-            storage = storage.downloadQueueStore(),
+            queueStore = queueStore,
             wakeSignals = processLoopWakeSignals,
             cleanupUnsupportedSourceJobs = ::cleanupUnsupportedSourceJobs,
             processJob = ::processJob,
-            publishQueueChanged = { repository.publishDownloadState(queueChanged = true) },
+            publishQueueChanged = repository::publishDownloadState,
             emitProgress = ::emitProgress,
             isSourceBlocked = network::isSourceBlocked,
             nowMillis = time::nowMillis,
@@ -92,7 +93,7 @@ class DownloadEngine(
 
     /**
      * Enqueues chapters. The queue plan and the story's status are persisted atomically via
-     * [AppStorage.saveEnqueue]. Called from UI button handlers, so no blocking on a coroutine lock.
+     * [AppRepository.saveEnqueueLocked]. Called from UI button handlers, so no blocking on a coroutine lock.
      * Pass [startNow] = false to hand the runner to the foreground service instead of this engine.
      */
     fun queue(
@@ -104,13 +105,13 @@ class DownloadEngine(
         // writer can't overwrite the newer snapshot.
         val plan =
             DownloadEnqueueTransaction.execute(
-                lock = storage,
+                lock = repository.transactionLock,
                 story = story,
                 indexes = indexes,
                 now = time.nowMillis(),
-                readQueue = storage::getQueue,
-                readStory = storage::getStory,
-                persist = storage::saveEnqueue,
+                readQueue = repository::queueForWriteLocked,
+                readStory = repository::storyForWriteLocked,
+                persist = repository::saveEnqueueLocked,
             )
         ActivityLog.record(
             ActivityCategory.DOWNLOAD,
@@ -127,7 +128,7 @@ class DownloadEngine(
                 wakeProcessLoop()
             }
         }
-        repository.publishDownloadState(changedStoryIds = setOf(story.id), queueChanged = true)
+        repository.publishDownloadState()
     }
 
     /*
@@ -251,8 +252,8 @@ class DownloadEngine(
     internal fun recoverAfterForegroundServiceTimeout() {
         acceptsWorkerResults.set(false)
         stopAndCancel()
-        storage.mutateQueueInPlace(DownloadForegroundServiceTimeoutHandler::recoverQueue)
-        repository.publishDownloadState(queueChanged = true)
+        queueStore.mutateQueueInPlace(DownloadForegroundServiceTimeoutHandler::recoverQueue)
+        repository.publishDownloadState()
     }
 
     /** Releases the engine's coroutine scope. Call from the owning service's onDestroy. */
@@ -260,29 +261,24 @@ class DownloadEngine(
         stopAndCancel()
     }
 
+    /** Runs every loop pass, so it reads the working queue: no JSON parse per downloaded chapter. */
     private fun cleanupUnsupportedSourceJobs() {
-        var cleaned = false
-        var changedStoryIds: Set<String> = emptySet()
-        synchronized(storage) {
-            val queue = storage.getQueue()
+        synchronized(repository.transactionLock) {
+            val queue = repository.queueForWriteLocked()
             val cleanup =
                 DownloadQueueMaintenance.failUnsupportedSourceJobs(queue) { job ->
                     SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id
                 }
             if (cleanup.cleanedJobCount == 0) return
-            storage.saveQueue(queue)
+            repository.saveQueueLocked(queue)
             cleanup.affectedStoryIds.forEach { storyId ->
-                val story = storage.getStory(storyId) ?: return@forEach
+                val story = repository.storyForWriteLocked(storyId) ?: return@forEach
                 if (DownloadQueueMaintenance.recoverStuckDownloadingStory(story, queue.filter { it.storyId == storyId })) {
-                    storage.addOrUpdateStory(story)
+                    repository.saveStoryLocked(story)
                 }
             }
-            changedStoryIds = cleanup.affectedStoryIds.toSet()
-            cleaned = true
         }
-        if (cleaned) {
-            repository.publishDownloadState(changedStoryIds = changedStoryIds, queueChanged = true)
-        }
+        repository.publishDownloadState()
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -292,7 +288,7 @@ class DownloadEngine(
         // R05: remember the library this work belongs to; a clear/restore mid-download rejects it.
         val startedGeneration = repository.libraryGeneration()
         try {
-            val story = storage.getStory(job.storyId) ?: error("Story not found")
+            val storyUrl = repository.storySourceUrl(job.storyId) ?: error("Story not found")
             val provider = SourceRegistry.getProvider(job.sourceId, job.chapter.url) ?: error("Unsupported source")
             providerName = provider.id
             requestGateFactory.ensureJobActive(job.id)
@@ -308,7 +304,7 @@ class DownloadEngine(
             if (preflight.mutation != null) return
             val fetched =
                 provider.fetchChapterContent(
-                    storyUrl = story.sourceUrl,
+                    storyUrl = storyUrl,
                     chapter = job.chapter,
                     chapterIndex = job.chapterIndex,
                     network = network,
@@ -388,7 +384,7 @@ class DownloadEngine(
 
     private fun publishQueueMutation(mutation: DownloadQueueMutation) {
         emitProgress(mutation.activeJobId?.let { id -> mutation.queue.find { it.id == id } }, mutation.queue)
-        repository.publishDownloadState(queueChanged = true)
+        repository.publishDownloadState()
     }
 
     /**
