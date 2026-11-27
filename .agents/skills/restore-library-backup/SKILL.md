@@ -176,8 +176,8 @@ relaunch never re-runs the restore.
 python3 scripts/full_backup_expectations.py <webnovel_full_backup_*.zip>
 ```
 
-Prints `librarySize`, `storyIdsSha256`, `downloadedChapters` (the chapterFiles index
-count — NOT zero for full backups), tabs, and which settings the ZIP carries.
+Prints `librarySize`, `storyIdsSha256`, `downloadedChapters` (the chapter index
+count: listed in `chapterFiles` (manifest v1) or derived from the library (v2) — NOT zero for full backups), tabs, and which settings the ZIP carries.
 
 ### B2. Stage the ZIP inside the app's cache
 

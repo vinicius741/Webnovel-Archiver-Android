@@ -2,10 +2,10 @@ package com.vinicius741.webnovelarchiver.data.storage
 
 import android.net.Uri
 import com.google.gson.JsonParseException
-import com.google.gson.reflect.TypeToken
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.backup.BackupInputLimits
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifest
+import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifestReader
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifestValidation
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.backup.RestoredChapterFileIndex
@@ -83,14 +83,12 @@ internal class FullBackupRestorer(
     internal fun readAndValidateManifest(raw: File): FullBackupManifest {
         val manifest = File(raw, "manifest.json")
         check(manifest.exists()) { FullBackupManifestValidation.MISSING_MANIFEST_MESSAGE }
-        val text =
+        // Streamed and decoded typed: no manifest-sized string or untyped Map tree is built.
+        val payload =
             manifest.inputStream().use {
-                BackupInputLimits.readUtf8(it, BackupInputLimits.MAX_MANIFEST_BYTES, "Full-backup manifest")
+                FullBackupManifestReader.read(gson, it, BackupInputLimits.MAX_MANIFEST_BYTES)
             }
-        val payload: Map<String, Any> =
-            gson.fromJson(text, object : TypeToken<Map<String, Any>>() {}.type)
-                ?: error("Invalid full backup: manifest was empty")
-        return FullBackupManifestValidation.parseValidated(gson, payload)
+        return FullBackupManifestValidation.parseValidated(payload)
     }
 
     internal fun verifyZipIndex(
