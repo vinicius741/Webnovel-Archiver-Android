@@ -272,6 +272,46 @@ class FullBackupManifestValidationTest {
         )
     }
 
+    @Test
+    fun version3RequiresOneExactChapterPackPathPerStory() {
+        fun v3(vararg packs: Map<String, Any>): Map<String, Any> =
+            validManifest(
+                "version" to 3,
+                "library" to listOf(mapOf("id" to "story-1"), mapOf("id" to "story 2")),
+                "chapterPacks" to packs.toList(),
+            )
+        val pack = mapOf("storyId" to "story 2", "path" to "chapter_packs/story%202.zst")
+
+        assertNull(FullBackupManifestValidation.validate(v3()))
+        assertNull(FullBackupManifestValidation.validate(v3(pack)))
+        assertEquals(
+            "Invalid full backup: missing chapter pack index",
+            FullBackupManifestValidation.validate(validManifest("version" to 3)),
+        )
+        listOf(
+            mapOf("storyId" to "story 2", "path" to "chapter_packs/story 2.zst"),
+            mapOf("storyId" to "story-1", "path" to "chapter_packs/story%202.zst"),
+            mapOf("storyId" to "missing", "path" to "chapter_packs/missing.zst"),
+            mapOf("storyId" to "story-1", "path" to "novels/story-1/0000_a.html"),
+            mapOf("path" to "chapter_packs/story-1.zst"),
+        ).forEach { malformed ->
+            assertEquals("Invalid full backup: malformed chapter pack index", FullBackupManifestValidation.validate(v3(malformed)))
+        }
+        assertEquals("Invalid full backup: duplicate chapter packs", FullBackupManifestValidation.validate(v3(pack, pack)))
+        assertEquals(
+            "Invalid full backup: chapter packs need manifest version 3",
+            FullBackupManifestValidation.validate(validManifest("chapterPacks" to emptyList<Any>())),
+        )
+
+        val parsed = FullBackupManifestValidation.parseValidated(Gson(), v3(pack))
+        assertEquals(3, parsed.version)
+        assertEquals(listOf(RestoredChapterPackIndex("story 2", "chapter_packs/story%202.zst")), parsed.chapterPacks)
+        assertEquals(
+            emptyList<RestoredChapterPackIndex>(),
+            FullBackupManifestValidation.parseValidated(Gson(), validManifest()).chapterPacks,
+        )
+    }
+
     private fun validManifest(vararg replacements: Pair<String, Any>): Map<String, Any> =
         mapOf(
             "format" to "webnovel-archiver-full-backup",

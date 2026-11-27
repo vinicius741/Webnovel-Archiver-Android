@@ -15,6 +15,13 @@ class BackupInputLimitsTest {
         assertTrue(BackupInputLimits.isAllowedFullBackupEntry("novels/story/", directory = true))
         assertFalse(BackupInputLimits.isAllowedFullBackupEntry("settings.json", directory = false))
         assertFalse(BackupInputLimits.isAllowedFullBackupEntry("novels/story/book.epub", directory = false))
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("chapter_packs/rr%201.zst", directory = false))
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("chapter_packs/", directory = true))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_packs/story.zst", directory = true))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_packs/a/story.zst", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_packs/story.zip", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_packs/.zst", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_packs/...zst", directory = false))
         assertFalse(BackupInputLimits.isAllowedFullBackupEntry("novels/../secret.html", directory = false))
         assertFalse(BackupInputLimits.isAllowedFullBackupEntry("novels\\story\\chapter.html", directory = false))
     }

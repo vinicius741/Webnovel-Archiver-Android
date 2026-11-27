@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifest
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifestValidation
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.backup.RestoredChapterFileIndex
+import com.vinicius741.webnovelarchiver.data.backup.RestoredChapterPackIndex
 import com.vinicius741.webnovelarchiver.data.backup.RestoredCoverFileIndex
 import com.vinicius741.webnovelarchiver.data.backup.RestoredMetricFileIndex
 import com.vinicius741.webnovelarchiver.data.backup.RestoredRewriteFileIndex
@@ -63,7 +64,14 @@ internal class FullBackupRestorer(
             val staged = freshDirectory(restoreDir, "staged_root")
             val extracted = FullBackupZipExtractor.extract(zipFile, raw, restoreDir.usableSpace)
             val manifest = readAndValidateManifest(raw)
-            verifyZipIndex(extracted.files, manifest.chapterFiles, manifest.metricFiles, manifest.coverFiles, manifest.rewriteFiles)
+            verifyZipIndex(
+                extracted.files,
+                manifest.chapterFiles,
+                manifest.metricFiles,
+                manifest.coverFiles,
+                manifest.rewriteFiles,
+                manifest.chapterPacks,
+            )
             val stories = buildStagedRoot(raw, staged, manifest)
             verifyStagedTree(staged, stories)?.let { return it }
             swapCandidate = committer.stageBesideLiveRoot(staged)
@@ -99,13 +107,17 @@ internal class FullBackupRestorer(
         metricFiles: List<RestoredMetricFileIndex>,
         coverFiles: List<RestoredCoverFileIndex>,
         rewriteFiles: List<RestoredRewriteFileIndex>,
+        chapterPacks: List<RestoredChapterPackIndex> = emptyList(),
     ) {
+        // Chapter files inside a version-3 pack count as extracted entries, so chapterFiles is
+        // checked the same way whether a chapter came loose or packed; the pack itself is indexed too.
         val expected =
             chapterFiles.mapTo(mutableSetOf()) { it.path }.apply {
                 add("manifest.json")
                 metricFiles.forEach { add(it.path) }
                 coverFiles.forEach { add(it.path) }
                 rewriteFiles.forEach { add(it.path) }
+                chapterPacks.forEach { add(it.path) }
             }
         check(extractedFiles == expected) {
             val unexpected = extractedFiles - expected

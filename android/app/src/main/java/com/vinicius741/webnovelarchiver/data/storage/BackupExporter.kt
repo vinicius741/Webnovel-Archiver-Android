@@ -2,7 +2,9 @@ package com.vinicius741.webnovelarchiver.data.storage
 
 import com.vinicius741.webnovelarchiver.data.backup.BackupExportPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupContentPlanning
+import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifestValidation
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
+import com.vinicius741.webnovelarchiver.data.backup.RestoredChapterPackIndex
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import java.io.File
 import java.time.Instant
@@ -62,7 +64,8 @@ internal class BackupExporter(
                     is FullBackupContentPlanning.ChapterContent.Missing -> null
                 }
             }
-        val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles, missingContent)
+        val chapterPacks = ChapterPackExport.plan(chapterFiles)
+        val manifest = fullManifest(library, chapterFiles, chapterPacks, metricFiles, coverFiles, missingContent)
         val totalFiles = 1 + chapterFiles.size + metricFiles.size + coverFiles.size
         var filesWritten = 0
 
@@ -87,18 +90,7 @@ internal class BackupExporter(
                     zip.write(gson.toJson(manifest).toByteArray())
                     zip.closeEntry()
                     markFileWritten()
-                    chapterFiles.forEach { chapter ->
-                        zip.putNextEntry(ZipEntry(chapter.path))
-                        when {
-                            chapter.source != null -> chapter.source.inputStream().use { it.copyTo(zip) }
-                            // R10: a downloaded chapter whose file is missing but whose legacy
-                            // inline content survives is materialized instead of dropped.
-                            chapter.inlineContent != null -> zip.write(chapter.inlineContent.toByteArray(Charsets.UTF_8))
-                            else -> error("Chapter entry without content: ${chapter.path}")
-                        }
-                        zip.closeEntry()
-                        markFileWritten()
-                    }
+                    ChapterPackExport.write(zip, chapterPacks, chapterFiles) { markFileWritten() }
                     metricFiles.forEach { metric ->
                         zip.putNextEntry(ZipEntry(metric.path))
                         metric.source.inputStream().use { it.copyTo(zip) }
@@ -128,13 +120,14 @@ internal class BackupExporter(
     private fun fullManifest(
         library: List<Story>,
         chapterFiles: List<FullBackupChapterFile>,
+        chapterPacks: List<RestoredChapterPackIndex>,
         metricFiles: List<FullBackupMetricFile>,
         coverFiles: List<FullBackupCoverFile>,
         missingContent: List<FullBackupContentPlanning.MissingContent>,
     ): Map<String, Any?> =
         mapOf(
             "format" to "webnovel-archiver-full-backup",
-            "version" to 1,
+            "version" to FullBackupManifestValidation.CHAPTER_PACK_VERSION,
             "exportDate" to Instant.now().toString(),
             "library" to library.map(::storyWithoutTransientPaths),
             "config" to fullConfig(),
@@ -148,6 +141,8 @@ internal class BackupExporter(
                         "path" to it.path,
                     )
                 },
+            // Version 3: each story's chapter files travel in one zstd pack (ChapterPack).
+            "chapterPacks" to chapterPacks.map { mapOf("storyId" to it.storyId, "path" to it.path) },
             // Per-story trend history (`metrics/<id>.json`). Optional on restore: older backups omit
             // the key and restore with empty history (the storage layer's missing-file path).
             "metricFiles" to metricFiles.map { mapOf("storyId" to it.storyId, "path" to it.path) },
@@ -204,7 +199,7 @@ internal class BackupExporter(
         }
 }
 
-private data class FullBackupChapterFile(
+internal data class FullBackupChapterFile(
     val storyId: String,
     val chapterId: String,
     val chapterIndex: Int,

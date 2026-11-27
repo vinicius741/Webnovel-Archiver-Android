@@ -13,11 +13,22 @@ data class FullBackupManifest(
     val metricFiles: List<RestoredMetricFileIndex>,
     val coverFiles: List<RestoredCoverFileIndex>,
     val rewriteFiles: List<RestoredRewriteFileIndex>,
+    val chapterPacks: List<RestoredChapterPackIndex> = emptyList(),
 )
 
 object FullBackupManifestValidation {
     private const val FORMAT = "webnovel-archiver-full-backup"
     const val MISSING_MANIFEST_MESSAGE = "Invalid full backup: missing manifest"
+
+    /** Loose chapters: one ZIP entry per chapter file. */
+    const val LOOSE_CHAPTERS_VERSION = 1
+
+    /**
+     * Chapter files live in per-story [ChapterPack]s listed in `chapterPacks`; everything else is
+     * version 1. Version 2 is left to the compact manifest (PR #61), so the numbers never mean two
+     * things; builds before this one reject version 3 as unsupported instead of misreading it.
+     */
+    const val CHAPTER_PACK_VERSION = 3
 
     fun validate(manifest: Map<String, Any>?): String? {
         if (manifest == null || manifest["format"] != FORMAT) {
@@ -27,7 +38,9 @@ object FullBackupManifestValidation {
         if (version == null) {
             return "Invalid full backup: missing version"
         }
-        if (version != 1) return "Invalid full backup: unsupported version $version"
+        if (version != LOOSE_CHAPTERS_VERSION && version != CHAPTER_PACK_VERSION) {
+            return "Invalid full backup: unsupported version $version"
+        }
         if (manifest["library"] !is List<*>) {
             return "Invalid full backup: missing library"
         }
@@ -73,6 +86,7 @@ object FullBackupManifestValidation {
         }
         validateMetricFiles(manifest["metricFiles"], ids.toSet())?.let { return it }
         validateCoverFiles(manifest["coverFiles"], ids.toSet())?.let { return it }
+        validateChapterPacks(manifest["chapterPacks"], version, ids.toSet())?.let { return it }
         return validateRewriteFiles(manifest["rewriteFiles"], ids.toSet())
     }
 
@@ -124,6 +138,14 @@ object FullBackupManifestValidation {
                     path = entry.getString("path"),
                 )
             }
+        val chapterPacks =
+            (manifest["chapterPacks"] as? List<*>).orEmpty().map { raw ->
+                val entry = raw as Map<*, *>
+                RestoredChapterPackIndex(
+                    storyId = entry.getString("storyId"),
+                    path = entry.getString("path"),
+                )
+            }
         return FullBackupManifest(
             version = BackupInputLimits.exactInt(manifest["version"]) ?: error("Invalid full backup: missing version"),
             library = stories,
@@ -132,6 +154,7 @@ object FullBackupManifestValidation {
             metricFiles = metricFiles,
             coverFiles = coverFiles,
             rewriteFiles = rewriteFiles,
+            chapterPacks = chapterPacks,
         )
     }
 
@@ -196,6 +219,36 @@ object FullBackupManifestValidation {
         if (coverPaths.distinct().size != coverPaths.size) return "Invalid full backup: duplicate cover paths"
         val coverStoryIds = coverEntries.map { it["storyId"] as String }
         if (coverStoryIds.distinct().size != coverStoryIds.size) return "Invalid full backup: duplicate cover entries"
+        return null
+    }
+
+    /** chapterPacks is required in version 3 (empty when nothing is downloaded) and absent before it.
+     *  Each story has at most one pack, at exactly [FullBackupPaths.chapterPackPath]. */
+    private fun validateChapterPacks(
+        chapterPacks: Any?,
+        version: Int,
+        ids: Set<String>,
+    ): String? {
+        if (version != CHAPTER_PACK_VERSION) {
+            return if (chapterPacks == null) null else "Invalid full backup: chapter packs need manifest version $CHAPTER_PACK_VERSION"
+        }
+        if (chapterPacks !is List<*>) return "Invalid full backup: missing chapter pack index"
+        if (chapterPacks.size > ids.size) return "Invalid full backup: too many chapter packs"
+        val packEntries = chapterPacks.map { it as? Map<*, *> ?: return "Invalid full backup: malformed chapter pack index" }
+        if (
+            packEntries.any { entry ->
+                val storyId = entry["storyId"] as? String
+                val path = entry["path"] as? String
+                storyId.isNullOrBlank() ||
+                    storyId !in ids ||
+                    path != FullBackupPaths.chapterPackPath(storyId) ||
+                    !BackupInputLimits.isAllowedFullBackupEntry(path, directory = false)
+            }
+        ) {
+            return "Invalid full backup: malformed chapter pack index"
+        }
+        val packStoryIds = packEntries.map { it["storyId"] as String }
+        if (packStoryIds.distinct().size != packStoryIds.size) return "Invalid full backup: duplicate chapter packs"
         return null
     }
 

@@ -74,6 +74,10 @@
 # and calls back into the API classes, so none of them may be renamed or stripped.
 -keep class com.k2fsa.sherpa.onnx.** { *; }
 
+# zstd-jni (full-backup chapter packs, data/backup/ChapterPack): its native code reads the stream
+# classes' fields and builds its exception classes by name, so nothing in it may be renamed.
+-keep class com.github.luben.zstd.** { *; }
+
 # Commons Compress references optional codecs the Kokoro unpacker never uses.
 -dontwarn org.brotli.dec.**
 -dontwarn com.github.luben.zstd.**

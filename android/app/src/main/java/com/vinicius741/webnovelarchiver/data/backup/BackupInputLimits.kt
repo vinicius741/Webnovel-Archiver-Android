@@ -64,25 +64,22 @@ object BackupInputLimits {
         val parts = normalized.split('/')
         if (parts.any { it.isBlank() || it == "." || it == ".." }) return false
         if (normalized == "manifest.json") return !directory
-        if (normalized == "novels") return directory
-        if (normalized == "metrics") return directory
-        if (normalized == "covers") return directory
-        if (normalized == "chapter_rewrites") return directory
-        if (!normalized.startsWith("novels/") && !normalized.startsWith("metrics/") &&
-            !normalized.startsWith("covers/") && !normalized.startsWith("chapter_rewrites/")
-        ) {
-            return false
-        }
+        if (parts[0] !in ENTRY_TREES) return false
+        if (parts.size == 1) return directory
+        if (parts[0] == FullBackupPaths.CHAPTER_PACK_DIRECTORY) return !directory && isAllowedChapterPack(parts)
         if (directory) return parts.size == 2 && parts[1].isNotBlank()
         // novels/<story>/<chapter>.html, metrics/<story>.json, covers/<story>.<img>, or
         // chapter_rewrites/<story>/<stem>/applied.html — depth and extension distinguish the trees.
-        return when {
-            normalized.startsWith("novels/") -> parts.size == 3 && parts[1].isNotBlank() && parts[2].endsWith(".html", ignoreCase = true)
-            normalized.startsWith("covers/") -> isAllowedCoverFile(parts)
-            normalized.startsWith("chapter_rewrites/") -> isAllowedRewriteFile(parts)
+        return when (parts[0]) {
+            "novels" -> parts.size == 3 && parts[1].isNotBlank() && parts[2].endsWith(".html", ignoreCase = true)
+            "covers" -> isAllowedCoverFile(parts)
+            "chapter_rewrites" -> isAllowedRewriteFile(parts)
             else -> parts.size == 2 && parts[1].isNotBlank() && parts[1].endsWith(".json", ignoreCase = true)
         }
     }
+
+    /** Top-level directories a full backup may contain (`metrics` is the remaining `else` above). */
+    private val ENTRY_TREES = setOf("novels", "metrics", "covers", "chapter_rewrites", FullBackupPaths.CHAPTER_PACK_DIRECTORY)
 
     /** Names that are blank, padded, or contain path tricks never name a real zip entry. */
     private fun isMalformedEntryName(name: String): Boolean =
@@ -91,6 +88,17 @@ object BackupInputLimits {
             name.startsWith('/') ||
             '\\' in name ||
             '\u0000' in name
+
+    /**
+     * A version-3 chapter pack sits flat at `chapter_packs/<story>.zst`. Its decompressed contents
+     * are bounded like loose entries: the extractor checks every chapter file it yields against
+     * this allowlist (as `novels/<story>/<name>`), [MAX_ZIP_ENTRIES], [MAX_ZIP_ENTRY_BYTES] and the
+     * extraction budget, and the zstd window is capped at [ChapterPack.MAX_WINDOW_LOG].
+     */
+    private fun isAllowedChapterPack(parts: List<String>): Boolean =
+        parts.size == 2 &&
+            parts[1].endsWith(FullBackupPaths.CHAPTER_PACK_EXTENSION) &&
+            parts[1].removeSuffix(FullBackupPaths.CHAPTER_PACK_EXTENSION).let { it.isNotBlank() && it != "." && it != ".." }
 
     /** Cover entries sit flat at `covers/<name>` with a known image extension. */
     private fun isAllowedCoverFile(parts: List<String>): Boolean {
