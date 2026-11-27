@@ -135,7 +135,9 @@ internal class RestoreStagingWriter(
     private fun writeEnvelope(
         file: File,
         value: Any,
-    ) = AtomicFileWrites.writeText(file, gson.toJson(DurableJson.envelope(value, storage.appVersion)))
+    ) = AtomicFileWrites.writeAtomically(
+        file,
+    ) { out -> DurableJson.writeEnvelope(out, gson, DurableJson.envelope(value, storage.appVersion)) }
 
     private fun <T> normalize(
         payload: Any,

@@ -185,7 +185,8 @@ Library is **not** `files/library_index.json`. Story files live at:
 
 ```bash
 adb -s "$SERIAL" shell run-as "$PKG" ls files/webnovel_archiver/stories/
-# each file: schema wrapper { appVersion, payload, schemaVersion }
+# each file: schema wrapper { schemaVersion, appVersion, payload }, compact JSON
+# (files not saved since the compact switch are still pretty, with schemaVersion last)
 # payload keys: id, title, author, isArchived, archiveOfStoryId, …
 ```
 
