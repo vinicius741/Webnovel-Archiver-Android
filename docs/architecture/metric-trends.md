@@ -91,7 +91,7 @@ Trend history is **portable via the full (ZIP) backup** — not the JSON metadat
   source of truth for the in-Zip path encoding.
 - **Restore** (`FullBackupRestorer`): the `metricFiles` index is validated by
   `FullBackupManifestValidation`, the entries are added to the exact-set ZIP-index check, and the
-  extracted `metrics/` tree is copied verbatim into the staged root. The root-swap commit moves the
+  extracted `metrics/` tree is moved (renamed) verbatim into the staged root. The root-swap commit moves the
   whole staged tree into place, so no extra commit step is needed.
 - **Backward/forward compatibility**: the manifest key is optional. Backups written before the
   feature shipped omit it and restore with empty history (the storage layer's missing-file path

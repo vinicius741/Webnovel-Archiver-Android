@@ -24,7 +24,7 @@ internal object DefaultRestoreFileOperations : RestoreFileOperations
 
 /** Filesystem transaction primitive used by full restore and fault-injected JVM tests. */
 internal class RestoreRootSwap(
-    private val files: RestoreFileOperations = DefaultRestoreFileOperations,
+    internal val files: RestoreFileOperations = DefaultRestoreFileOperations,
 ) {
     /**
      * Runs the staged-root swap. [onPhase] records each phase into the caller's durable journal

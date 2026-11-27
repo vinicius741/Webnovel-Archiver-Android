@@ -90,19 +90,31 @@ class BackupInputLimitsTest {
     }
 
     @Test
-    fun recoveryExtractionBudgetReservesSpaceForRawTreeAndAdoptedCopies() {
+    fun extractionBudgetIsAllFreeSpaceAboveTheReserve() {
+        // One copy of the data: the extraction is renamed into place, never copied twice more.
         val usable = 264L * 1024L * 1024L
-        assertEquals((200L * 1024L * 1024L) / 2L, BackupInputLimits.recoveryExtractionBudget(usable))
-        assertTrue(BackupInputLimits.recoveryExtractionBudget(usable) > BackupInputLimits.extractionBudget(usable))
-    }
-
-    @Test
-    fun extractionBudgetReservesSpaceForRawAndStagedTrees() {
-        val usable = 264L * 1024L * 1024L
-        assertEquals((200L * 1024L * 1024L) / 3L, BackupInputLimits.extractionBudget(usable))
+        assertEquals(200L * 1024L * 1024L, BackupInputLimits.extractionBudget(usable))
+        // No fixed cap: a 10 GB free volume may restore a library far beyond the old 2 GB limit.
+        val large = 10_000_000_000L
+        assertEquals(large - 64L * 1024L * 1024L, BackupInputLimits.extractionBudget(large))
         assertThrows(IllegalStateException::class.java) {
             BackupInputLimits.extractionBudget(32L * 1024L * 1024L)
         }
+    }
+
+    @Test
+    fun expansionLimitScalesWithCompressedSizeAndKeepsAFloor() {
+        assertEquals(300_000_000L * BackupInputLimits.MAX_EXPANSION_RATIO, BackupInputLimits.maxExpandedBytes(300_000_000L))
+        assertEquals(64L * 1024L * 1024L, BackupInputLimits.maxExpandedBytes(1_000L))
+        assertEquals(Long.MAX_VALUE, BackupInputLimits.maxExpandedBytes(Long.MAX_VALUE / 2L))
+    }
+
+    @Test
+    fun allocatedBytesRoundsFilesUpToWholeBlocks() {
+        assertEquals(4096L, BackupInputLimits.allocatedBytes(0L))
+        assertEquals(4096L, BackupInputLimits.allocatedBytes(1L))
+        assertEquals(4096L, BackupInputLimits.allocatedBytes(4096L))
+        assertEquals(8192L, BackupInputLimits.allocatedBytes(4097L))
     }
 
     @Test

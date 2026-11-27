@@ -88,7 +88,7 @@ internal class RestoreTransactionJournal(
  * inside recovery lands on a later row of the same table. `RestoreCrashRecoveryTest` kills the
  * swap, rollback, and recovery at every filesystem operation and checks this property.
  *
- * Once no journal remains, staging copies left beside the live root by a killed restore are swept;
+ * Once no journal remains, staging trees left beside the live root by a killed restore are swept;
  * they are never read by recovery and can be as large as the whole library.
  */
 internal object RestoreStartupRecovery {
