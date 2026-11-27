@@ -1,6 +1,9 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    // Baseline Profile consumer: merges the checked-in profile from src/release/generated into release
+    // and beta builds. Regenerating it is a manual step (docs/architecture/baseline-profile.md).
+    id 'androidx.baselineprofile'
     id 'org.jmailen.kotlinter' version '5.7.0'
     id 'io.gitlab.arturbosch.detekt' version '1.23.8'
 }
@@ -116,6 +119,27 @@ android {
             // A distinct deep-link scheme keeps links from asking which of the two apps to open.
             manifestPlaceholders = [deepLinkScheme: 'webnovel-archiver-beta']
         }
+        // Profiling builds for the Baseline Profile generator (:baselineprofile) and cold-start
+        // measurements. The androidx.baselineprofile plugin needs these two names and would derive
+        // them from release; declaring them here keeps them away from the real apps: their own
+        // application id (and so their own, initially empty, library), debug signing (no release
+        // keystore needed) and the emulator ABI. The plugin then forces them non-debuggable and
+        // profileable, and builds nonMinifiedRelease without R8. They add a fixture-seeding receiver
+        // (src/profiling) and are never published.
+        nonMinifiedRelease {
+            initWith release
+            applicationIdSuffix '.profiling'
+            matchingFallbacks = ['release']
+            signingConfig signingConfigs.debug
+            ndk { abiFilters(*emulatorAbis) }
+        }
+        benchmarkRelease {
+            initWith release
+            applicationIdSuffix '.profiling'
+            matchingFallbacks = ['release']
+            signingConfig signingConfigs.debug
+            ndk { abiFilters(*emulatorAbis) }
+        }
     }
 
     packaging {
@@ -145,6 +169,8 @@ android {
         }
         beta {
             java.srcDir 'src/release/java'
+            // The beta is the release build under another id: ship it the same Baseline Profile.
+            baselineProfiles.srcDir 'src/release/generated/baselineProfiles'
         }
         test.resources.srcDir 'src/debug/assets'
     }
@@ -158,7 +184,31 @@ android {
     }
 }
 
+baselineProfile {
+    // Release builds (local and in the release workflow) only read the checked-in profile; they never
+    // need a device. Regenerate with :app:generateReleaseBaselineProfile on the emulator.
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
+    // Uses the generated startup profile to put startup classes first in the primary dex (R8 only).
+    dexLayoutOptimization = true
+}
+
 androidComponents {
+    // The profiling build types add src/profiling (fixture-seeding receiver) to the release sources.
+    // This runs after the baselineprofile plugin's own finalizeDsl, which points their manifest at
+    // the release source set.
+    finalizeDsl { extension ->
+        ['nonMinifiedRelease', 'benchmarkRelease'].each { profilingType ->
+            extension.sourceSets.getByName(profilingType) {
+                java.srcDirs 'src/release/java', 'src/profiling/java'
+                manifest.srcFile 'src/profiling/AndroidManifest.xml'
+            }
+        }
+    }
+    // The baselineprofile plugin also derives nonMinifiedBeta and benchmarkBeta from beta. The beta
+    // ships the release profile, so those profiling variants are never needed: switch them off.
+    beforeVariants(selector().withBuildType('nonMinifiedBeta')) { it.enable = false }
+    beforeVariants(selector().withBuildType('benchmarkBeta')) { it.enable = false }
     onVariants(selector().withBuildType('beta')) { variant ->
         variant.outputs.each { output -> output.versionCode.set(betaVersionCode) }
     }
@@ -205,6 +255,9 @@ tasks.register('releaseCheck') {
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.19.1'
+    // Installs the Baseline Profile shipped in the APK on sideloaded installs (no Play cloud profiles):
+    // ART compiles it at the next background dexopt instead of interpreting/JITing the startup path.
+    implementation 'androidx.profileinstaller:profileinstaller:1.4.1'
     implementation 'androidx.activity:activity-ktx:1.13.0'
     // lifecycle-runtime-ktx provides lifecycleScope used by MainActivity (M3 lifecycle-aware scopes)
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.11.0'
@@ -259,6 +312,8 @@ dependencies {
     // Real org.json for JVM unit tests: the android.jar org.json classes are stubs that throw
     // "not mocked", which would leave WebView poll-payload decoding untestable on the JVM.
     testImplementation 'org.json:json:20260814'
+    // The generator module whose output (app/src/release/generated/baselineProfiles) release and beta ship.
+    baselineProfile project(':baselineprofile')
     androidTestImplementation 'androidx.test:core-ktx:1.7.0'
     androidTestImplementation 'androidx.test:runner:1.7.0'
     androidTestImplementation 'androidx.test:rules:1.7.0'

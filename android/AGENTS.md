@@ -164,9 +164,13 @@ Before editing a package listed here, read its `AGENTS.md`. Paths are under
   only the minified release shows it.
 - **sherpa-onnx**: it comes from GitHub release assets via the `exclusiveContent` Ivy repository in
   `settings.gradle`, and its JNI reads Kotlin fields by name (keep the `com.k2fsa.sherpa.onnx.**`
-  rule). Native code ships for `arm64-v8a` and `armeabi-v7a` in every build type. `debug` and
-  `instrumentation` add `x86_64`. Never drop a phone ABI. Recheck `packaging.jniLibs` after a
+  rule). Native code ships for `arm64-v8a` and `armeabi-v7a` in every build type. `debug`,
+  `instrumentation` and the profiling types add `x86_64`. Never drop a phone ABI. Recheck `packaging.jniLibs` after a
   sherpa-onnx upgrade.
+- **Baseline Profile**: release and beta ship `app/src/release/generated/baselineProfiles/`. Normal
+  builds never regenerate it. Regenerate on the emulator with `:app:generateReleaseBaselineProfile`
+  (`docs/architecture/baseline-profile.md`); it uses the profiling build types
+  (`nonMinifiedRelease`/`benchmarkRelease`, app id `.profiling`, own library), never the debug app.
 - **Dependencies** are lockfile-pinned. A dependency change needs
   `android/gradlew -p android :app:<config> --update-locks` for the affected compile and runtime
   configurations.

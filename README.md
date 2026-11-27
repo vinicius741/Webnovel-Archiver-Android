@@ -64,6 +64,7 @@ The app uses Android Views, Kotlin coroutines, OkHttp, Jsoup, and file-based JSO
 | `appupdate/`, `notification/`, `perf/` | App updates, notifications, and debug performance tracking |
 
 Unit tests live in `android/app/src/test/`; device tests live in `android/app/src/androidTest/` and use an isolated instrumentation app.
+`android/baselineprofile/` generates the Baseline Profile that release and beta builds ship ([docs/architecture/baseline-profile.md](docs/architecture/baseline-profile.md)).
 
 ## Documentation and contributing
 

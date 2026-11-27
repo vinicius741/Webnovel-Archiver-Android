@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Profiling builds only (nonMinifiedRelease, benchmarkRelease; never published). The Baseline
+       Profile generator broadcasts to this receiver over adb to seed a fixture library. -->
+  <application>
+    <receiver
+      android:name="com.vinicius741.webnovelarchiver.profiling.FixtureLibraryReceiver"
+      android:exported="true" />
+  </application>
+</manifest>

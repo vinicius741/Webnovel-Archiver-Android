@@ -1,0 +1,47 @@
+// Baseline Profile generator for :app. It drives the app's main journey on a device and writes the
+// profile to app/src/release/generated/baselineProfiles. See docs/architecture/baseline-profile.md.
+plugins {
+    id 'com.android.test'
+    id 'org.jetbrains.kotlin.android'
+    id 'androidx.baselineprofile'
+}
+
+android {
+    namespace 'com.vinicius741.webnovelarchiver.baselineprofile'
+    compileSdk 37
+
+    defaultConfig {
+        // Profile collection without root needs API 33+; 28 is the macrobenchmark floor.
+        minSdk 28
+        targetSdk 36
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    targetProjectPath = ':app'
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+baselineProfile {
+    // Runs on the connected webnovel_api36 emulator (no Gradle Managed Device image download).
+    useConnectedDevices = true
+}
+
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+dependencies {
+    implementation 'androidx.test.ext:junit-ktx:1.3.0'
+    implementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    implementation 'androidx.benchmark:benchmark-macro-junit4:1.5.0'
+}

@@ -30,3 +30,5 @@ dependencyResolutionManagement {
 
 rootProject.name = 'Webnovel Archiver Native'
 include ':app'
+// Generates the app's Baseline Profile on a device (docs/architecture/baseline-profile.md).
+include ':baselineprofile'
