@@ -1,7 +1,7 @@
 # Quick backup
 
-A quick backup is a small ZIP (about 2 MB for the 305-novel test library, against ~355 MB for a
-full backup) with everything about the library except the chapter text. It is meant to be made
+A quick backup is a small ZIP (1.6 MB and 1.4 s on the emulator for the 305-novel, 24k-chapter test
+library, against ~355 MB for a full backup) with everything about the library except the chapter text. It is meant to be made
 often; the full backup stays the occasional, complete copy.
 
 Code: `data/backup/QuickBackupFormat.kt` (format and validation),
@@ -17,7 +17,7 @@ Code: `data/backup/QuickBackupFormat.kt` (format and validation),
 | Text cleanup rules (sentence list and regex rules) | Generated chapter audio |
 | Listening settings, the saved listening session, per-story listening positions | AI cover drafts and cover history, characters |
 | Trend history (`metrics/`) | The OpenRouter key and the AI spend ledger (device-local, like the full backup) |
-| Optional: the applied AI covers (`covers/`, ~70 MB on the test library) | The download queue |
+| Optional: the applied AI covers (`covers/`; 67.9 MB in all on the test library) | The download queue |
 
 The settings set is exactly the full backup's (`BackupExporter.fullConfig`), so a new setting added
 to the full backup is in the quick backup too.
