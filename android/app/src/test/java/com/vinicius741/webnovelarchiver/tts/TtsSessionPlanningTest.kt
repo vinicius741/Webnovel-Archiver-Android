@@ -23,6 +23,34 @@ class TtsSessionPlanningTest {
     }
 
     @Test
+    fun isProgressOnlyAcceptsForwardPlaybackWithinTheChapter() {
+        val playing = TtsSession(storyId = "s", chapterId = "c", currentChunkIndex = 3, wasPlaying = true, updatedAt = 1L)
+        val moved = playing.copy(currentChunkIndex = 4, chunkOffsetMs = 0L, anchorText = "Next", updatedAt = 5_000L)
+
+        assertTrue(TtsSessionPlanning.isProgressOnly(playing, moved))
+        assertTrue(TtsSessionPlanning.isProgressOnly(playing, playing.copy(updatedAt = 9L)))
+    }
+
+    @Test
+    fun isProgressOnlyRejectsEveryListenerChange() {
+        val playing = TtsSession(storyId = "s", chapterId = "c", currentChunkIndex = 3, wasPlaying = true)
+        val ahead = playing.copy(currentChunkIndex = 4)
+        val jump = TtsHistoryEntry(chapterId = "c", chunkIndex = 1)
+
+        assertFalse(TtsSessionPlanning.isProgressOnly(playing, ahead.copy(chapterId = "c2")))
+        assertFalse(TtsSessionPlanning.isProgressOnly(playing, ahead.copy(storyId = "other")))
+        assertFalse(TtsSessionPlanning.isProgressOnly(playing, ahead.copy(isPaused = true, wasPlaying = false)))
+        assertFalse(TtsSessionPlanning.isProgressOnly(playing, ahead.copy(rate = 1.5f)))
+        assertFalse(TtsSessionPlanning.isProgressOnly(playing, ahead.copy(voiceIdentifier = "v")))
+        assertFalse(TtsSessionPlanning.isProgressOnly(playing, ahead.copy(history = listOf(jump))))
+        // A rewind is saved at once.
+        assertFalse(TtsSessionPlanning.isProgressOnly(playing, playing.copy(currentChunkIndex = 2)))
+        // Moves while paused are the listener's.
+        val paused = playing.copy(isPaused = true, wasPlaying = false)
+        assertFalse(TtsSessionPlanning.isProgressOnly(paused, paused.copy(currentChunkIndex = 4)))
+    }
+
+    @Test
     fun boundedChunkIndexClampsToAvailableChunks() {
         assertEquals(0, TtsSessionPlanning.boundedChunkIndex(TtsSession(currentChunkIndex = -5), chunkCount = 3))
         assertEquals(1, TtsSessionPlanning.boundedChunkIndex(TtsSession(currentChunkIndex = 1), chunkCount = 3))

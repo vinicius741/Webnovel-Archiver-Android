@@ -15,6 +15,7 @@ import com.vinicius741.webnovelarchiver.domain.model.StoryPhase
 import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.operations.StoryOperations
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -69,6 +70,42 @@ class AiControlsScreenModelTest {
         runCurrent()
         return messages
     }
+
+    @Test
+    fun theDescriptionSwitchShowsBeforeItIsSavedAndRollsBackWhenItFails() =
+        runTest(dispatcher) {
+            data.replace(story.copy(aiDescription = "An AI synopsis"))
+            val model = model()
+            val messages = observe(model)
+            val write = CompletableDeferred<Boolean>()
+            data.descriptionSwitch = write
+
+            model.showAiDescription(true)
+            runCurrent()
+            assertTrue(
+                "shown before the write ends",
+                model.state.value.story
+                    ?.showAiDescription == true,
+            )
+
+            write.complete(true)
+            runCurrent()
+            assertTrue(
+                "saved",
+                model.state.value.story
+                    ?.showAiDescription == true,
+            )
+
+            data.descriptionSwitch = CompletableDeferred(false)
+            model.showAiDescription(false)
+            runCurrent()
+            assertTrue(
+                "rolled back",
+                model.state.value.story
+                    ?.showAiDescription == true,
+            )
+            assertEquals(listOf("Couldn't switch the description"), messages)
+        }
 
     @Test
     fun tabsAndTheCharacterPageAreTheModelsOwnState() =
@@ -432,7 +469,7 @@ class AiControlsScreenModelTest {
             usedCovers += bytes
         }
 
-        override suspend fun useSourceCover(storyId: String) = Unit
+        override suspend fun useSourceCover(storyId: String) = true
 
         override suspend fun coverVersions(
             storyId: String,
@@ -454,10 +491,21 @@ class AiControlsScreenModelTest {
             current = current.copy(aiDescription = description)
         }
 
+        /** Holds the description switch's write until completed; null saves at once. */
+        var descriptionSwitch: CompletableDeferred<Boolean>? = null
+
         override suspend fun setShowAiDescription(
             storyId: String,
             show: Boolean,
-        ) = Unit
+        ): Boolean {
+            val saved = descriptionSwitch?.await() ?: true
+            if (saved) current = current.copy(showAiDescription = show)
+            return saved
+        }
+
+        fun replace(story: Story) {
+            current = story
+        }
 
         override suspend fun setContextChapters(
             storyId: String,

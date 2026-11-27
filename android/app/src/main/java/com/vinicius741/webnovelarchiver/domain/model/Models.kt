@@ -429,6 +429,12 @@ data class DownloadJob(
     var errorCategory: String? = null,
     var errorCode: String? = null,
     var nextRetryAt: Long? = null,
+    /**
+     * Stored form only: on a compact record in `download_queue.json` that stands for several
+     * completed jobs of one story, their chapter indexes as ranges ("0-99,101"). Reading the queue
+     * expands the record back into jobs (`FinishedJobCompaction`), so it is null on every job in memory.
+     */
+    var finishedChapterIndexes: String? = null,
 )
 
 data class NovelMetadata(

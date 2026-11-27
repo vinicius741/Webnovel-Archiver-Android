@@ -10,6 +10,8 @@ import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
+import com.vinicius741.webnovelarchiver.feature.story.OptimisticStoryEdits
+import com.vinicius741.webnovelarchiver.feature.story.StoryEditPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.operations.StoryOperations
@@ -17,6 +19,8 @@ import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,12 +30,14 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 /**
  * Everything the story page's tabs draw from the live app state: the story, its download jobs and
  * pacing, and the operations running on it. [Story] is still a mutable model class; treat it as
- * read-only here (it is the model's own copy, replaced whenever the story changes).
+ * read-only here (it is the model's own copy, replaced whenever the story changes). It already
+ * shows the quick edits still being written (see [OptimisticStoryEdits]).
  */
 data class StoryPageUiState(
     val story: Story?,
@@ -67,10 +73,14 @@ interface StoryPageData {
     /** A copy of the story the caller may hold on to. */
     fun story(id: String): Story?
 
+    /** False when the repository rejected the toggle (the story or chapter is gone). */
     suspend fun toggleBookmark(
         storyId: String,
         chapterId: String,
-    )
+    ): Boolean
+
+    /** The saved Chapters filter. */
+    fun chapterFilter(): String
 
     suspend fun saveChapterFilter(mode: String)
 }
@@ -86,9 +96,9 @@ internal class RepositoryStoryPageData(
     override suspend fun toggleBookmark(
         storyId: String,
         chapterId: String,
-    ) {
-        repository.toggleBookmark(storyId, chapterId)
-    }
+    ): Boolean = repository.toggleBookmark(storyId, chapterId) != null
+
+    override fun chapterFilter(): String = repository.chapterFilterSettings.get().filterMode
 
     override suspend fun saveChapterFilter(mode: String) = repository.chapterFilterSettings.save(ChapterFilterSettings(mode))
 }
@@ -99,6 +109,9 @@ internal class RepositoryStoryPageData(
  *
  * Its sources are observed only while a renderer collects [state]. A renderer that starts from
  * [refresh] therefore never draws a stale state, and nothing ticks while the page is off screen.
+ *
+ * Quick edits (the bookmark, the Chapters filter) show at once and are written behind the scenes,
+ * in tap order; a failed write rolls back and says so through [messages].
  */
 class StoryPageScreenModel(
     val storyId: String,
@@ -119,9 +132,18 @@ class StoryPageScreenModel(
     private var readSnapshot: DownloadUiSnapshot? = null
     private var publishedStory: Story? = null
     private var download = DownloadPart(story = null)
+    private val edits = OptimisticStoryEdits(onChange = { refresh() })
+
+    /** The filter picked last, until its save ends. */
+    private var pendingFilter: String? = null
+    private var filterSaves = 0
     private val mutableState = MutableStateFlow(compute())
+    private val messageChannel = Channel<String>(MESSAGE_BUFFER, BufferOverflow.DROP_OLDEST)
 
     val state: StateFlow<StoryPageUiState> = mutableState.asStateFlow()
+
+    /** One-off messages for the user, buffered until a renderer shows them. */
+    val messages: Flow<String> = messageChannel.receiveAsFlow()
 
     init {
         this.scope.launch {
@@ -146,12 +168,27 @@ class StoryPageScreenModel(
     /** Recomputes the state from its sources now and returns it. */
     fun refresh(): StoryPageUiState = compute().also { mutableState.value = it }
 
+    /** Moves the bookmark to [chapterId], or clears it there, on screen now and in storage after the earlier edits. */
     fun toggleBookmark(chapterId: String) {
-        scope.launch { data.toggleBookmark(storyId, chapterId) }
+        val shown = state.value.story ?: return
+        val edit = StoryEditPlanning.bookmarkTap(shown, chapterId)
+        scope.launch {
+            if (!edits.commit(edit) { data.toggleBookmark(storyId, chapterId) }) message("Couldn't save the bookmark")
+        }
     }
 
+    /** The Chapters filter to open with: the one being saved, else the saved one. */
+    fun chapterFilter(): String = pendingFilter ?: data.chapterFilter()
+
+    /** Remembers the Chapters filter; the tab already shows it, and a tab built before the save ends opens with it too. */
     fun saveChapterFilter(mode: String) {
-        scope.launch { data.saveChapterFilter(mode) }
+        pendingFilter = mode
+        val save = ++filterSaves
+        scope.launch {
+            val saved = edits.save { data.saveChapterFilter(mode) }
+            if (save == filterSaves) pendingFilter = null
+            if (!saved) message("Couldn't remember the chapter filter")
+        }
     }
 
     private fun compute(): StoryPageUiState {
@@ -160,7 +197,7 @@ class StoryPageScreenModel(
         val now = nowMillis()
         val pacing = pacingSnapshots.value.values
         return StoryPageUiState(
-            story = part.story,
+            story = edits.shown(part.story),
             jobs = part.jobs,
             download = part.summary,
             chapterStatuses = part.statuses,
@@ -203,12 +240,20 @@ class StoryPageScreenModel(
         return download
     }
 
+    private fun message(text: String) {
+        messageChannel.trySend(text)
+    }
+
     private data class DownloadPart(
         val story: Story?,
         val jobs: List<DownloadJob> = emptyList(),
         val summary: DownloadDetailsPlanning.StoryDownloadSummary = DownloadDetailsPlanning.summarizeStoryDownload(emptyList()),
         val statuses: Map<String, DownloadJobStatus> = emptyMap(),
     )
+
+    private companion object {
+        const val MESSAGE_BUFFER = 8
+    }
 }
 
 /** Chapters held only by the configured request delay, not yet fetching their content. */

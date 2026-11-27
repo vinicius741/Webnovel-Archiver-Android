@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
 import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
+import com.vinicius741.webnovelarchiver.data.repository.StoryMutations
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
@@ -10,12 +11,14 @@ import com.vinicius741.webnovelarchiver.download.DownloadPacingUiKind
 import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.operations.StoryOperations
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -294,6 +297,96 @@ class StoryPageScreenModelTest {
         }
 
     @Test
+    fun aBookmarkShowsBeforeItIsSavedAndStaysOnceSaved() =
+        runTest(dispatcher) {
+            val model = model()
+            observe(model)
+            val write = CompletableDeferred<Boolean>()
+            data.bookmarkWrites += write
+            val before = model.state.value
+
+            model.toggleBookmark("c2")
+            runCurrent()
+            val shown = model.state.value
+            assertEquals("shown before the write ends", "c2", shown.story?.lastReadChapterId)
+            assertTrue("the page patches its rows and hero", shown.downloadChangedSince(before))
+
+            write.complete(true)
+            runCurrent()
+            assertEquals(
+                "c2",
+                model.state.value.story
+                    ?.lastReadChapterId,
+            )
+            assertEquals("c2", data.story("s1")?.lastReadChapterId)
+        }
+
+    @Test
+    fun quickTapsShowAndSaveInTapOrder() =
+        runTest(dispatcher) {
+            val model = model()
+            observe(model)
+            val first = CompletableDeferred<Boolean>()
+            data.bookmarkWrites += first
+
+            model.toggleBookmark("c2")
+            model.toggleBookmark("c2")
+            model.toggleBookmark("c1")
+            runCurrent()
+            assertEquals(
+                "c1",
+                model.state.value.story
+                    ?.lastReadChapterId,
+            )
+
+            first.complete(true)
+            runCurrent()
+            assertEquals(listOf("s1" to "c2", "s1" to "c2", "s1" to "c1"), data.toggled)
+            assertEquals("c1", data.story("s1")?.lastReadChapterId)
+            assertEquals(
+                "c1",
+                model.state.value.story
+                    ?.lastReadChapterId,
+            )
+        }
+
+    @Test
+    fun aBookmarkThatFailsToSaveRollsBackAndSaysSo() =
+        runTest(dispatcher) {
+            val model = model()
+            observe(model)
+            val messages = mutableListOf<String>()
+            backgroundScope.launch(dispatcher) { model.messages.toList(messages) }
+            data.bookmarkWrites += CompletableDeferred(false)
+
+            model.toggleBookmark("c2")
+            runCurrent()
+
+            assertNull(
+                model.state.value.story
+                    ?.lastReadChapterId,
+            )
+            assertEquals(listOf("Couldn't save the bookmark"), messages)
+        }
+
+    @Test
+    fun aTabBuiltWhileTheFilterSavesOpensWithIt() =
+        runTest(dispatcher) {
+            val model = model()
+            val write = CompletableDeferred<Unit>()
+            data.filterWrite = write
+
+            model.saveChapterFilter("downloaded")
+            runCurrent()
+            assertEquals("all", data.savedFilter)
+            assertEquals("downloaded", model.chapterFilter())
+
+            write.complete(Unit)
+            runCurrent()
+            assertEquals("downloaded", model.chapterFilter())
+        }
+
+    @Test
     fun clearingTheModelStopsItsWork() =
         runTest(dispatcher) {
             val model = model()
@@ -320,15 +413,41 @@ class StoryPageScreenModelTest {
                 .firstOrNull { it.id == id }
                 ?.copy()
 
+        /** Holds each bookmark write until completed with whether it saved; null saves at once. */
+        val bookmarkWrites = ArrayDeque<CompletableDeferred<Boolean>>()
+        var savedFilter = "all"
+        var filterWrite: CompletableDeferred<Unit>? = null
+
         override suspend fun toggleBookmark(
             storyId: String,
             chapterId: String,
-        ) {
+        ): Boolean {
             toggled += storyId to chapterId
+            val saved = bookmarkWrites.removeFirstOrNull()?.await() ?: true
+            if (saved) {
+                publish(
+                    library =
+                        state.value.library.map {
+                            if (it.id ==
+                                storyId
+                            ) {
+                                checkNotNull(StoryMutations.toggleBookmark(it, chapterId))
+                            } else {
+                                it
+                            }
+                        },
+                    libraryChanged = true,
+                )
+            }
+            return saved
         }
+
+        override fun chapterFilter(): String = savedFilter
 
         override suspend fun saveChapterFilter(mode: String) {
             savedFilters += mode
+            filterWrite?.await()
+            savedFilter = mode
         }
 
         fun publish(

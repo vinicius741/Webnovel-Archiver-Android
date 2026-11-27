@@ -13,6 +13,8 @@ import com.vinicius741.webnovelarchiver.domain.model.CharacterRole
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryCharacter
 import com.vinicius741.webnovelarchiver.domain.model.StoryPhase
+import com.vinicius741.webnovelarchiver.feature.story.OptimisticStoryEdits
+import com.vinicius741.webnovelarchiver.feature.story.StoryEdit
 import com.vinicius741.webnovelarchiver.navigation.ScreenModel
 import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
@@ -212,7 +214,8 @@ internal interface AiControlsData {
         mediaType: String?,
     )
 
-    suspend fun useSourceCover(storyId: String)
+    /** False when there is no AI cover to switch from. */
+    suspend fun useSourceCover(storyId: String): Boolean
 
     /** The saved versions, marking the one whose image is [pending]'s. */
     suspend fun coverVersions(
@@ -233,10 +236,11 @@ internal interface AiControlsData {
         description: String,
     )
 
+    /** False when there is no AI description to switch to or from. */
     suspend fun setShowAiDescription(
         storyId: String,
         show: Boolean,
-    )
+    ): Boolean
 
     /** Saves the chapters sent to AI (null = automatic); returns the saved story, or null when it is gone. */
     suspend fun setContextChapters(
@@ -315,6 +319,9 @@ internal class AiControlsScreenModel(
     private var reloads = 0
     private var settledDraft: AiCoverDraft? = null
     private var markingCoverSeen = false
+
+    /** The description and cover switches show at once; their writes follow in tap order. */
+    private val edits = OptimisticStoryEdits(onChange = { refresh() })
     private val mutableState = MutableStateFlow(compute())
     private val messageChannel = Channel<String>(MESSAGE_BUFFER, BufferOverflow.DROP_OLDEST)
 
@@ -407,8 +414,9 @@ internal class AiControlsScreenModel(
 
     fun showAiDescription(show: Boolean) {
         scope.launch {
-            data.setShowAiDescription(storyId, show)
-            refresh()
+            if (!edits.commit(StoryEdit.ShowAiDescription(show)) { data.setShowAiDescription(storyId, show) }) {
+                message("Couldn't switch the description")
+            }
         }
     }
 
@@ -484,7 +492,10 @@ internal class AiControlsScreenModel(
             try {
                 attempt {
                     if (version == null) {
-                        data.useSourceCover(storyId)
+                        if (!edits.commit(StoryEdit.ShowAiCover(false)) { data.useSourceCover(storyId) }) {
+                            message("Couldn't switch to the source cover")
+                            return@attempt
+                        }
                     } else {
                         val bytes = data.readVersion(version)
                         if (bytes == null) {
@@ -594,7 +605,7 @@ internal class AiControlsScreenModel(
         val held = attention.state.value
         val characterJobs = jobs.characterJobs.value
         return AiControlsUiState(
-            story = story,
+            story = edits.shown(story),
             tab = tab,
             aiJob = ai,
             coverJob = coverJob,

@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
+import com.vinicius741.webnovelarchiver.domain.download.FinishedJobCompaction
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
@@ -63,7 +64,9 @@ class AppStorage(
     internal val appVersion: String = appVersionOf(context),
 ) {
     internal val context: Context = context.applicationContext
-    internal val gson: Gson = SharedGson.pretty
+
+    /** Compact: storage documents are parsed at every cold start; readers accept pretty files too. */
+    internal val gson: Gson = SharedGson.plain
     internal val root = File(this.context.filesDir, "webnovel_archiver").apply { mkdirs() }
     internal val storyDir = File(root, "stories").apply { mkdirs() }
     internal val metricDir = File(root, "metrics").apply { mkdirs() }
@@ -185,6 +188,10 @@ class AppStorage(
 
     internal val aiSettingsDoc = JsonDocument(aiSettingsFile, typeOf<AiSettings>(), { AiSettings() }, PreferenceNormalization::aiSettings)
 
+    /** Per-story listening positions (`storyId → TtsStoryPosition`); same on-disk map as before it was cached. */
+    internal val ttsPositionsDoc =
+        JsonDocument<Map<String, TtsStoryPosition>>(ttsPositionsFile, typeOf<MutableMap<String, TtsStoryPosition>>(), { mutableMapOf() })
+
     private inline fun <reified T> typeOf(): Type = object : TypeToken<T>() {}.type
 
     /** Re-reads every cached document from disk; call after restore/import/clear replaced the root. */
@@ -199,6 +206,7 @@ class AppStorage(
         regexRulesDoc.reload()
         ttsSettingsDoc.reload()
         aiSettingsDoc.reload()
+        ttsPositionsDoc.reload()
     }
 
     @Synchronized
@@ -326,22 +334,28 @@ class AppStorage(
 
     fun clearTtsSession() = maintenanceCoordinator.withStorageAccess(this) { sessionFile.delete() }
 
-    fun getTtsStoryPositions(): MutableMap<String, TtsStoryPosition> =
-        read<MutableMap<String, TtsStoryPosition>>(ttsPositionsFile) ?: mutableMapOf()
+    /** Cached ([ttsPositionsDoc]): playback saves a position every few seconds, so it never re-reads the file. */
+    fun getTtsStoryPositions(): Map<String, TtsStoryPosition> = ttsPositionsDoc.get()
 
+    @Synchronized
     fun saveTtsStoryPosition(position: TtsStoryPosition) {
-        val positions = getTtsStoryPositions()
-        positions[position.storyId] = position
-        write(ttsPositionsFile, positions)
-    }
-
-    fun clearTtsStoryPosition(storyId: String) {
-        val positions = getTtsStoryPositions()
-        if (positions.remove(storyId) != null) write(ttsPositionsFile, positions)
+        ttsPositionsDoc.set(ttsPositionsDoc.get() + (position.storyId to position.copy()))
     }
 
     @Synchronized
-    fun getQueue(): MutableList<DownloadJob> = read(queueFile) ?: mutableListOf()
+    fun clearTtsStoryPosition(storyId: String) {
+        val positions = ttsPositionsDoc.get()
+        if (storyId in positions) ttsPositionsDoc.set(positions - storyId)
+    }
+
+    @Synchronized
+    fun getQueue(): MutableList<DownloadJob> = readQueueFile() ?: mutableListOf()
+
+    /** The stored queue with finished-job records expanded ([FinishedJobCompaction]); null when absent. */
+    private fun readQueueFile(): MutableList<DownloadJob>? = read<MutableList<DownloadJob>>(queueFile)?.let(FinishedJobCompaction::expand)
+
+    /** Stores [jobs] with each story's completed jobs collapsed into one compact record. */
+    private fun writeQueueFile(jobs: List<DownloadJob>) = write(queueFile, FinishedJobCompaction.compact(jobs))
 
     /**
      * Recovers jobs left "downloading" by a killed process back to "pending". The whole
@@ -351,12 +365,12 @@ class AppStorage(
      */
     @Synchronized
     fun recoverInterruptedDownloads() {
-        val jobs: MutableList<DownloadJob> = read(queueFile) ?: return
+        val jobs: MutableList<DownloadJob> = readQueueFile() ?: return
         var changed = false
         jobs.forEach { job ->
             if (DownloadJobTransitions.recoverInterrupted(job)) changed = true
         }
-        if (changed) write(queueFile, jobs)
+        if (changed) writeQueueFile(jobs)
     }
 
     /**
@@ -393,7 +407,7 @@ class AppStorage(
     }
 
     @Synchronized
-    fun saveQueue(jobs: List<DownloadJob>) = write(queueFile, jobs)
+    fun saveQueue(jobs: List<DownloadJob>) = writeQueueFile(jobs)
 
     /**
      * Snapshots the library index, every story file, and the tabs file into [dest], returning a
@@ -498,9 +512,9 @@ class AppStorage(
      */
     @Synchronized
     fun mutateQueueInPlace(transform: (MutableList<DownloadJob>) -> List<DownloadJob>): List<DownloadJob> {
-        val current = read<MutableList<DownloadJob>>(queueFile) ?: mutableListOf()
+        val current = readQueueFile() ?: mutableListOf()
         val updated = transform(current)
-        write(queueFile, updated)
+        writeQueueFile(updated)
         return updated
     }
 
@@ -517,7 +531,7 @@ class AppStorage(
         jobs: List<DownloadJob>,
     ) {
         addOrUpdateStory(story)
-        write(queueFile, jobs)
+        writeQueueFile(jobs)
     }
 
     @Synchronized
