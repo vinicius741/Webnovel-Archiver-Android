@@ -144,9 +144,7 @@ private class RepositoryAiControlsData(
         repository.setAiCover(storyId, bytes, mediaType)
     }
 
-    override suspend fun useSourceCover(storyId: String) {
-        repository.setShowAiCover(storyId, false)
-    }
+    override suspend fun useSourceCover(storyId: String): Boolean = repository.setShowAiCover(storyId, false) != null
 
     override suspend fun coverVersions(
         storyId: String,
@@ -175,9 +173,7 @@ private class RepositoryAiControlsData(
     override suspend fun setShowAiDescription(
         storyId: String,
         show: Boolean,
-    ) {
-        repository.setShowAiDescription(storyId, show)
-    }
+    ): Boolean = repository.setShowAiDescription(storyId, show) != null
 
     override suspend fun setContextChapters(
         storyId: String,

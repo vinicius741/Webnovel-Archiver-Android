@@ -64,7 +64,7 @@ internal fun ScreenHost.buildChaptersTab(
 ): ChaptersTab {
     var story = initial
     var query = routeMemory.queries[memoryKey].orEmpty()
-    var filter = chapterFilterFor(story.id)
+    var filter = chapterFilterFor(model)
     var audio = chapterAudioLabels(story)
     val list =
         RecyclerView(app).apply {
@@ -160,7 +160,7 @@ internal fun ScreenHost.buildChaptersTab(
         ChapterListAdapter(
             this,
             story,
-            // The saved story comes back through the page state, like a download event.
+            // The page state shows the edit at once (the model writes it behind the scenes), like a download event.
             onToggleBookmark = { chapter -> model.toggleBookmark(chapter.id) },
             onLongPress = { chapter -> showChapterActions(story, chapter) },
         )
@@ -279,8 +279,7 @@ private fun ScreenHost.renderChapterChips(
 }
 
 /** The filter to open with: this run's choice for the story, else the saved preference. */
-private fun ScreenHost.chapterFilterFor(storyId: String): String =
-    StoryTabMemory.chapterFilters[storyId] ?: repository.chapterFilterSettings.get().filterMode
+private fun chapterFilterFor(model: StoryPageScreenModel): String = StoryTabMemory.chapterFilters[model.storyId] ?: model.chapterFilter()
 
 /** Saves a filter the settings file knows; "Not downloaded" and "Audio" are remembered only for this run. */
 private fun rememberChapterFilter(
