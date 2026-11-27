@@ -33,7 +33,7 @@ class DownloadProcessLoopTest {
 
         suspend fun run() {
             DownloadProcessLoop(
-                storage = store,
+                queueStore = store,
                 wakeSignals = wake,
                 cleanupUnsupportedSourceJobs = {},
                 processJob = ::work,

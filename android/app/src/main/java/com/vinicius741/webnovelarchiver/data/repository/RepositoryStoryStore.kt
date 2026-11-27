@@ -5,15 +5,20 @@ import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.Story
 
-/** Minimal persistence contract used by repository transaction/cache tests. */
+/**
+ * Minimal persistence contract used by repository transaction/cache tests. Stories and the queue
+ * are read only by [AppRepository.refresh]; every other access writes through the working state.
+ */
 internal interface RepositoryStoryStore {
     val transactionLock: Any
 
     fun stories(): List<Story>
 
-    fun story(id: String): Story?
-
+    /** Adds a story to the library, or rewrites one, resolving membership from the index. */
     fun addOrUpdateStory(story: Story)
+
+    /** Rewrites a story already in the library without reading anything (see [AppStorage.saveLibraryMember]). */
+    fun saveLibraryMember(story: Story) = addOrUpdateStory(story)
 
     fun deleteStory(id: String)
 

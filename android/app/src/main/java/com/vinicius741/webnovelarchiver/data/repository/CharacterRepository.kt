@@ -17,7 +17,7 @@ internal suspend fun AppRepository.saveCharacterRosterIfStoryExists(
     characters: List<StoryCharacter>,
 ): Boolean =
     storageTransaction {
-        (storage.getStory(storyId) != null).also { exists -> if (exists) storage.characters.saveRoster(storyId, characters) }
+        containsStoryLocked(storyId).also { exists -> if (exists) storage.characters.saveRoster(storyId, characters) }
     }
 
 internal suspend fun AppRepository.characterPortraits(
@@ -37,7 +37,7 @@ internal suspend fun AppRepository.saveCharacterPortraitIfStoryExists(
     mediaType: String?,
 ): String? =
     storageTransaction {
-        if (storage.getStory(storyId) == null) null else storage.characters.savePortrait(storyId, characterId, prompt, bytes, mediaType)
+        if (!containsStoryLocked(storyId)) null else storage.characters.savePortrait(storyId, characterId, prompt, bytes, mediaType)
     }
 
 internal suspend fun AppRepository.deleteCharacterPortrait(

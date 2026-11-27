@@ -111,6 +111,26 @@ class ArchitectureRulesTest {
         )
     }
 
+    /**
+     * AppRepository's working library and queue are the read source of its transactions, so a story
+     * or queue document written behind its back would be overwritten from a stale copy. Only data/
+     * (the repository, and restore/import before its refresh) may touch those documents.
+     */
+    @Test
+    fun storyAndQueueDocumentsGoThroughTheRepository() {
+        val raw =
+            Regex(
+                """\bstorage(::|\.)(getStory|getQueue|getLibrary|saveQueue|addOrUpdateStory|saveLibraryMember|saveLibrary|deleteStory)\b""",
+            )
+        val offenders =
+            kotlinFiles(".")
+                .filterNot { relative(it).startsWith("data/") }
+                .flatMap { file ->
+                    file.readLines().filter { raw.containsMatchIn(it.substringBefore("//")) }.map { "${relative(file)}: ${it.trim()}" }
+                }
+        assertTrue("Write stories and the queue through AppRepository:\n" + offenders.joinToString("\n"), offenders.isEmpty())
+    }
+
     @Test
     fun screenModelsStayFreeOfViews() {
         val models = File(root, "feature").walkTopDown().filter { it.isFile && it.name.endsWith("ScreenModel.kt") }

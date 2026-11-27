@@ -21,7 +21,7 @@ class AppRepositoryTest {
     @Test
     fun chapterSelectionsAreIsolatedOnInputAndEveryPublishedSnapshot() =
         runTest {
-            val input = story().copy(aiContextChapterIndices = mutableListOf(0), aiCoverContextChapterIndices = mutableListOf(1))
+            val input = fakeStory().copy(aiContextChapterIndices = mutableListOf(0), aiCoverContextChapterIndices = mutableListOf(1))
             val store = FakeRepositoryStoryStore(input)
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             repository.upsertStory(input)
@@ -44,7 +44,7 @@ class AppRepositoryTest {
     @Test
     fun singleStoryMutationPublishesDetachedSnapshotWithoutReadingWholeLibrary() =
         runTest {
-            val store = FakeRepositoryStoryStore(story())
+            val store = FakeRepositoryStoryStore(fakeStory())
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
 
             repository.upsertStory(store.story("story")!!)
@@ -53,7 +53,7 @@ class AppRepositoryTest {
 
             val published = repository.story("story")!!
             assertEquals("two", published.lastReadChapterId)
-            assertEquals(0, store.libraryReadCount)
+            assertEquals("the library is loaded once, never re-read", 1, store.libraryReadCount)
             assertNotSame(store.story("story")!!.chapters, published.chapters)
 
             beforeMutation.chapters.first().title = "changed outside repository"
@@ -70,7 +70,7 @@ class AppRepositoryTest {
     @Test
     fun deletingStoryUpdatesCachedLibraryWithoutReparsingRemainingStories() =
         runTest {
-            val store = FakeRepositoryStoryStore(story(), story(id = "other"))
+            val store = FakeRepositoryStoryStore(fakeStory(), fakeStory(id = "other"))
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             store.stories.values.forEach { repository.upsertStory(it) }
 
@@ -78,31 +78,16 @@ class AppRepositoryTest {
 
             assertNull(repository.story("story"))
             assertEquals(listOf("other"), repository.library().map { it.id })
-            assertEquals(0, store.libraryReadCount)
-        }
-
-    @Test
-    fun publishingExternallyPersistedStoryRefreshesSingleStoryCache() =
-        runTest {
-            val store = FakeRepositoryStoryStore(story())
-            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
-            repository.upsertStory(store.story("story")!!)
-            val syncedAt = 1_750_000_000_000L
-
-            store.stories["story"] = store.story("story")!!.copy(lastChapterSyncAt = syncedAt)
-            repository.publishDownloadState(setOf("story"), queueChanged = false)
-
-            assertEquals(syncedAt, repository.story("story")!!.lastChapterSyncAt)
-            assertEquals(0, store.libraryReadCount)
+            assertEquals("the library is loaded once, never re-read", 1, store.libraryReadCount)
         }
 
     @Test
     fun syncCommitMergesLatestStoryAndPublishesOneRepositorySnapshot() =
         runTest {
-            val store = FakeRepositoryStoryStore(story())
+            val store = FakeRepositoryStoryStore(fakeStory())
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             repository.upsertStory(store.story("story")!!)
-            val synced = story().copy(title = "Synced")
+            val synced = fakeStory().copy(title = "Synced")
 
             val committed =
                 repository.commitSyncedStory(synced) { current ->
@@ -117,7 +102,7 @@ class AppRepositoryTest {
     @Test
     fun sourceStateMutationPreservesChaptersAndPublishesFailureState() =
         runTest {
-            val store = FakeRepositoryStoryStore(story())
+            val store = FakeRepositoryStoryStore(fakeStory())
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             repository.upsertStory(store.story("story")!!)
 
@@ -141,7 +126,7 @@ class AppRepositoryTest {
     @Test
     fun storyAndQueueReadsDoNotWaitForTheTransactionMonitor() =
         runTest {
-            val store = FakeRepositoryStoryStore(story())
+            val store = FakeRepositoryStoryStore(fakeStory())
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             repository.upsertStory(store.story("story")!!)
 
@@ -157,7 +142,7 @@ class AppRepositoryTest {
                     }
                 read.isDaemon = true
                 read.start()
-                assertTrue("story()/library()/queue() blocked on the storage monitor", readLatch.await(2, TimeUnit.SECONDS))
+                assertTrue("fakeStory()/library()/queue() blocked on the storage monitor", readLatch.await(2, TimeUnit.SECONDS))
             }
 
             assertEquals(listOf("Story story", "Story story", "0"), readResults)
@@ -166,7 +151,7 @@ class AppRepositoryTest {
     @Test
     fun syncCommitIsRejectedWhenTheLibraryWasReplacedMidFlight() =
         runTest {
-            val store = FakeRepositoryStoryStore(story())
+            val store = FakeRepositoryStoryStore(fakeStory())
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             repository.upsertStory(store.story("story")!!)
             val staleGeneration = repository.libraryGeneration()
@@ -176,7 +161,7 @@ class AppRepositoryTest {
 
             val error =
                 runCatching {
-                    repository.commitSyncedStory(story(), startedGeneration = staleGeneration) { current -> current!! }
+                    repository.commitSyncedStory(fakeStory(), startedGeneration = staleGeneration) { current -> current!! }
                 }.exceptionOrNull()
 
             assertTrue(error is IllegalStateException)
@@ -186,17 +171,17 @@ class AppRepositoryTest {
     fun freshPatreonStatsReachEveryLiveStorySharingTheCreator() =
         runTest {
             val oldStats = PatreonRawStats(capturedAt = 1L, paidMembers = 10)
-            val sibling = story(id = "sibling").copy(patreonUrl = "https://www.patreon.com/c/Creator/posts", patreonStats = oldStats)
+            val sibling = fakeStory(id = "sibling").copy(patreonUrl = "https://www.patreon.com/c/Creator/posts", patreonStats = oldStats)
             val archived =
-                story(
+                fakeStory(
                     id = "archived",
                 ).copy(patreonUrl = "https://patreon.com/creator", isArchived = true, patreonStats = oldStats)
-            val unrelated = story(id = "unrelated").copy(patreonUrl = "https://patreon.com/someone", patreonStats = oldStats)
-            val store = FakeRepositoryStoryStore(story(), sibling, archived, unrelated)
+            val unrelated = fakeStory(id = "unrelated").copy(patreonUrl = "https://patreon.com/someone", patreonStats = oldStats)
+            val store = FakeRepositoryStoryStore(fakeStory(), sibling, archived, unrelated)
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             store.stories.values.forEach { repository.upsertStory(it) }
             val fresh = PatreonRawStats(capturedAt = 2L, paidMembers = 42)
-            val synced = story().copy(patreonUrl = "https://www.patreon.com/creator", patreonStats = fresh)
+            val synced = fakeStory().copy(patreonUrl = "https://www.patreon.com/creator", patreonStats = fresh)
 
             repository.commitSyncedStory(synced, metricSnapshot = StoryMetricSnapshot(capturedAt = 2L, patreonRaw = fresh))
 
@@ -210,13 +195,13 @@ class AppRepositoryTest {
     fun patreonFanOutNeverRegressesAFresherSibling() =
         runTest {
             val newer = PatreonRawStats(capturedAt = 5L, paidMembers = 50)
-            val sibling = story(id = "sibling").copy(patreonUrl = "https://patreon.com/creator", patreonStats = newer)
-            val store = FakeRepositoryStoryStore(story(), sibling)
+            val sibling = fakeStory(id = "sibling").copy(patreonUrl = "https://patreon.com/creator", patreonStats = newer)
+            val store = FakeRepositoryStoryStore(fakeStory(), sibling)
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             store.stories.values.forEach { repository.upsertStory(it) }
             // This sync's fetch finished before the sibling's but commits after it.
             val older = PatreonRawStats(capturedAt = 3L, paidMembers = 30)
-            val synced = story().copy(patreonUrl = "https://patreon.com/creator", patreonStats = older)
+            val synced = fakeStory().copy(patreonUrl = "https://patreon.com/creator", patreonStats = older)
 
             repository.commitSyncedStory(synced, metricSnapshot = StoryMetricSnapshot(capturedAt = 3L, patreonRaw = older))
 
@@ -229,14 +214,14 @@ class AppRepositoryTest {
     fun unwritableSiblingDoesNotFailTheCommittedSync() =
         runTest {
             val oldStats = PatreonRawStats(capturedAt = 1L, paidMembers = 10)
-            val broken = story(id = "broken").copy(patreonUrl = "https://patreon.com/creator", patreonStats = oldStats)
-            val healthy = story(id = "healthy").copy(patreonUrl = "https://patreon.com/creator", patreonStats = oldStats)
-            val store = FakeRepositoryStoryStore(story(), broken, healthy)
+            val broken = fakeStory(id = "broken").copy(patreonUrl = "https://patreon.com/creator", patreonStats = oldStats)
+            val healthy = fakeStory(id = "healthy").copy(patreonUrl = "https://patreon.com/creator", patreonStats = oldStats)
+            val store = FakeRepositoryStoryStore(fakeStory(), broken, healthy)
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             store.stories.values.forEach { repository.upsertStory(it) }
             store.unwritableIds += "broken"
             val fresh = PatreonRawStats(capturedAt = 2L, paidMembers = 42)
-            val synced = story().copy(title = "Synced", patreonUrl = "https://patreon.com/creator", patreonStats = fresh)
+            val synced = fakeStory().copy(title = "Synced", patreonUrl = "https://patreon.com/creator", patreonStats = fresh)
 
             val committed =
                 repository.commitSyncedStory(synced, metricSnapshot = StoryMetricSnapshot(capturedAt = 2L, patreonRaw = fresh))
@@ -251,11 +236,11 @@ class AppRepositoryTest {
     fun syncWithoutPatreonRefreshLeavesSiblingsAlone() =
         runTest {
             val oldStats = PatreonRawStats(capturedAt = 1L, paidMembers = 10)
-            val sibling = story(id = "sibling").copy(patreonUrl = "https://patreon.com/creator", patreonStats = oldStats)
-            val store = FakeRepositoryStoryStore(story(), sibling)
+            val sibling = fakeStory(id = "sibling").copy(patreonUrl = "https://patreon.com/creator", patreonStats = oldStats)
+            val store = FakeRepositoryStoryStore(fakeStory(), sibling)
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             store.stories.values.forEach { repository.upsertStory(it) }
-            val carried = story().copy(patreonUrl = "https://patreon.com/creator", patreonStats = PatreonRawStats(capturedAt = 0L))
+            val carried = fakeStory().copy(patreonUrl = "https://patreon.com/creator", patreonStats = PatreonRawStats(capturedAt = 0L))
 
             repository.commitSyncedStory(carried, metricSnapshot = StoryMetricSnapshot(capturedAt = 2L))
 
@@ -265,7 +250,7 @@ class AppRepositoryTest {
     @Test
     fun syncCommitIsRejectedWhenTheStoryWasDeletedMidFlight() =
         runTest {
-            val store = FakeRepositoryStoryStore(story())
+            val store = FakeRepositoryStoryStore(fakeStory())
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             repository.upsertStory(store.story("story")!!)
 
@@ -273,7 +258,7 @@ class AppRepositoryTest {
 
             val error =
                 runCatching {
-                    repository.commitSyncedStory(story(), requireExisting = true) { current -> current!! }
+                    repository.commitSyncedStory(fakeStory(), requireExisting = true) { current -> current!! }
                 }.exceptionOrNull()
 
             assertTrue(error is IllegalStateException)
@@ -283,7 +268,7 @@ class AppRepositoryTest {
     @Test
     fun concurrentIndependentDisplayPreferenceUpdatesBothSurvive() =
         runTest {
-            val store = FakeRepositoryStoryStore(story())
+            val store = FakeRepositoryStoryStore(fakeStory())
             store.display =
                 com.vinicius741.webnovelarchiver.domain.model
                     .DisplayPreferences()
@@ -302,7 +287,7 @@ class AppRepositoryTest {
     @Test
     fun latestSameFieldChoiceWins() =
         runTest {
-            val store = FakeRepositoryStoryStore(story())
+            val store = FakeRepositoryStoryStore(fakeStory())
             store.display =
                 com.vinicius741.webnovelarchiver.domain.model
                     .DisplayPreferences()
@@ -327,8 +312,8 @@ class AppRepositoryTest {
                     status = DownloadJobStatus.Downloading.wire,
                     chapter = Chapter(id = "one", title = "One"),
                 )
-            val store = FakeRepositoryStoryStore(story())
-            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            val store = FakeRepositoryStoryStore(fakeStory())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler)).apply { refresh() }
             repository.saveQueue(listOf(job))
 
             val outcome =
@@ -358,10 +343,10 @@ class AppRepositoryTest {
                     status = DownloadJobStatus.Downloading.wire,
                     chapter = Chapter(id = "one", title = "One"),
                 )
-            val store = FakeRepositoryStoryStore(story())
-            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            val store = FakeRepositoryStoryStore(fakeStory())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler)).apply { refresh() }
             repository.saveQueue(listOf(job))
-            store.saveQueue(store.queue().map { it.copy(status = DownloadJobStatus.Cancelled.wire) })
+            repository.updateQueue { queue -> queue.map { it.copy(status = DownloadJobStatus.Cancelled.wire) } }
 
             val outcome =
                 repository.completeDownloadedChapter(job, {
@@ -389,8 +374,8 @@ class AppRepositoryTest {
                     status = DownloadJobStatus.Downloading.wire,
                     chapter = Chapter(id = "one", title = "One"),
                 )
-            val store = FakeRepositoryStoryStore(story())
-            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            val store = FakeRepositoryStoryStore(fakeStory())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler)).apply { refresh() }
             repository.saveQueue(listOf(job))
             val staleGeneration = repository.libraryGeneration()
             repository.invalidateLibraryGeneration()
@@ -420,8 +405,8 @@ class AppRepositoryTest {
                     status = DownloadJobStatus.Downloading.wire,
                     chapter = Chapter(id = "gone", title = "Gone"),
                 )
-            val store = FakeRepositoryStoryStore(story())
-            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            val store = FakeRepositoryStoryStore(fakeStory())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler)).apply { refresh() }
             repository.saveQueue(listOf(job))
 
             assertEquals(
@@ -434,62 +419,4 @@ class AppRepositoryTest {
                 ),
             )
         }
-
-    private class FakeRepositoryStoryStore(
-        vararg initial: Story,
-    ) : RepositoryStoryStore {
-        override val transactionLock = Any()
-        val stories = initial.associateByTo(linkedMapOf()) { it.id }
-        private var queue: List<DownloadJob> = emptyList()
-        var libraryReadCount = 0
-        var display =
-            com.vinicius741.webnovelarchiver.domain.model
-                .DisplayPreferences()
-
-        override fun stories(): List<Story> {
-            libraryReadCount += 1
-            return stories.values.toList()
-        }
-
-        override fun story(id: String): Story? = stories[id]
-
-        val unwritableIds = mutableSetOf<String>()
-
-        override fun addOrUpdateStory(story: Story) {
-            check(story.id !in unwritableIds) { "Refusing to overwrite unhealthy ${story.id}" }
-            stories[story.id] = story
-        }
-
-        override fun deleteStory(id: String) {
-            stories.remove(id)
-        }
-
-        override fun saveLibrary(stories: List<Story>) {
-            this.stories.clear()
-            stories.associateByTo(this.stories) { it.id }
-        }
-
-        override fun queue(): List<DownloadJob> = queue
-
-        override fun saveQueue(jobs: List<DownloadJob>) {
-            queue = jobs
-        }
-
-        override fun displayPreferences(): com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences = display.copy()
-
-        override fun saveDisplayPreferences(preferences: com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences) {
-            display = preferences.copy()
-        }
-    }
-
-    private fun story(id: String = "story") =
-        Story(
-            id = id,
-            title = "Story $id",
-            chapters =
-                mutableListOf(
-                    Chapter(id = "one", title = "One"),
-                    Chapter(id = "two", title = "Two"),
-                ),
-        )
 }

@@ -54,9 +54,9 @@ private class AppStorageStoryStore(
 
     override fun stories(): List<Story> = storage.getLibrary()
 
-    override fun story(id: String): Story? = storage.getStory(id)
-
     override fun addOrUpdateStory(story: Story) = storage.addOrUpdateStory(story)
+
+    override fun saveLibraryMember(story: Story) = storage.saveLibraryMember(story)
 
     override fun deleteStory(id: String) = storage.deleteStory(id)
 
@@ -86,6 +86,11 @@ data class DownloadUiSnapshot(
  *
  * [downloadState] is refreshed after each transaction so screens never re-read JSON per render.
  * Engines still use [storage] directly for raw file I/O; only read-modify-write mutations live here.
+ *
+ * The working library and queue are the read source of every transaction: after [refresh] loads
+ * them, story and queue documents are only written (write-through), never re-parsed. That holds only
+ * while every story/queue writer goes through this class, including the download loop's queue
+ * saves (`download/DownloadQueueStore.kt`); restore, import and clear replace the root and [refresh].
  */
 class AppRepository private constructor(
     private val storyStore: RepositoryStoryStore,
@@ -102,7 +107,8 @@ class AppRepository private constructor(
         ioDispatcher: CoroutineDispatcher,
     ) : this(storyStore, null, ioDispatcher)
 
-    private val transactionLock: Any get() = storyStore.transactionLock
+    /** The shared storage monitor; the `*Locked` members below require the caller to hold it. */
+    internal val transactionLock: Any get() = storyStore.transactionLock
 
     /** Infrastructure escape hatch; feature/UI code only sees repository operations. */
     val storage: AppStorage
@@ -138,9 +144,23 @@ class AppRepository private constructor(
     @Volatile
     private var published = PublishedState()
 
-    /** Working library/queue state; only touched while holding the transaction monitor. */
+    /**
+     * Working library/queue state, mirroring what is on disk; only touched while holding the
+     * transaction monitor. Entries are never handed out: callers get copies.
+     */
     private val libraryById = linkedMapOf<String, Story>()
     private var queueJobs: List<DownloadJob> = emptyList()
+
+    /** Write-through changes made by engines under the monitor that the next publish must announce. */
+    private var unpublishedLibrary = false
+    private var unpublishedQueue = false
+
+    /**
+     * False until [refresh] (or the first transaction) loads the working state. The download service
+     * is sticky and may run a transaction before startup's refresh; it must never act on, or save,
+     * an empty working queue.
+     */
+    private var workingStateLoaded = false
 
     private val _downloadState = MutableStateFlow(DownloadUiSnapshot())
 
@@ -175,42 +195,40 @@ class AppRepository private constructor(
      */
     fun refresh(preloadedLibrary: List<Story>? = null) {
         synchronized(transactionLock) {
-            val storage = requiredStorage
-            val library = (preloadedLibrary ?: storyStore.stories()).map(StoryMutations::snapshot)
-            val queue = storyStore.queue().map(::snapshotJob)
-            libraryById.clear()
-            library.forEach { libraryById[it.id] = it }
-            queueJobs = queue
-            republishLocked()
-            // Settings documents are cached by the storage layer; reload them so a restore/import
-            // that replaced the root's contents is reflected, then re-read the session cache.
-            storage.reloadJsonDocuments()
-            aiUsage.reload(storage.aiUsage::load)
-            ttsSession = storage.getTtsSession()?.copy()
-            aiCoverUnseenState.value = storage.covers.unseenResults()
-            _downloadState.value = _downloadState.value.copy(library = library, queue = queue)
+            loadWorkingStateLocked(preloadedLibrary)
+            storageDelegate?.let { storage ->
+                // Settings documents are cached by the storage layer; reload them so a restore/import
+                // that replaced the root's contents is reflected, then re-read the session cache.
+                storage.reloadJsonDocuments()
+                aiUsage.reload(storage.aiUsage::load)
+                ttsSession = storage.getTtsSession()?.copy()
+                aiCoverUnseenState.value = storage.covers.unseenResults()
+            }
         }
     }
 
-    /** Publishes one coherent update; the service and Activity share this repository, so every screen stays in sync. */
-    internal fun publishDownloadState(
-        changedStoryIds: Set<String> = emptySet(),
-        queueChanged: Boolean,
-    ) {
+    /** Loads the working library and queue from the store; the only place either is parsed. */
+    private fun loadWorkingStateLocked(preloadedLibrary: List<Story>?) {
+        val library = (preloadedLibrary ?: storyStore.stories()).map(StoryMutations::snapshot)
+        val queue = storyStore.queue().map(::snapshotJob)
+        libraryById.clear()
+        library.forEach { libraryById[it.id] = it }
+        queueJobs = queue
+        workingStateLoaded = true
+        unpublishedLibrary = false
+        unpublishedQueue = false
+        republishLocked()
+        _downloadState.value = _downloadState.value.copy(library = library, queue = queue)
+    }
+
+    /**
+     * Publishes the write-through changes engines made under the monitor (download loop claims,
+     * failure handling, enqueue). Every screen stays in sync because the service and the Activity
+     * share this repository. Nothing is re-read: the working state already holds the change.
+     */
+    internal fun publishDownloadState() {
         synchronized(transactionLock) {
-            changedStoryIds.forEach { storyId ->
-                val story = storyStore.story(storyId)
-                if (story == null) {
-                    libraryById.remove(storyId)
-                } else {
-                    libraryById[storyId] = StoryMutations.snapshot(story)
-                }
-            }
-            if (queueChanged) queueJobs = storyStore.queue().map(::snapshotJob)
-            publishDownloadStateLocked(
-                libraryChanged = changedStoryIds.isNotEmpty(),
-                queueChanged = queueChanged,
-            )
+            if (unpublishedLibrary || unpublishedQueue) publishDownloadStateLocked(libraryChanged = false, queueChanged = false)
         }
     }
 
@@ -226,11 +244,13 @@ class AppRepository private constructor(
         _downloadState.value =
             DownloadUiSnapshot(
                 version = version,
-                libraryVersion = if (libraryChanged) previous.libraryVersion + 1L else previous.libraryVersion,
-                queueVersion = if (queueChanged) previous.queueVersion + 1L else previous.queueVersion,
+                libraryVersion = if (libraryChanged || unpublishedLibrary) previous.libraryVersion + 1L else previous.libraryVersion,
+                queueVersion = if (queueChanged || unpublishedQueue) previous.queueVersion + 1L else previous.queueVersion,
                 library = library,
                 queue = queue,
             )
+        unpublishedLibrary = false
+        unpublishedQueue = false
     }
 
     /** Refreshes the published snapshots after in-place working-state changes (refresh/startup). */
@@ -238,12 +258,66 @@ class AppRepository private constructor(
         published = publishedStateLocked(libraryById, queueJobs)
     }
 
-    /** Publishes one story without re-parsing the library; the snapshot copy prevents in-place StateFlow mutation. */
-    private fun publishStoryLocked(story: Story) {
-        val snapshot = StoryMutations.snapshot(story)
-        libraryById[snapshot.id] = snapshot
-        publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
+    /** Every working-state access goes through here: the monitor must be held, and the state loaded. */
+    private fun requireLocked() {
+        check(Thread.holdsLock(transactionLock)) { "Working state is read only under the storage monitor" }
+        if (!workingStateLoaded) loadWorkingStateLocked(null)
     }
+
+    /** A copy of one working-state story for the caller to change; null when the library lacks it. */
+    internal fun storyForWriteLocked(id: String): Story? {
+        requireLocked()
+        return libraryById[id]?.let(StoryMutations::snapshot)
+    }
+
+    internal fun containsStoryLocked(id: String): Boolean {
+        requireLocked()
+        return id in libraryById
+    }
+
+    /**
+     * Write-through: persists [story] and makes it the working copy. A library member is rewritten
+     * without any read, keeping its recorded `dateAdded`; a new id takes the store's membership
+     * path, which also writes the library index. A failed write leaves the working copy untouched.
+     */
+    internal fun saveStoryLocked(story: Story) {
+        requireLocked()
+        val existing = libraryById[story.id]
+        if (existing != null) {
+            story.dateAdded = existing.dateAdded ?: story.dateAdded
+            storyStore.saveLibraryMember(story)
+        } else {
+            storyStore.addOrUpdateStory(story)
+        }
+        libraryById[story.id] = StoryMutations.snapshot(story)
+        unpublishedLibrary = true
+    }
+
+    /** A mutable copy of the working queue; the caller may change the jobs in place before [saveQueueLocked]. */
+    internal fun queueForWriteLocked(): MutableList<DownloadJob> {
+        requireLocked()
+        return queueJobs.mapTo(ArrayList(queueJobs.size), ::snapshotJob)
+    }
+
+    /** Write-through queue save; the working copy changes only after the write succeeded. */
+    internal fun saveQueueLocked(jobs: List<DownloadJob>) {
+        requireLocked()
+        storyStore.saveQueue(jobs)
+        queueJobs = jobs.map(::snapshotJob)
+        unpublishedQueue = true
+    }
+
+    /** Persists an enqueued story with its new queue in one monitor hold (see `DownloadEnqueueTransaction`). */
+    internal fun saveEnqueueLocked(
+        story: Story,
+        jobs: List<DownloadJob>,
+    ) {
+        saveStoryLocked(story)
+        saveQueueLocked(jobs)
+    }
+
+    /** The story's source URL from the published state, without copying its chapter list. */
+    internal fun storySourceUrl(id: String): String? = published.libraryById[id]?.sourceUrl
 
     /** Cached library snapshot, served from the lock-free published state. */
     fun library(): List<Story> = published.library.map(StoryMutations::snapshot)
@@ -348,11 +422,17 @@ class AppRepository private constructor(
 
     suspend fun clearAll() = replaceLibrary { requiredStorage.clearAll() }
 
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun <T> replaceLibrary(block: () -> T): T =
         storageTransaction {
             invalidateLibraryGeneration()
             try {
                 block().also { refresh() }
+            } catch (error: Throwable) {
+                // Transactions read the working state, so it must match whatever the root holds
+                // after a failure too (a rolled-back restore, a partly cleared root).
+                runCatching { refresh() }.exceptionOrNull()?.let(error::addSuppressed)
+                throw error
             } finally {
                 // Work started against the old published snapshot during maintenance is stale too.
                 invalidateLibraryGeneration()
@@ -387,10 +467,10 @@ class AppRepository private constructor(
         block: (Story?) -> Story?,
     ): Story? =
         storageTransaction {
-            val current = storyStore.story(storyId)
+            val current = storyForWriteLocked(storyId)
             val updated = block(current) ?: return@storageTransaction null
-            storyStore.addOrUpdateStory(updated)
-            publishStoryLocked(updated)
+            saveStoryLocked(updated)
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
             StoryMutations.snapshot(updated)
         }
 
@@ -477,11 +557,10 @@ class AppRepository private constructor(
     ): ChapterCommit =
         storageTransaction {
             if (startedGeneration != libraryGeneration.get()) return@storageTransaction ChapterCommit.SKIPPED
-            val queue = storyStore.queue()
-            val stillActive = queue.any { it.id == job.id && it.status == DownloadJobStatus.Downloading.wire }
+            requireLocked()
+            val stillActive = queueJobs.any { it.id == job.id && it.status == DownloadJobStatus.Downloading.wire }
             if (!stillActive) return@storageTransaction ChapterCommit.SKIPPED
-            val story =
-                storyStore.story(job.storyId) ?: return@storageTransaction ChapterCommit.SKIPPED
+            val story = storyForWriteLocked(job.storyId) ?: return@storageTransaction ChapterCommit.SKIPPED
             if (story.chapters.none { it.id == job.chapter.id }) return@storageTransaction ChapterCommit.CHAPTER_MISSING
             val path = writeChapter()
             val downloaded =
@@ -489,15 +568,15 @@ class AppRepository private constructor(
                     ?: return@storageTransaction ChapterCommit.CHAPTER_MISSING
             // A downloaded public chapter retires the Patreon early-access copy it publishes.
             val (marked, retiredCopies) = PatreonCopyPlanning.reconcileStory(downloaded)
-            storyStore.addOrUpdateStory(marked)
-            libraryById[marked.id] = StoryMutations.snapshot(marked)
+            saveStoryLocked(marked)
             retiredCopies.forEach { copy -> runCatching { requiredStorage.deleteChapterFile(marked.id, copy.filePath) } }
+            // completed() returns a copy, so unchanged rows can be shared with the working queue.
             val updated =
-                queue.map { current ->
+                queueJobs.map { current ->
                     if (current.id != job.id) current else DownloadJobTransitions.completed(current) ?: current
                 }
             storyStore.saveQueue(updated)
-            queueJobs = updated.map(::snapshotJob)
+            queueJobs = updated
             publishDownloadStateLocked(libraryChanged = true, queueChanged = true)
             ChapterCommit.COMMITTED
         }
@@ -522,13 +601,12 @@ class AppRepository private constructor(
             check(startedGeneration == libraryGeneration.get()) {
                 "Library was replaced while this sync was running; discarding its result"
             }
-            val current = storyStore.story(story.id)
+            val current = storyForWriteLocked(story.id)
             if (requireExisting) {
                 check(current != null) { "Story ${story.id} was deleted while it was syncing; discarding the sync result" }
             }
             val committed = keepDownloadedChapters(current, merge(current))
-            storyStore.addOrUpdateStory(committed)
-            libraryById[committed.id] = StoryMutations.snapshot(committed)
+            saveStoryLocked(committed)
             committed.patreonStats?.takeIf { metricSnapshot?.patreonRaw != null }?.let { fresh ->
                 sharePatreonStatsLocked(committed, fresh)
             }
@@ -584,25 +662,25 @@ class AppRepository private constructor(
     ) {
         PatreonCreatorPlanning.siblings(committed, libraryById.values).forEach { sibling ->
             runCatching {
-                val updated = storyStore.story(sibling.id) ?: return@runCatching
+                val updated = storyForWriteLocked(sibling.id) ?: return@runCatching
                 val current = updated.patreonStats
                 if (current != null && current.capturedAt > fresh.capturedAt) return@runCatching
                 updated.patreonStats = fresh
-                storyStore.addOrUpdateStory(updated)
-                libraryById[updated.id] = StoryMutations.snapshot(updated)
+                saveStoryLocked(updated)
             }.onFailure { error -> Timber.w(error, "Failed to share Patreon stats with %s", sibling.id) }
         }
     }
 
     suspend fun upsertStory(story: Story) {
         storageTransaction {
-            storyStore.addOrUpdateStory(story)
-            publishStoryLocked(story)
+            saveStoryLocked(story)
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
         }
     }
 
     suspend fun deleteStory(id: String) {
         storageTransaction {
+            requireLocked()
             libraryById[id]?.let { story ->
                 ActivityLog.record(
                     ActivityCategory.LIBRARY,
@@ -615,15 +693,17 @@ class AppRepository private constructor(
                     "archived" to story.isArchived,
                 )
             }
+            // The store drops the story's jobs from the persisted queue too; mirror that here.
             storyStore.deleteStory(id)
             libraryById.remove(id)
-            queueJobs = storyStore.queue().map(::snapshotJob)
+            queueJobs = queueJobs.filterNot { it.storyId == id }
             publishDownloadStateLocked(libraryChanged = true, queueChanged = true)
         }
     }
 
     suspend fun saveLibrary(stories: List<Story>) {
         storageTransaction {
+            requireLocked()
             storyStore.saveLibrary(stories)
             libraryById.clear()
             stories.map(StoryMutations::snapshot).forEach { libraryById[it.id] = it }
@@ -638,10 +718,7 @@ class AppRepository private constructor(
             val startedAt = System.nanoTime() / 1_000_000L
             var failed = false
             try {
-                val current = storyStore.queue()
-                val updated = block(current)
-                storyStore.saveQueue(updated)
-                queueJobs = updated.map(::snapshotJob)
+                saveQueueLocked(block(queueForWriteLocked()))
                 publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
                 queueJobs
             } catch (error: Exception) {
@@ -659,14 +736,10 @@ class AppRepository private constructor(
     /** Replaces the queue wholesale and refreshes the flow (used by enqueue/recovery paths). */
     suspend fun saveQueue(jobs: List<DownloadJob>) {
         storageTransaction {
-            storyStore.saveQueue(jobs)
-            queueJobs = jobs.map(::snapshotJob)
+            saveQueueLocked(jobs)
             publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
         }
     }
-
-    /** Direct disk read for worker loops that must not depend on StateFlow equality; UI observes [queue] or [downloadState]. */
-    internal fun readQueueFromDiskForWorker(): List<DownloadJob> = storyStore.queue()
 
     private fun snapshotJob(job: DownloadJob): DownloadJob = job.copy(chapter = job.chapter.copy())
 }
@@ -781,7 +854,7 @@ internal suspend fun AppRepository.persistAiCoverDraftIfStoryExists(
 ): Boolean {
     val saved =
         storageTransaction {
-            if (storage.getStory(storyId) == null) {
+            if (!containsStoryLocked(storyId)) {
                 false
             } else {
                 when (record) {

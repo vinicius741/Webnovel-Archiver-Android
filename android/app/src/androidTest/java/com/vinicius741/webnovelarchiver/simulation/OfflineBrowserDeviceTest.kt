@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.vinicius741.webnovelarchiver.app.DevEnvironment
+import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.download.downloadQueueStore
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
@@ -48,16 +49,17 @@ class OfflineBrowserDeviceTest {
                     nextRetryAt = 1_005L,
                 )
             storage.saveQueue(listOf(job))
+            val queueStore = AppRepository(storage).also { it.refresh() }.downloadQueueStore()
             val wake = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
             try {
                 val loop =
                     com.vinicius741.webnovelarchiver.download.DownloadProcessLoop(
-                        storage = storage.downloadQueueStore(),
+                        queueStore = queueStore,
                         wakeSignals = wake,
                         cleanupUnsupportedSourceJobs = {},
                         processJob = { active ->
                             completed += 1
-                            storage.mutateQueueInPlace { jobs ->
+                            queueStore.mutateQueueInPlace { jobs ->
                                 jobs.onEach { if (it.id == active.id) it.status = "completed" }
                             }
                         },
