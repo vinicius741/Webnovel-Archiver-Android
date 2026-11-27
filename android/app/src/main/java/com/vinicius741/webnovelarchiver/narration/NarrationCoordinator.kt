@@ -9,6 +9,8 @@ import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.chapterTitle
+import com.vinicius741.webnovelarchiver.data.repository.hasChapter
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -311,7 +313,7 @@ class NarrationCoordinator internal constructor(
         chapterId: String,
     ): NarrationChapterStatus {
         store.awaitLoaded()
-        val story = repository.story(storyId) ?: return NarrationChapterStatus.None
+        val story = repository.readOnlyStory(storyId) ?: return NarrationChapterStatus.None
         return statuses(story, setOf(chapterId))[chapterId] ?: NarrationChapterStatus.None
     }
 
@@ -624,7 +626,7 @@ class NarrationCoordinator internal constructor(
     fun detachedPacks(): Map<String, List<NarrationPack>> =
         store
             .allPacks()
-            .filter { repository.story(it.storyId)?.chapters?.any { chapter -> chapter.id == it.chapterId } != true }
+            .filterNot { repository.hasChapter(it.storyId, it.chapterId) }
             .groupBy { it.storyId }
 
     fun freeBytes(): Long = source.freeBytes()
@@ -633,12 +635,7 @@ class NarrationCoordinator internal constructor(
     fun chapterTitle(
         storyId: String,
         chapterId: String,
-    ): String =
-        repository
-            .story(storyId)
-            ?.chapters
-            ?.firstOrNull { it.id == chapterId }
-            ?.title ?: chapterId
+    ): String = repository.chapterTitle(storyId, chapterId) ?: chapterId
 
     companion object {
         const val ROOT_DIR = "narration"
@@ -667,7 +664,7 @@ private class RepositoryNarrationSource(
         storyId: String,
         chapterId: String,
     ): NarrationChapterText? {
-        val story = repository.story(storyId) ?: return null
+        val story = repository.readOnlyStory(storyId) ?: return null
         val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return null
         return chapter(story, chapter, repository.regexRules.get())
     }

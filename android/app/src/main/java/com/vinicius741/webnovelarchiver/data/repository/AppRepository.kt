@@ -254,6 +254,16 @@ class AppRepository private constructor(
     /** Single-story lookup by id, from the lock-free published state (never waits on storage I/O). */
     fun story(id: String): Story? = published.libraryById[id]?.let(StoryMutations::snapshot)
 
+    /**
+     * The published library without [library]'s deep copy: the same instances [downloadState]
+     * publishes. Read only; never mutate a story or its chapters. Take [library] or [story] for a
+     * copy to edit. See `LibraryReads.kt` for narrow queries.
+     */
+    fun readOnlyLibrary(): List<Story> = published.library
+
+    /** [story] without the deep copy; the read-only contract of [readOnlyLibrary] applies. */
+    fun readOnlyStory(id: String): Story? = published.libraryById[id]
+
     /** Adds or replaces one story without rebuilding/re-parsing the rest of the library. */
     suspend fun addOrUpdateStory(story: Story) = upsertStory(story)
 

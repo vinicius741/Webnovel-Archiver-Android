@@ -54,7 +54,7 @@ private class HostSettingsHubData(
 
     override suspend fun phoneSummary(): PhoneSummary =
         withContext(Dispatchers.IO) {
-            val library = repository.library()
+            val library = repository.readOnlyLibrary()
             val audio = runCatching { host.narration.store.totalBytes() }.getOrDefault(0L)
             val newest =
                 runCatching { repository.listBackupFiles() }

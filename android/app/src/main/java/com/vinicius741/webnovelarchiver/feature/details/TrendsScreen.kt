@@ -70,7 +70,7 @@ internal fun ScreenHost.showTrends(
     scope.launch {
         val history = repository.getMetricHistory(storyId)
         // Patreon figures belong to the creator, so novels sharing one chart a single merged series.
-        val siblings = PatreonCreatorPlanning.siblings(story, repository.library())
+        val siblings = PatreonCreatorPlanning.siblings(story, repository.readOnlyLibrary())
         val siblingHistories = siblings.map { repository.getMetricHistory(it.id) }
         val model =
             withContext(Dispatchers.Default) {
