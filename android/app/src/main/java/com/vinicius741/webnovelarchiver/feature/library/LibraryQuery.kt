@@ -5,6 +5,11 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 
 object LibraryQuery {
+    private val scoreNumber = Regex("(\\d+\\.?\\d*)")
+
+    /** The registered providers are fixed at compile time, so their names are collected once. */
+    private val sourceNames: Set<String> by lazy { SourceRegistry.all().mapTo(HashSet()) { it.name } }
+
     fun filterAndSort(
         stories: List<Story>,
         searchQuery: String,
@@ -13,11 +18,12 @@ object LibraryQuery {
         sortOption: String,
         sortAscending: Boolean,
     ): List<Story> {
-        val sourceNames = SourceRegistry.all().map { it.name }.toSet()
+        val query = searchQuery.trim()
         val filtered =
-            stories
-                .filter { selectedTabId == LibraryTabSelection.ALL_TAB_ID || it.tabId == selectedTabId }
-                .filter { story -> matchesFilters(story, sourceNames, searchQuery, selectedTags) }
+            stories.filter { story ->
+                (selectedTabId == LibraryTabSelection.ALL_TAB_ID || story.tabId == selectedTabId) &&
+                    matchesFilters(story, query, selectedTags)
+            }
 
         val sorted = sortStories(filtered, sortOption)
         return if (sortAscending) sorted else sorted.asReversed()
@@ -57,10 +63,10 @@ object LibraryQuery {
         searchQuery: String = "",
         selectedTags: Set<String> = emptySet(),
     ): Pair<List<Pair<String, Int>>, List<Pair<String, Int>>> {
-        val sourceNames = SourceRegistry.all().map { it.name }.toSet()
         var visibleStories = stories.filter { selectedTabId == LibraryTabSelection.ALL_TAB_ID || it.tabId == selectedTabId }
         if (searchQuery.isNotBlank() || selectedTags.isNotEmpty()) {
-            val narrowed = visibleStories.filter { matchesFilters(it, sourceNames, searchQuery, selectedTags) }
+            val query = searchQuery.trim()
+            val narrowed = visibleStories.filter { matchesFilters(it, query, selectedTags) }
             if (narrowed.isNotEmpty()) visibleStories = narrowed
         }
         val sources =
@@ -83,13 +89,12 @@ object LibraryQuery {
         return sources to tags
     }
 
+    /** [query] is the already-trimmed search text. */
     private fun matchesFilters(
         story: Story,
-        sourceNames: Set<String>,
-        searchQuery: String,
+        query: String,
         selectedTags: Set<String>,
     ): Boolean {
-        val query = searchQuery.trim()
         val queryMatches =
             query.isBlank() ||
                 story.title.contains(query, ignoreCase = true) ||
@@ -98,7 +103,7 @@ object LibraryQuery {
         if (selectedTags.isEmpty()) return true
         val storySourceName = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.name
         return selectedTags.all { tag ->
-            if (tag in sourceNames) storySourceName == tag else classificationFilterValues(story).contains(tag)
+            if (tag in sourceNames) storySourceName == tag else hasClassification(story, tag)
         }
     }
 
@@ -116,9 +121,23 @@ object LibraryQuery {
                 listOfNotNull(story.sourceMetadata.sourceType, story.sourceMetadata.sourceCategory)
         ).distinct()
 
+    /** `tag in classificationFilterValues(story)` without building the combined list; keep the two in step. */
+    private fun hasClassification(
+        story: Story,
+        tag: String,
+    ): Boolean {
+        val metadata = story.sourceMetadata
+        return story.tags?.contains(tag) == true ||
+            tag in metadata.genres ||
+            tag in metadata.fandoms ||
+            tag in metadata.characters ||
+            tag == metadata.sourceType ||
+            tag == metadata.sourceCategory
+    }
+
     private fun parseScore(score: String?): Double {
         if (score.isNullOrBlank()) return 0.0
-        return Regex("(\\d+\\.?\\d*)")
+        return scoreNumber
             .find(score)
             ?.groupValues
             ?.get(1)
@@ -134,15 +153,26 @@ object LibraryQuery {
             "dateAdded" -> stories.sortedBy { it.dateAdded ?: 0L }
             "lastUpdated", "updated" -> stories.sortedBy { it.lastUpdated ?: 0L }
             "totalChapters" -> stories.sortedBy { it.totalChapters }
-            "score" -> stories.sortedBy { parseScore(it.score) }
-            "patreonMonthly" -> stories.sortedBy { it.patreonStats?.let(PatreonEarningsPlanning::estimate)?.monthlyUsdCents ?: 0L }
-            "patreonMembers" -> stories.sortedBy { it.patreonStats?.let(PatreonEarningsPlanning::estimate)?.paidMembers ?: 0 }
+            "score" -> stories.sortedByPrecomputedKey { parseScore(it.score) }
+            "patreonMonthly" ->
+                stories.sortedByPrecomputedKey { it.patreonStats?.let(PatreonEarningsPlanning::estimate)?.monthlyUsdCents ?: 0L }
+            "patreonMembers" ->
+                stories.sortedByPrecomputedKey { it.patreonStats?.let(PatreonEarningsPlanning::estimate)?.paidMembers ?: 0 }
             "progress" -> stories.sortedBy { progressRatio(it) }
             // Smart is intentionally equivalent to Last Updated. A successful chapter sync updates
             // this timestamp, which promotes the synced story to the top in the default descending view.
             "default" -> stories.sortedBy { it.lastUpdated ?: 0L }
             else -> stories.sortedBy { it.lastUpdated ?: 0L }
         }
+
+    /**
+     * The same order as `sortedBy(key)` (a stable sort comparing keys with [compareValues]), but [key]
+     * runs once per story instead of twice per comparison. For keys that parse or estimate.
+     */
+    private inline fun <K : Comparable<K>> List<Story>.sortedByPrecomputedKey(key: (Story) -> K): List<Story> =
+        map { story -> story to key(story) }
+            .sortedWith(compareBy { it.second })
+            .map { it.first }
 
     private fun progressRatio(story: Story): Double =
         if (story.totalChapters == 0) {
