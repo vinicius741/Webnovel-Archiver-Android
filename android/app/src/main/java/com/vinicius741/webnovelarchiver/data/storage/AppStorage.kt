@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
+import com.vinicius741.webnovelarchiver.domain.download.FinishedJobCompaction
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
@@ -341,7 +342,13 @@ class AppStorage(
     }
 
     @Synchronized
-    fun getQueue(): MutableList<DownloadJob> = read(queueFile) ?: mutableListOf()
+    fun getQueue(): MutableList<DownloadJob> = readQueueFile() ?: mutableListOf()
+
+    /** The stored queue with finished-job records expanded ([FinishedJobCompaction]); null when absent. */
+    private fun readQueueFile(): MutableList<DownloadJob>? = read<MutableList<DownloadJob>>(queueFile)?.let(FinishedJobCompaction::expand)
+
+    /** Stores [jobs] with each story's completed jobs collapsed into one compact record. */
+    private fun writeQueueFile(jobs: List<DownloadJob>) = write(queueFile, FinishedJobCompaction.compact(jobs))
 
     /**
      * Recovers jobs left "downloading" by a killed process back to "pending". The whole
@@ -351,12 +358,12 @@ class AppStorage(
      */
     @Synchronized
     fun recoverInterruptedDownloads() {
-        val jobs: MutableList<DownloadJob> = read(queueFile) ?: return
+        val jobs: MutableList<DownloadJob> = readQueueFile() ?: return
         var changed = false
         jobs.forEach { job ->
             if (DownloadJobTransitions.recoverInterrupted(job)) changed = true
         }
-        if (changed) write(queueFile, jobs)
+        if (changed) writeQueueFile(jobs)
     }
 
     /**
@@ -393,7 +400,7 @@ class AppStorage(
     }
 
     @Synchronized
-    fun saveQueue(jobs: List<DownloadJob>) = write(queueFile, jobs)
+    fun saveQueue(jobs: List<DownloadJob>) = writeQueueFile(jobs)
 
     /**
      * Snapshots the library index, every story file, and the tabs file into [dest], returning a
@@ -498,9 +505,9 @@ class AppStorage(
      */
     @Synchronized
     fun mutateQueueInPlace(transform: (MutableList<DownloadJob>) -> List<DownloadJob>): List<DownloadJob> {
-        val current = read<MutableList<DownloadJob>>(queueFile) ?: mutableListOf()
+        val current = readQueueFile() ?: mutableListOf()
         val updated = transform(current)
-        write(queueFile, updated)
+        writeQueueFile(updated)
         return updated
     }
 
@@ -517,7 +524,7 @@ class AppStorage(
         jobs: List<DownloadJob>,
     ) {
         addOrUpdateStory(story)
-        write(queueFile, jobs)
+        writeQueueFile(jobs)
     }
 
     @Synchronized
