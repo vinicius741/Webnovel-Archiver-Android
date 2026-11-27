@@ -35,6 +35,34 @@ used the browser's rendered page, which is also what the app's Cloudflare render
 - **The marker is kept, emptied.** Blank markers are left alone, and text nodes nothing matched are
   not rewritten, so an already clean chapter serializes back to the same HTML and is not rewritten.
 
+## Paragraph classes
+
+Royal Road also gives every chapter paragraph its own random class, `<p class="cnMx...">`: 44
+characters of Base64 that decode to `rs` plus 31 hex digits. Nothing in the app reads them (the
+reader's and the EPUB's CSS never select them, and TTS ignores classes), yet they are about 30% of a
+stored chapter. `source/RoyalRoadParagraphClasses.kt` drops them, and only them: the notice
+marker's `<span>` class (`r` + 32 hex) and every other class stay, so the marker rules above keep
+working. It is Royal Road's `SourceProvider.chapterMarkupCompactor` and runs in three places:
+
+- **Downloads:** `parseChapterContent` drops them before the marker is emptied, so new chapters are
+  saved without them. The download engine's marker monitor still sees the marker.
+- **Full backups:** `BackupExporter` writes each Royal Road chapter without them, so backups of a
+  library downloaded before this change shrink right away. The manifest lists paths only.
+- **Chapters already on the device:** `data/storage/StoredChapterCompaction` rewrites them once, in
+  the background 30 s after startup, one atomic file write under the storage lock at a time. Its
+  progress (`chapter_compaction.txt` in the storage root) makes it resumable, and once finished it
+  never runs again. The activity log records `chapter_compaction_finished` with the bytes saved.
+
+`RoyalRoadParagraphClassesTest` checks that the TTS chunks, the reader's annotated HTML and plain
+text, the EPUB chapter body and the cleanup result are unchanged (apart from the dropped classes) on
+a fixture with real Royal Road markup and scrambled text. Set `WNA_RR_SAMPLES` to a folder of
+chapters pulled from a device to run the same checks over real chapters and print the saving.
+
+Measured on all 18,081 stored Royal Road chapters of the emulator library (2026-11-27): 500.1 MB of
+chapter HTML became 391.4 MB (−21.7%), and the same files deflated at level 6, as the full backup
+stores them, went from 203.1 MB to 134.2 MB (−33.9%). 17,921 files had paragraph classes. Dropping
+them took 120 ms for 586 of those chapters on a desktop JVM.
+
 ### Why the sentence list is cheap enough to run everywhere
 
 The slow part of the old cleanup was not parsing the chapter. It was compiling each entry into its

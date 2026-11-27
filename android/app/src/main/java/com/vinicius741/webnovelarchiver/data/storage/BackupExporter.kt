@@ -1,9 +1,11 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
+import com.vinicius741.webnovelarchiver.cleanup.ChapterMarkupCompactor
 import com.vinicius741.webnovelarchiver.data.backup.BackupExportPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupContentPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import java.io.File
 import java.time.Instant
 import java.util.zip.ZipEntry
@@ -63,6 +65,10 @@ internal class BackupExporter(
                 }
             }
         val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles, missingContent)
+        // Source noise (Royal Road's per-paragraph classes) is dropped from the copy in the ZIP, so
+        // backups of chapters saved before it was stripped on download shrink too. The manifest
+        // records no sizes or hashes, and the dropped markup is never read, so restore is unchanged.
+        val compactors = markupCompactors(library)
         val totalFiles = 1 + chapterFiles.size + metricFiles.size + coverFiles.size
         var filesWritten = 0
 
@@ -89,13 +95,7 @@ internal class BackupExporter(
                     markFileWritten()
                     chapterFiles.forEach { chapter ->
                         zip.putNextEntry(ZipEntry(chapter.path))
-                        when {
-                            chapter.source != null -> chapter.source.inputStream().use { it.copyTo(zip) }
-                            // R10: a downloaded chapter whose file is missing but whose legacy
-                            // inline content survives is materialized instead of dropped.
-                            chapter.inlineContent != null -> zip.write(chapter.inlineContent.toByteArray(Charsets.UTF_8))
-                            else -> error("Chapter entry without content: ${chapter.path}")
-                        }
+                        writeChapter(zip, chapter, compactors[chapter.storyId])
                         zip.closeEntry()
                         markFileWritten()
                     }
@@ -113,6 +113,23 @@ internal class BackupExporter(
                     }
                 }
             }
+        }
+    }
+
+    private fun writeChapter(
+        zip: ZipOutputStream,
+        chapter: FullBackupChapterFile,
+        compactor: ChapterMarkupCompactor?,
+    ) {
+        when {
+            chapter.source != null && compactor != null ->
+                zip.write(ChapterMarkupCompaction.compactBytes(chapter.source.readBytes(), compactor))
+            chapter.source != null -> chapter.source.inputStream().use { it.copyTo(zip) }
+            // R10: a downloaded chapter whose file is missing but whose legacy
+            // inline content survives is materialized instead of dropped.
+            chapter.inlineContent != null ->
+                zip.write((compactor?.compact(chapter.inlineContent) ?: chapter.inlineContent).toByteArray(Charsets.UTF_8))
+            else -> error("Chapter entry without content: ${chapter.path}")
         }
     }
 
@@ -185,6 +202,12 @@ internal class BackupExporter(
             epubPath = null,
             epubPaths = null,
         )
+
+    private fun markupCompactors(library: List<Story>): Map<String, ChapterMarkupCompactor> =
+        library
+            .mapNotNull { story ->
+                SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.chapterMarkupCompactor?.let { story.id to it }
+            }.toMap()
 
     /** Collects each story's trend-history file that actually exists on disk. Stories that have never
      *  been synced since the Trends feature shipped have no file and are skipped (restore recreates an
