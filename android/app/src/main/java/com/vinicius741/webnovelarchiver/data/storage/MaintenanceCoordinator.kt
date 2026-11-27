@@ -8,6 +8,8 @@ enum class MaintenanceOperation {
     ExportFull,
     ImportJson,
     RestoreFull,
+    ExportQuick,
+    RestoreQuick,
 }
 
 sealed interface MaintenanceState {

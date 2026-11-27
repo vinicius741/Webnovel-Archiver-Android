@@ -34,12 +34,12 @@ internal interface DataBackupData {
     suspend fun clearAll()
 }
 
-/** The full-backup export as Data & backup sees it ([BackupExports]). */
+/** The backup export as Data & backup sees it ([BackupExports]). */
 interface BackupExportControl {
     val running: StateFlow<BackupExportProgress?>
     val finished: StateFlow<Int>
 
-    fun start(): Boolean
+    fun start(kind: BackupKind = BackupKind.Full): Boolean
 }
 
 internal sealed interface BackupFilesState {
@@ -53,7 +53,7 @@ internal sealed interface BackupFilesState {
 }
 
 internal data class DataBackupUiState(
-    /** The full backup in progress, or null. */
+    /** The backup in progress, or null. */
     val export: BackupExportProgress?,
     val files: BackupFilesState,
     val storageIssues: List<String>,
@@ -91,9 +91,9 @@ internal class DataBackupScreenModel(
         scope.launch { loadFiles() }
     }
 
-    /** Starts a full backup unless one runs. */
-    fun startExport() {
-        exports.start()
+    /** Starts a [kind] backup unless one runs. */
+    fun startExport(kind: BackupKind = BackupKind.Full) {
+        exports.start(kind)
         mutableState.update { it.copy(export = exports.running.value) }
     }
 

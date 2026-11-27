@@ -28,11 +28,19 @@ import java.io.File
  * persistent Backup files list that makes completed backups reachable without the share sheet.
  */
 
-/** The export runs the repository's full backup; its outcome is shown on whatever screen is open. */
+/** The export runs the repository's full or quick backup; its outcome is shown on whatever screen is open. */
 internal class HostBackupExportHost(
     private val host: ScreenHost,
 ) : BackupExportHost {
-    override suspend fun export(onProgress: (String) -> Unit): File = host.repository.exportFullBackup(onProgress)
+    override suspend fun export(
+        kind: BackupKind,
+        onProgress: (String) -> Unit,
+    ): File =
+        when (kind) {
+            BackupKind.Full -> host.repository.exportFullBackup(onProgress)
+            BackupKind.Quick -> host.repository.exportQuickBackup(includeCovers = false, onProgress)
+            BackupKind.QuickWithCovers -> host.repository.exportQuickBackup(includeCovers = true, onProgress)
+        }
 
     override fun showSaved(file: File) {
         if (host.app.isDestroyed) return
@@ -48,7 +56,7 @@ internal class HostBackupExportHost(
     override fun showFailed(message: String) = host.toast(message)
 }
 
-/** The "Creating full backup…" card, shown while an export runs; a new progress line patches its text. */
+/** The "Creating … backup…" card, shown while an export runs; a new progress line patches its text. */
 internal class FullBackupProgressCard(
     container: LinearLayout,
 ) {
@@ -73,7 +81,8 @@ internal class FullBackupProgressCard(
         val colors = ThemeManager.colors
         slot.tintedCard(colors.primary) {
             iconColumnRow(R.drawable.wna_archive, colors.primary).apply {
-                addView(makeText(context, "Creating full backup…", Type.TITLE_SMALL, colors.onSurface))
+                val title = if (export.kind == BackupKind.Full) "Creating full backup…" else "Creating quick backup…"
+                addView(makeText(context, title, Type.TITLE_SMALL, colors.onSurface))
                 message =
                     makeText(context, text, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
                         setPadding(0, context.dp(2), 0, 0)

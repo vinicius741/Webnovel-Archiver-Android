@@ -12,7 +12,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - New-chapter tracking with a next-release estimate from each novel's recent release dates: the Updates screen groups novels whose next chapter may be out, is expected soon or is running late, and syncs one or all of them. Library tabs, search, filters, a tap-the-author view of their other novels in your library, and novel popularity trends.
 - Trending (from the Updates app bar): the novels whose Patreon, readers, views or rating are rising right now. Rises fade after about a week so the list keeps changing, and novels you're caught up on are left out.
 - Local folder (Add story › Local folder): pick a folder once; each subfolder (or book file) becomes a novel, with chapters from the EPUB's table of contents or the "Chapter 1" headings of a text or PDF. Scanned PDFs are read with on-device text recognition. Imported books are read in right away, and syncing picks up new files.
-- EPUB export, text cleanup, and full library backup and restore.
+- EPUB export, text cleanup, and library backup and restore (full, or a small quick backup without chapter text).
 - One shareable diagnostics export (the last hour of syncs, downloads, library changes and errors, plus source access) for troubleshooting, also saved to Downloads/Webnovel Archiver; the phone keeps 7 days.
 - Patreon early-access chapters available through your own account.
 - Optional AI cover art, synopses, a character list and character portraits using your own OpenRouter API key, with cost tracking.

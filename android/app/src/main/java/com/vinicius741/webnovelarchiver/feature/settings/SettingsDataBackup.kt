@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
+import android.content.Context
 import android.content.res.ColorStateList
 import android.view.View
 import android.widget.FrameLayout
@@ -15,6 +16,7 @@ import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -24,10 +26,12 @@ import com.vinicius741.webnovelarchiver.ui.bindWhileAttached
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeSheetRow
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
+import com.vinicius741.webnovelarchiver.ui.showBottomSheet
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import java.io.File
 
@@ -72,12 +76,12 @@ internal fun ScreenHost.showDataBackup() {
                 loadingRow(
                     R.drawable.wna_archive,
                     "Create backup",
-                    "Everything, including chapters",
+                    "Full, or quick without chapter text",
                     state.export != null,
                 ) {
-                    model.startExport()
+                    showCreateBackupSheet(app, model)
                 }
-            navRow(R.drawable.wna_restore, "Restore backup", "Replace this library with a backup", chevron = false) {
+            navRow(R.drawable.wna_restore, "Restore backup", "Full replaces this library; quick keeps chapter text", chevron = false) {
                 importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
             }
         }
@@ -130,6 +134,24 @@ internal fun ScreenHost.showDataBackup() {
             applied = next
         }
     }
+}
+
+/** Create backup's choice: the full backup, or the small quick backup with or without AI covers. */
+private fun showCreateBackupSheet(
+    context: Context,
+    model: DataBackupScreenModel,
+) {
+    val body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    var sheet: BottomSheetHandle? = null
+    listOf(
+        Triple(BackupKind.Full, "Full backup", "Everything, including chapter text. Large."),
+        Triple(BackupKind.Quick, "Quick backup", "Library, bookmarks and settings without chapter text. A few MB."),
+        Triple(BackupKind.QuickWithCovers, "Quick backup with AI covers", "The quick backup plus the AI covers you applied"),
+    ).forEach { (kind, title, supporting) ->
+        val icon = if (kind == BackupKind.Full) R.drawable.wna_archive else R.drawable.wna_bookmark_outline
+        body.addView(makeSheetRow(context, title, supporting, icon) { sheet?.dismissThen { model.startExport(kind) } })
+    }
+    sheet = showBottomSheet(context, title = "Create backup", body = body)
 }
 
 private fun ScreenHost.addTroubleshootingRows(

@@ -702,6 +702,15 @@ class AppStorage(
 
     fun importFullBackupUri(uri: Uri): String = backupRestore.importFullBackupUri(uri)
 
+    fun exportQuickBackup(
+        includeCovers: Boolean,
+        onProgress: (String) -> Unit = {},
+    ): File = backupRestore.exportQuickBackup(includeCovers, onProgress)
+
+    fun importQuickBackupUri(uri: Uri): String = backupRestore.importQuickBackupUri(uri)
+
+    fun isQuickBackupUri(uri: Uri): Boolean = backupRestore.isQuickBackupUri(uri)
+
     private fun saveStoryOnly(story: Story) {
         story.totalChapters = story.chapters.size
         story.downloadedChapters = story.chapters.count { it.downloaded }

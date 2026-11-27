@@ -22,15 +22,17 @@ object BackupFilePlanning {
 
     fun isOrphanTempFile(name: String): Boolean = tempSuffix.containsMatchIn(name)
 
-    /** True for the library metadata, full, and cleanup-rules exports the app itself creates. */
+    /** True for the full, quick, library metadata, and cleanup-rules exports the app itself creates. */
     fun isBackupArtifact(name: String): Boolean =
         name.startsWith("webnovel_backup_") ||
+            name.startsWith(QuickBackupFormat.FILE_PREFIX) ||
             name.startsWith("webnovel_full_backup_") ||
             name.startsWith("webnovel_cleanup_rules_")
 
     fun artifactLabel(name: String): String =
         when {
             name.startsWith("webnovel_full_backup_") -> "Full backup"
+            name.startsWith(QuickBackupFormat.FILE_PREFIX) -> "Quick backup"
             name.startsWith("webnovel_backup_") -> "Metadata backup"
             name.startsWith("webnovel_cleanup_rules_") -> "Cleanup rules backup"
             else -> name.substringBeforeLast('.')

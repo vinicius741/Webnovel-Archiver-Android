@@ -47,6 +47,8 @@ class BackupFilePlanningTest {
     @Test
     fun artifactLabelsCoverTheExportsTheAppCreates() {
         assertEquals("Full backup", BackupFilePlanning.artifactLabel("webnovel_full_backup_1.zip"))
+        assertEquals("Quick backup", BackupFilePlanning.artifactLabel("webnovel_quick_backup_5.zip"))
+        assertTrue(BackupFilePlanning.isBackupArtifact("webnovel_quick_backup_5.zip"))
         assertEquals("Metadata backup", BackupFilePlanning.artifactLabel("webnovel_backup_2.json"))
         assertEquals("Cleanup rules backup", BackupFilePlanning.artifactLabel("webnovel_cleanup_rules_3.json"))
         assertEquals("webnovel_source_access_log_4", BackupFilePlanning.artifactLabel("webnovel_source_access_log_4.json"))

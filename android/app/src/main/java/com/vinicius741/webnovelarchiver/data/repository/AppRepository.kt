@@ -319,6 +319,20 @@ class AppRepository private constructor(
     suspend fun importFullBackupUri(uri: Uri): String =
         loggedBackup("full_restore") { replaceLibrary { requiredStorage.importFullBackupUri(uri) } }
 
+    /** A quick backup (library details and settings, no chapter text; `docs/architecture/quick-backup.md`). */
+    suspend fun exportQuickBackup(
+        includeCovers: Boolean,
+        onProgress: (String) -> Unit = {},
+    ): File = loggedBackup("quick_export") { withContext(ioDispatcher) { requiredStorage.exportQuickBackup(includeCovers, onProgress) } }
+
+    /** Restore backup: a quick backup merges into the library and keeps chapter text; anything else is a full restore. */
+    suspend fun restoreBackupUri(uri: Uri): String =
+        if (withContext(ioDispatcher) { requiredStorage.isQuickBackupUri(uri) }) {
+            loggedBackup("quick_restore") { replaceLibrary { requiredStorage.importQuickBackupUri(uri) } }
+        } else {
+            importFullBackupUri(uri)
+        }
+
     /**
      * Records the start and outcome of a backup action with the library's size before and after,
      * so an activity log shows exactly what an import or restore changed.

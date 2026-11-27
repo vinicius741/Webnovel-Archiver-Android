@@ -161,7 +161,7 @@ class MainActivity :
                     showDataBackup()
                 },
             ) {
-                val outcome = repository.importFullBackupUri(uri)
+                val outcome = repository.restoreBackupUri(uri)
                 toast(outcome)
                 // R12: restore failures return a message string, not an exception. Most carry
                 // RESTORE_FAILED_PREFIX; verify-stage ("Restore verify failed: …") and missing-input

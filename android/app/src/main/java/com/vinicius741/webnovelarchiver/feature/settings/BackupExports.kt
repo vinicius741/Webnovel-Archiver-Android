@@ -9,10 +9,25 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
-/** What a full-backup export needs from the app: the export itself, and how its outcome is shown. */
+/** What Create backup writes. */
+enum class BackupKind {
+    /** Everything, including chapter text. */
+    Full,
+
+    /** Library details, bookmarks and settings without chapter text (`docs/architecture/quick-backup.md`). */
+    Quick,
+
+    /** [Quick] plus the applied AI covers. */
+    QuickWithCovers,
+}
+
+/** What a backup export needs from the app: the export itself, and how its outcome is shown. */
 internal interface BackupExportHost {
-    /** Writes a full backup to the app's backups folder, reporting progress lines (from any thread). */
-    suspend fun export(onProgress: (String) -> Unit): File
+    /** Writes a [kind] backup to the app's backups folder, reporting progress lines (from any thread). */
+    suspend fun export(
+        kind: BackupKind,
+        onProgress: (String) -> Unit,
+    ): File
 
     /** Offers the saved file (share or done); shown on whatever screen is open. */
     fun showSaved(file: File)
@@ -20,13 +35,14 @@ internal interface BackupExportHost {
     fun showFailed(message: String)
 }
 
-/** A full backup in progress: its latest progress line, null before the first one. */
+/** A backup in progress: its kind and latest progress line, null before the first one. */
 data class BackupExportProgress(
     val message: String? = null,
+    val kind: BackupKind = BackupKind.Full,
 )
 
 /**
- * The full-backup export, owned by the activity (like the Updates syncs) because it must outlive
+ * The backup export, owned by the activity (like the Updates syncs) because it must outlive
  * Data & backup: leaving the screen, or Back to Settings, keeps it running, and returning shows its
  * progress again. One runs at a time. It ends with the activity's scope.
  */
@@ -44,14 +60,14 @@ class BackupExports internal constructor(
     override val finished: StateFlow<Int> = mutableFinished.asStateFlow()
 
     /** Starts an export unless one is running; returns whether it started. */
-    override fun start(): Boolean {
+    override fun start(kind: BackupKind): Boolean {
         if (mutableRunning.value != null) return false
-        mutableRunning.value = BackupExportProgress()
+        mutableRunning.value = BackupExportProgress(kind = kind)
         scope.launch {
             try {
                 val file =
                     try {
-                        host.export { message -> mutableRunning.update { running -> running?.copy(message = message) } }
+                        host.export(kind) { message -> mutableRunning.update { running -> running?.copy(message = message) } }
                     } catch (error: CancellationException) {
                         throw error
                     } catch (

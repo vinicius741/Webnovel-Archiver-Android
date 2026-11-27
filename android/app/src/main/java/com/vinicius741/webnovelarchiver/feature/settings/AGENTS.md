@@ -17,9 +17,10 @@ Applies to `feature/settings/` (the Settings hub and its pages). These rules add
   cleared). `UnsavedSettings` holds the newest unsaved value process-wide so the hub and a quick return show it. A
   choice that must save at once (engine, voice, model removal) updates the draft and flushes, so an older pending
   change is never saved over it.
-- The full-backup export outlives Data & backup, so it runs in the activity-level `BackupExports`
-  (`ScreenHost.backupExports`, like `UpdatesSyncs`); the page follows it, and its outcome dialog shows on whatever
-  screen is open. Restore stays on `importFullBackupLauncher`.
+- The backup export (full or quick, `BackupKind`, chosen in the Create backup sheet) outlives Data & backup, so it
+  runs in the activity-level `BackupExports` (`ScreenHost.backupExports`, like `UpdatesSyncs`); the page follows it,
+  and its outcome dialog shows on whatever screen is open. Restore stays on `importFullBackupLauncher`, which calls
+  `restoreBackupUri` (a quick backup merges, a full one replaces). Data & backup keeps two backup rows.
 - Listening: `SettingsTts.kt` hosts the narration setup section (`feature/narration` `setupSection`/`ServerRows`) and
   the `TtsSamplePreview` sample (renderer-owned, released on detach). The computers are checked only while the page is
   collected (`TtsSettingsScreenModel.serverChecks`). The debug speed test runs in the model; its dialog follows

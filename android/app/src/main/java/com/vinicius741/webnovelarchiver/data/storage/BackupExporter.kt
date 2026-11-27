@@ -160,7 +160,8 @@ internal class BackupExporter(
             "missingContent" to missingContent.map(::missingEntry),
         )
 
-    private fun fullConfig(): Map<String, Any?> {
+    /** Settings, tabs, cleanup rules and listening state; the quick backup carries the same set. */
+    internal fun fullConfig(): Map<String, Any?> {
         val displayPreferences = storage.displayPreferencesDoc.get()
         return mapOf(
             "settings" to storage.settingsDoc.get(),

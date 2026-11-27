@@ -15,12 +15,29 @@ class BackupRestoreCoordinator(
     private val exporter by lazy { BackupExporter(storage) }
     private val jsonImporter by lazy { JsonBackupImporter(storage) }
     private val fullRestorer by lazy { FullBackupRestorer(storage) }
+    private val quickExporter by lazy { QuickBackupExporter(storage) }
+    private val quickRestorer by lazy { QuickBackupRestorer(storage) }
 
     fun exportFullBackup(onProgress: (String) -> Unit = {}): File = runMaintenance(ExportFull) { exporter.exportFull(onProgress) }
 
     fun importBackupUri(uri: Uri): String = runMaintenance(MaintenanceOperation.ImportJson) { jsonImporter.import(uri) }
 
     fun importFullBackupUri(uri: Uri): String = runMaintenance(MaintenanceOperation.RestoreFull) { fullRestorer.import(uri) }
+
+    fun exportQuickBackup(
+        includeCovers: Boolean,
+        onProgress: (String) -> Unit = {},
+    ): File = runMaintenance(MaintenanceOperation.ExportQuick) { quickExporter.export(includeCovers, onProgress) }
+
+    fun importQuickBackupUri(uri: Uri): String = runMaintenance(MaintenanceOperation.RestoreQuick) { quickRestorer.import(uri) }
+
+    /** Whether the picked file is a quick backup; a read of its first ZIP entry, outside the maintenance lock. */
+    fun isQuickBackupUri(uri: Uri): Boolean =
+        runCatching {
+            storage.context.contentResolver
+                .openInputStream(uri)
+                ?.use(QuickBackupZip::isQuickBackup) == true
+        }.getOrDefault(false)
 
     private fun <T> runMaintenance(
         operation: MaintenanceOperation,

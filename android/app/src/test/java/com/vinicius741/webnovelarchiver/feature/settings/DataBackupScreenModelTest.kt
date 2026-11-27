@@ -109,6 +109,16 @@ class DataBackupScreenModelTest {
         }
 
     @Test
+    fun aQuickBackupRunsAsItsOwnKind() =
+        runTest(dispatcher) {
+            val model = model()
+            model.startExport(BackupKind.QuickWithCovers)
+            assertEquals(BackupExportProgress(kind = BackupKind.QuickWithCovers), model.state.value.export)
+            runCurrent()
+            assertEquals(listOf(BackupKind.QuickWithCovers), host.kinds)
+        }
+
+    @Test
     fun filesThatCannotBeListedShowAsFailedAndADeleteReloadsThem() =
         runTest(dispatcher) {
             val model = model()
@@ -156,7 +166,13 @@ private class FakeExportHost : BackupExportHost {
 
     fun progress(message: String) = onProgress?.invoke(message)
 
-    override suspend fun export(onProgress: (String) -> Unit): File {
+    val kinds = mutableListOf<BackupKind>()
+
+    override suspend fun export(
+        kind: BackupKind,
+        onProgress: (String) -> Unit,
+    ): File {
+        kinds += kind
         this.onProgress = onProgress
         return result.await()
     }
