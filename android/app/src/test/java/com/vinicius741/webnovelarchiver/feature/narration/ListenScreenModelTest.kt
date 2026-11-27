@@ -421,6 +421,8 @@ private class FakeListenData(
         return used
     }
 
+    override suspend fun listenPlaces(): Map<String, ListenPlaceTime> = emptyMap()
+
     override fun freeBytes() = 9_000L
 
     override fun voiceCanUseComputers() = voiceUsesComputers

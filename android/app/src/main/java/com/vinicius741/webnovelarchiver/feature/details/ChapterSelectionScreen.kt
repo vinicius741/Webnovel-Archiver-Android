@@ -1,10 +1,10 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.HorizontalScrollView
-import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -13,9 +13,10 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.narration.NarrationScreenPlanning
-import com.vinicius741.webnovelarchiver.feature.narration.narrationAction
+import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.feature.narration.queueNarration
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
+import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
@@ -24,16 +25,15 @@ import com.vinicius741.webnovelarchiver.ui.CardListDecoration
 import com.vinicius741.webnovelarchiver.ui.SegmentedSelector
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.button
-import com.vinicius741.webnovelarchiver.ui.confirm
+import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.flow
+import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeCountedChip
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
+import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
-import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
-import com.vinicius741.webnovelarchiver.ui.size
+import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /** Which chapters Select lists, so a long novel shows only the ones an action can apply to. */
@@ -89,6 +89,36 @@ private enum class SelectionFilter(
 
 /** The filters Select last used, per story, for this run of the app. */
 private val selectionFilters = HashMap<String, Set<SelectionFilter>>()
+
+/** Where Pick chapters… was opened from, which decides the chapters it lists first. */
+internal enum class SelectionPurpose { DOWNLOAD, AUDIO }
+
+/**
+ * Select, opened from the On this phone card's sheets: Download lists the chapters not downloaded
+ * from the bookmark on; Audio lists every chapter.
+ */
+internal fun showChapterSelectionFor(
+    host: ScreenHost,
+    storyId: String,
+    purpose: SelectionPurpose,
+) {
+    when (purpose) {
+        SelectionPurpose.DOWNLOAD -> {
+            selectionScopes[storyId] = SelectionScope.NOT_DOWNLOADED
+            // From the bookmark only when chapters are left there, or the list would open empty.
+            val story = host.repository.story(storyId)
+            val bookmark = story?.let(::bookmarkIndexOf) ?: -1
+            val leftAfter = story?.chapters?.drop(bookmark.coerceAtLeast(0))?.any { !it.downloaded } == true
+            selectionFilters[storyId] = if (bookmark >= 0 && leftAfter) setOf(SelectionFilter.FROM_BOOKMARK) else emptySet()
+        }
+        SelectionPurpose.AUDIO -> {
+            // Every chapter, so the list offers both generating and deleting.
+            selectionScopes[storyId] = SelectionScope.ALL
+            selectionFilters[storyId] = emptySet()
+        }
+    }
+    host.showChapterSelection(storyId)
+}
 
 /**
  * Select chapters: one selection for every chapter action. Tap or long-press-and-drag chapters, then
@@ -170,7 +200,7 @@ internal fun ScreenHost.showChapterSelection(
         var rangeMode = false
         var rangeAnchor: Int? = null
         lateinit var adapter: ChapterSelectionAdapter
-        lateinit var rangeButton: android.widget.Button
+        lateinit var rangeButton: android.widget.TextView
         lateinit var actions: SelectionActions
 
         fun updateSelection(nextSelection: Set<String>) {
@@ -185,7 +215,7 @@ internal fun ScreenHost.showChapterSelection(
             val oldAnchor = rangeAnchor
             rangeMode = false
             rangeAnchor = null
-            rangeButton.text = "Select range"
+            rangeButton.text = "Range"
             adapter.setRangeAnchor(null, oldAnchor)
         }
 
@@ -218,26 +248,45 @@ internal fun ScreenHost.showChapterSelection(
             }
         }
 
-        flow(spacing = Space.SM) {
-            rangeButton =
-                button("Select range", Btn.TONAL, R.drawable.wna_filter) {
-                    if (rangeMode) {
-                        finishRangeMode()
-                    } else {
-                        rangeMode = true
-                        rangeAnchor = null
-                        rangeButton.text = "Cancel range"
-                    }
+        // Quick picks add to the selection; "Before" drops the From bookmark filter so they show.
+        val candidates =
+            scoped.mapNotNull { (index, chapter) ->
+                index.takeIf {
+                    filters.filter { it != SelectionFilter.FROM_BOOKMARK }.all { it.matches(index, chapter, bookmarkIndex, audio) }
                 }
-            button("All", Btn.OUTLINED, R.drawable.wna_check) {
-                finishRangeMode()
-                updateSelection(orderedIds.toSet())
             }
-            button("Clear", Btn.OUTLINED, R.drawable.wna_close) {
-                finishRangeMode()
-                updateSelection(emptySet())
+        val quick =
+            selectionQuickPicks(
+                this@showChapterSelection,
+                storyId,
+                story.chapters.map {
+                    it.id
+                },
+                bookmarkIndex,
+                candidates,
+                filters,
+                orderedIds,
+                selectedIds,
+            ) {
+                updateSelection(it)
             }
-        }
+        val (quickRow, rangeChip) =
+            quickPickRow(context, quick) {
+                if (rangeMode) {
+                    finishRangeMode()
+                } else {
+                    rangeMode = true
+                    rangeAnchor = null
+                    rangeButton.text = "Tap first & last…"
+                }
+            }
+        rangeButton = rangeChip
+        addView(
+            quickRow,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(Space.SM)
+            },
+        )
 
         val list =
             RecyclerView(context).apply {
@@ -248,6 +297,8 @@ internal fun ScreenHost.showChapterSelection(
             }
         adapter = ChapterSelectionAdapter(items, selectedIds, bookmarkPosition, ::handleTap)
         list.adapter = adapter
+        // Open at the bookmark rather than chapter 1 when earlier chapters are listed too.
+        if (bookmarkPosition > 0) chapterLayout.scrollToPositionWithOffset(bookmarkPosition, dp(BOOKMARK_OFFSET_DP))
         list.addItemDecoration(CardListDecoration(context) { true })
         list.addOnItemTouchListener(
             ChapterDragSelectionTouchListener(
@@ -270,9 +321,130 @@ internal fun ScreenHost.showChapterSelection(
             ),
         )
         addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        actions = SelectionActions(this@showChapterSelection, this, story, items, audio, canDownload)
+        actions =
+            SelectionActions(this@showChapterSelection, this, story, items, audio, chapterAudioInfo(narration, story), canDownload) {
+                finishRangeMode()
+                updateSelection(emptySet())
+            }
         actions.update(selectedIds)
     }
+}
+
+/**
+ * Select's quick picks: before / from the bookmark, the next 10 from it, all shown. "Before"
+ * drops the From bookmark filter (re-rendering with them selected) so the added chapters show.
+ */
+private fun selectionQuickPicks(
+    host: ScreenHost,
+    storyId: String,
+    chapterIds: List<String>,
+    bookmarkIndex: Int,
+    candidates: List<Int>,
+    filters: Set<SelectionFilter>,
+    orderedIds: List<String>,
+    selectedIds: Set<String>,
+    update: (Set<String>) -> Unit,
+): List<QuickPick> {
+    val shown = orderedIds.toSet()
+    return buildList {
+        if (bookmarkIndex > 0) {
+            add(
+                QuickPick("Before Ch. ${bookmarkIndex + 1}", R.drawable.wna_bookmark) {
+                    val before = candidates.filter { it < bookmarkIndex }.map(chapterIds::get)
+                    if (SelectionFilter.FROM_BOOKMARK in filters) {
+                        selectionFilters[storyId] = filters - SelectionFilter.FROM_BOOKMARK
+                        host.showChapterSelection(storyId, selectedIds + before)
+                    } else {
+                        update(selectedIds + before)
+                    }
+                },
+            )
+        }
+        if (bookmarkIndex >= 0) {
+            add(
+                QuickPick("Ch. ${bookmarkIndex + 1} onward", R.drawable.wna_bookmark) {
+                    update(selectedIds + candidates.filter { it >= bookmarkIndex }.map(chapterIds::get).filter { it in shown })
+                },
+            )
+        }
+        add(
+            QuickPick("Next $QUICK_NEXT", R.drawable.wna_skip_next) {
+                val next = candidates.filter { it >= bookmarkIndex.coerceAtLeast(0) }.take(QUICK_NEXT).map(chapterIds::get)
+                update(selectedIds + next.filter { it in shown })
+            },
+        )
+        add(QuickPick("All shown", R.drawable.wna_select_all) { update(selectedIds + orderedIds) })
+    }
+}
+
+/** A quick pick on Select's Add row: [onPick] adds its chapters to the selection. */
+private class QuickPick(
+    val label: String,
+    val iconRes: Int,
+    val onPick: () -> Unit,
+)
+
+/** "ADD" then one outlined chip per quick pick and a Range chip; returns the row and the Range chip's label. */
+private fun quickPickRow(
+    app: android.content.Context,
+    picks: List<QuickPick>,
+    onRange: () -> Unit,
+): Pair<HorizontalScrollView, android.widget.TextView> {
+    fun dp(value: Int) = app.dp(value)
+    val colors = ThemeManager.colors
+    val row =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(
+                makeText(app, "ADD", Type.LABEL_SMALL, colors.faint).apply { letterSpacing = ADD_LETTER_SPACING },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    marginEnd = dp(Space.SM)
+                },
+            )
+        }
+
+    fun chip(
+        label: String,
+        iconRes: Int,
+        tint: Int,
+        onClick: () -> Unit,
+    ): android.widget.TextView {
+        val radius = dp(ThemeManager.shapes.chipRadius).toFloat()
+        val text =
+            makeText(app, label, Type.LABEL_LARGE, tint).apply {
+                setCompoundDrawablesRelativeWithIntrinsicBounds(
+                    app.tintedIcon(iconRes, tint)?.apply { setBounds(0, 0, dp(16), dp(16)) },
+                    null,
+                    null,
+                    null,
+                )
+                compoundDrawablePadding = dp(Space.XS + 2)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(Space.MD), dp(Space.SM), dp(Space.MD + 2), dp(Space.SM))
+                background = ripple(strokeBg(android.graphics.Color.TRANSPARENT, radius, colors.outline, dp(1)), radius, colors.onSurface)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { onClick() }
+            }
+        row.addView(
+            text,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginEnd = dp(Space.SM)
+            },
+        )
+        return text
+    }
+    picks.forEach { pick ->
+        chip(pick.label, pick.iconRes, if (pick.iconRes == R.drawable.wna_bookmark) colors.bookmark else colors.onSurface, pick.onPick)
+    }
+    val range = chip("Range", R.drawable.wna_filter, colors.onSurface, onRange)
+    val scroller =
+        HorizontalScrollView(app).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(row)
+        }
+    return scroller to range
 }
 
 /** One chip per offered filter with its count; a tap hands back the filters to show next. */
@@ -300,77 +472,99 @@ private fun ScreenHost.selectionFilterRow(
     }
 }
 
-/** Download / Generate audio / Delete audio for the selection, each counting the chapters it applies to. */
+/**
+ * The docked footer: how many are selected and where, what they hold (audio and its size, queued,
+ * not downloaded), Clear, and Download / Generate / Delete, each counting the selected chapters it
+ * applies to.
+ */
 private class SelectionActions(
     private val host: ScreenHost,
     container: LinearLayout,
     private val story: com.vinicius741.webnovelarchiver.domain.model.Story,
     private val items: List<SelectableChapter>,
     private val audio: Map<String, String>,
+    private val audioInfo: Map<String, ChapterAudioInfo>,
     private val canDownload: Boolean,
+    private val onClear: () -> Unit,
 ) {
     private var download: List<SelectableChapter> = emptyList()
     private var generate: List<SelectableChapter> = emptyList()
     private var delete: List<SelectableChapter> = emptyList()
-    private val downloadButton: ImageView
-    private val generateButton: ImageView
-    private val deleteButton: ImageView
+    private val colors = ThemeManager.colors
+    private val context = container.context
+    private val summary = makeText(context, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply { maxLines = 1 }
+    private val details = makeText(context, "", Type.BODY_SMALL, colors.onSurfaceVariant)
+    private val clear = makeButton(context, "Clear", Btn.TEXT) { onClear() }
+    private val downloadButton: Button
+    private val generateButton: Button
+    private val deleteButton: Button
 
     init {
-        // Small round icon buttons, centred, so they stay compact on a narrow (folded) screen; the label is spoken.
-        val colors = ThemeManager.colors
-        val context = container.context
-        val actionRow =
+        val head =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(0, context.dp(Space.SM), 0, 0)
+                gravity = Gravity.CENTER_VERTICAL
+                addView(summary, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                addView(clear.apply { minHeight = context.dp(ACTION_HEIGHT_DP) })
             }
+        val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         downloadButton =
-            actionRow.roundAction(R.drawable.wna_download, colors.primary, colors.onPrimary) {
+            actions.action("Download") {
                 if (download.isNotEmpty()) host.queueDownload(story, download.map { it.originalIndex })
             }
         generateButton =
-            actionRow.roundAction(R.drawable.wna_headphones, colors.primaryContainer, colors.onPrimaryContainer) {
-                if (generate.isEmpty()) return@roundAction
+            actions.action("Generate") {
+                if (generate.isEmpty()) return@action
                 host.queueNarration(story.id, generate.map { it.chapter.id })
                 host.showStoryChapters(story.id)
             }
         deleteButton =
-            actionRow.roundAction(R.drawable.wna_delete, colors.errorContainer, colors.onErrorContainer) {
+            actions.action("Delete") {
                 val ids = delete.map { it.chapter.id }
-                if (ids.isEmpty()) return@roundAction
-                host.confirm("Delete the audio of ${NarrationScreenPlanning.chapters(ids.size)}?", confirmLabel = "Delete") {
-                    host.narrationAction("Could not delete the audio") { deleteAudio(story.id, ids) }
-                    host.showStoryChapters(story.id)
-                }
+                if (ids.isEmpty()) return@action
+                // Back to the chapters once confirmed, as before, so nothing shows the audio about to go.
+                ChapterSheets(host).confirmDelete(story, ids, audioInfo, null) { host.showStoryChapters(story.id) }
             }
-        container.addView(actionRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val footer =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(colors.elevation1)
+                setPadding(0, context.dp(Space.SM), 0, context.dp(Space.SM))
+                addView(head)
+                addView(details)
+                addView(
+                    actions,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = context.dp(Space.SM)
+                    },
+                )
+            }
+        container.addView(
+            View(context).apply { setBackgroundColor(colors.line) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(1).coerceAtLeast(1)),
+        )
+        container.addView(footer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
-    private fun LinearLayout.roundAction(
-        iconRes: Int,
-        fill: Int,
-        tint: Int,
+    private fun LinearLayout.action(
+        label: String,
         onClick: () -> Unit,
-    ): ImageView {
-        val size = context.dp(ROUND_ACTION_DP)
-        // An ImageButton so TalkBack announces it as a button.
-        val action =
-            ImageButton(context).apply {
-                setImageDrawable(context.tintedIcon(iconRes, tint))
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                val pad = context.dp(Space.MD)
-                setPadding(pad, pad, pad, pad)
-                background = ripple(roundedBg(fill, size / 2f), size / 2f, tint)
-                isFocusable = true
-                setOnClickListener { onClick() }
+    ): Button {
+        val button =
+            makeButton(context, label, Btn.SURFACE) { onClick() }.apply {
+                minHeight = context.dp(ACTION_HEIGHT_DP)
+                minimumHeight = context.dp(ACTION_HEIGHT_DP)
+                setPadding(context.dp(Space.SM), 0, context.dp(Space.SM), 0)
+                isSingleLine = true
+                ellipsize = android.text.TextUtils.TruncateAt.END
             }
         addView(
-            action,
-            LinearLayout.LayoutParams(size, size).apply { if (childCount > 0) marginStart = context.dp(Space.LG) },
+            button,
+            LinearLayout.LayoutParams(0, context.dp(ACTION_HEIGHT_DP), 1f).apply {
+                if (childCount > 0) marginStart = context.dp(Space.SM)
+            },
         )
-        return action
+        return button
     }
 
     fun update(selected: Set<String>) {
@@ -378,15 +572,42 @@ private class SelectionActions(
         download = if (canDownload) chosen.filter { !it.chapter.downloaded } else emptyList()
         generate = chosen.filter { TtsContinueListening.isPlayable(it.chapter) && it.chapter.id !in audio }
         delete = chosen.filter { it.chapter.id in audio }
+        summary.text =
+            if (chosen.isEmpty()) {
+                "Tap chapters, or add some above"
+            } else {
+                "${"%,d".format(chosen.size)} selected · ${ChapterActionPlanning.rangeLabel(chosen.map { it.originalIndex })}"
+            }
+        summary.setTextColor(if (chosen.isEmpty()) colors.onSurfaceVariant else colors.onSurface)
+        clear.visibility = if (chosen.isEmpty()) View.INVISIBLE else View.VISIBLE
+        val deleteIds = delete.map { it.chapter.id }
+        val pending = ChapterActionPlanning.pendingOf(deleteIds, audioInfo)
+        val ready = deleteIds.size - pending
+        val notDownloaded = chosen.count { !it.chapter.downloaded }
+        details.text =
+            listOfNotNull(
+                if (ready >
+                    0
+                ) {
+                    "$ready with audio · ${NarrationPlanning.formatBytes(ChapterActionPlanning.bytesOf(deleteIds, audioInfo))}"
+                } else {
+                    null
+                },
+                if (pending > 0) "$pending queued" else null,
+                if (notDownloaded > 0) "$notDownloaded not downloaded" else null,
+                if (chosen.any { it.chapter.id == story.lastReadChapterId }) "includes your bookmark" else null,
+            ).joinToString(" · ")
+        details.visibility = if (details.text.isNullOrEmpty()) View.GONE else View.VISIBLE
         downloadButton.show("Download", download.size)
-        generateButton.show("Generate audio", generate.size)
-        deleteButton.show("Delete audio", delete.size)
+        generateButton.show("Generate", generate.size)
+        deleteButton.show("Delete", delete.size)
     }
 
-    private fun ImageView.show(
+    private fun Button.show(
         label: String,
         count: Int,
     ) {
+        text = if (count > 0) "$label ${"%,d".format(count)}" else label
         contentDescription =
             if (count > 0) "$label ${NarrationScreenPlanning.chapters(count)}" else "$label (none of the selected chapters)"
         isEnabled = count > 0
@@ -394,4 +615,7 @@ private class SelectionActions(
     }
 }
 
-private const val ROUND_ACTION_DP = 52
+private const val ACTION_HEIGHT_DP = 40
+private const val QUICK_NEXT = 10
+private const val BOOKMARK_OFFSET_DP = 96
+private const val ADD_LETTER_SPACING = 0.08f

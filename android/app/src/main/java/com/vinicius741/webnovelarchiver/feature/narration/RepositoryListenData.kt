@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.narration
 
+import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPositions
 import com.vinicius741.webnovelarchiver.feature.player.ContinuePlace
 import com.vinicius741.webnovelarchiver.feature.player.PlayerData
 import com.vinicius741.webnovelarchiver.feature.player.RepositoryPlayerData
@@ -14,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 internal class RepositoryListenData(
     private val narration: NarrationCoordinator,
     private val player: RepositoryPlayerData,
+    private val repository: AppRepository,
 ) : ListenData,
     PlayerData by player {
     override val queue: StateFlow<NarrationQueueDocument> get() = narration.queueState
@@ -41,6 +44,9 @@ internal class RepositoryListenData(
     override fun usedBytes(): Long = narration.store.totalBytes()
 
     override fun freeBytes(): Long = narration.freeBytes()
+
+    override suspend fun listenPlaces(): Map<String, ListenPlaceTime> =
+        repository.getTtsStoryPositions().associate { it.storyId to ListenPlaceTime(it.chapterId, it.updatedAt) }
 
     override fun voiceCanUseComputers(): Boolean = KokoroVoices.model(narration.currentVoice().engine) != null
 

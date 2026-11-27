@@ -36,6 +36,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
+/** Where listening last stopped in a story, and when. */
+internal data class ListenPlaceTime(
+    val chapterId: String,
+    val updatedAt: Long,
+)
+
 /** Generated packs by story: those of chapters in the library, and the detached rest. */
 internal data class GeneratedAudio(
     val attached: Map<String, List<NarrationPack>>,
@@ -59,6 +65,9 @@ internal interface ListenData : PlayerData {
     fun generatedAudio(): GeneratedAudio
 
     fun usedBytes(): Long
+
+    /** Where and when listening last stopped in each story, by story id. */
+    suspend fun listenPlaces(): Map<String, ListenPlaceTime>
 
     fun freeBytes(): Long
 
@@ -116,6 +125,8 @@ internal data class ListenBuildKey(
     val queue: NarrationQueueDocument,
     val packsRevision: Long,
     val runningJobId: String?,
+    /** Where and when each story was last listened to; the suggestions depend on it. */
+    val listenPlaces: Map<String, ListenPlaceTime> = emptyMap(),
 )
 
 /** The part of the Listen screen built once per [key]; a different key rebuilds the screen. */
@@ -132,6 +143,8 @@ internal data class ListenContent(
     val freeBytes: Long,
     /** The queue offers "Generate on": there is a computer, and the current voice can generate on one. */
     val showGenerateOn: Boolean,
+    /** Clean-ups worked out from the bookmarks and last listens. */
+    val suggestions: List<ListenSuggestion> = emptyList(),
 ) {
     val runningJobId: String? get() = key.runningJobId
 }
@@ -184,6 +197,7 @@ internal class ListenScreenModel(
     private var idle: ListenNow = data.lastContinuePlace()?.let(ListenNow::Continue) ?: ListenNow.Nothing
     private var compression: CompressionUi? = null
     private var compressionRevision = -1L
+    private var listenPlaces: Map<String, ListenPlaceTime> = emptyMap()
     private val messageChannel = Channel<String>(MESSAGE_BUFFER, BufferOverflow.DROP_OLDEST)
     private val mutableState = MutableStateFlow(compute())
 
@@ -258,8 +272,24 @@ internal class ListenScreenModel(
                         if (!isIdle) return@collectLatest
                         val place = runCatching { data.continuePlace() }.onFailure { if (it is CancellationException) throw it }
                         idle = place.getOrNull()?.let(ListenNow::Continue) ?: ListenNow.Nothing
+                        // Listening just stopped somewhere: the suggestions follow the new place.
+                        runCatching { data.listenPlaces() }
+                            .onFailure { if (it is CancellationException) throw it }
+                            .getOrNull()
+                            ?.let { listenPlaces = it }
                         refresh()
                     }
+            }
+            launch {
+                // The suggestions need each story's last listen; look again whenever the screen would rebuild.
+                buildKeys().collectLatest {
+                    val times = runCatching { data.listenPlaces() }.onFailure { if (it is CancellationException) throw it }
+                    val next = times.getOrNull() ?: return@collectLatest
+                    if (next != listenPlaces) {
+                        listenPlaces = next
+                        refresh()
+                    }
+                }
             }
         }
 
@@ -271,7 +301,7 @@ internal class ListenScreenModel(
     private fun compute(): ListenUiState {
         val queue = data.queue.value
         val progress = data.progress.value
-        val key = ListenBuildKey(queue.withoutLiveFields(), data.packsRevision.value, progress?.job?.id)
+        val key = ListenBuildKey(queue.withoutLiveFields(), data.packsRevision.value, progress?.job?.id, listenPlaces)
         val built = content?.takeIf { it.key == key } ?: buildContent(key, queue).also { content = it }
         return ListenUiState(
             content = built,
@@ -296,17 +326,55 @@ internal class ListenScreenModel(
                 )
             }
         val audio = data.generatedAudio()
+        val audioStories = audio.attached.keys.associateWith(data::story)
         return ListenContent(
             key = key,
             queue = queue,
             cards = cards,
             failed = queue.jobs.count { it.state == NarrationJobState.FAILED },
             audio = audio,
-            audioStories = audio.attached.keys.associateWith(data::story),
+            audioStories = audioStories,
             usedBytes = data.usedBytes(),
             freeBytes = data.freeBytes(),
             showGenerateOn = queue.servers.isNotEmpty() && data.voiceCanUseComputers(),
+            suggestions = suggestions(audio, audioStories, key.listenPlaces, queue),
         )
+    }
+
+    /**
+     * [shown] worked out again from the library as it is now (a bookmark may have moved since the
+     * screen was built), or null when it no longer applies. A tap acts on this, never on [shown].
+     */
+    fun suggestionNow(shown: ListenSuggestion): ListenSuggestion? {
+        val audio = data.generatedAudio()
+        val stories = audio.attached.keys.associateWith(data::story)
+        return suggestions(audio, stories, listenPlaces, data.queue.value)
+            .firstOrNull { it.kind == shown.kind && it.chapters.keys == shown.chapters.keys }
+    }
+
+    private fun suggestions(
+        audio: GeneratedAudio,
+        stories: Map<String, Story?>,
+        places: Map<String, ListenPlaceTime>,
+        queue: NarrationQueueDocument,
+    ): List<ListenSuggestion> {
+        val queued = queue.jobs.groupBy({ it.storyId }, { it.chapterId })
+        val facts =
+            audio.attached.mapNotNull { (storyId, packs) ->
+                val story = stories[storyId] ?: return@mapNotNull null
+                val place = places[storyId]
+                StoryAudioFacts(
+                    storyId = storyId,
+                    title = story.title,
+                    chapterIds = story.chapters.map { it.id },
+                    bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1,
+                    listenIndex = place?.let { p -> story.chapters.indexOfFirst { it.id == p.chapterId } } ?: -1,
+                    bytes = packs.associate { it.chapterId to it.index.bytes },
+                    lastListenedAt = place?.updatedAt,
+                    queued = queued[storyId].orEmpty().toSet(),
+                )
+            }
+        return ListenSuggestionPlanning.suggestions(facts, System.currentTimeMillis())
     }
 
     private fun now(): ListenNow {

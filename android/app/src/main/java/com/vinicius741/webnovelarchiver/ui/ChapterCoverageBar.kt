@@ -6,12 +6,15 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.ui.layout.ChapterCoveragePlanning
+import kotlin.math.PI
+import kotlin.math.cos
 
 /**
  * Capsule bar of downloaded chapters, one slot per chapter, contiguous runs as rounded segments,
@@ -43,6 +46,16 @@ class ChapterCoverageBar(
             strokeJoin = Paint.Join.ROUND
             strokeCap = Paint.Cap.ROUND
         }
+
+    /** Per-slot states and their colours when bound with [bindStates]; null for the downloaded-only form. */
+    private var states: ByteArray? = null
+
+    /** [states] coalesced once per bind, so a pulsing bar does not rebuild them every frame. */
+    private var stateRuns: List<Pair<IntRange, Int>> = emptyList()
+    private var palette: IntArray = IntArray(0)
+    private var liveState: Int = -1
+    private var stateDescription: String? = null
+    private val statePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val trackRect = RectF()
     private val runRect = RectF()
     private val markerPath = Path()
@@ -82,7 +95,32 @@ class ChapterCoverageBar(
     ) {
         this.downloaded = downloaded
         this.bookmarkFraction = bookmarkFraction
+        states = null
+        stateDescription = null
         describe()
+        invalidate()
+    }
+
+    /**
+     * Binds one state per chapter: 0 is the empty track, `n` draws in `palette[n]`. Runs in
+     * [liveState] (work in progress) pulse and are drawn at least a few dp wide so one chapter of
+     * a long novel stays visible. [description] is what TalkBack reads.
+     */
+    fun bindStates(
+        states: ByteArray,
+        palette: IntArray,
+        liveState: Int,
+        bookmarkFraction: Float?,
+        description: String,
+    ) {
+        this.states = states
+        // Live runs last, so a widened pulsing run is drawn over its neighbours rather than under them.
+        stateRuns = ChapterCoveragePlanning.stateRuns(states).sortedBy { it.second == liveState }
+        this.palette = palette
+        this.liveState = liveState
+        this.bookmarkFraction = bookmarkFraction
+        stateDescription = description
+        contentDescription = description
         invalidate()
     }
 
@@ -104,6 +142,10 @@ class ChapterCoverageBar(
     }
 
     private fun describe() {
+        stateDescription?.let {
+            contentDescription = it
+            return
+        }
         val done = downloaded.count { it }
         val total = downloaded.size
         val bookmarkChapter = ChapterCoveragePlanning.bookmarkSlot(bookmarkFraction, total)?.plus(1)
@@ -123,6 +165,10 @@ class ChapterCoverageBar(
         val radius = barHeight / 2f
         trackRect.set(0f, barTop, width.toFloat(), height.toFloat())
         canvas.drawRoundRect(trackRect, radius, radius, trackPaint)
+        states?.let {
+            drawStates(canvas, it, barTop, radius)
+            return
+        }
         val total = downloaded.size
         if (total <= 0) return
 
@@ -136,6 +182,46 @@ class ChapterCoverageBar(
         }
 
         drawBookmarkPin(canvas, total, slotWidth, barTop)
+    }
+
+    private fun drawStates(
+        canvas: Canvas,
+        slots: ByteArray,
+        barTop: Float,
+        radius: Float,
+    ) {
+        val total = slots.size
+        if (total <= 0) return
+        val slotWidth = width.toFloat() / total
+        val minLive = LIVE_MIN_WIDTH_DP * density
+        var live = false
+        for ((range, state) in stateRuns) {
+            var left = range.first * slotWidth
+            var right = (range.last + 1) * slotWidth
+            var alpha = FULL_ALPHA
+            if (state == liveState) {
+                live = true
+                if (right - left < minLive) {
+                    val mid = (left + right) / 2f
+                    left = (mid - minLive / 2f).coerceIn(0f, (width - minLive).coerceAtLeast(0f))
+                    right = (left + minLive).coerceAtMost(width.toFloat())
+                }
+                alpha = livePulseAlpha()
+            }
+            val color = palette.getOrNull(state) ?: continue
+            statePaint.color = (color and RGB_MASK) or (alpha shl ALPHA_SHIFT)
+            runRect.set(left, barTop, right, height.toFloat())
+            canvas.drawRoundRect(runRect, radius, radius, statePaint)
+        }
+        drawBookmarkPin(canvas, total, slotWidth, barTop)
+        if (live && isAttachedToWindow) postInvalidateOnAnimation()
+    }
+
+    /** A slow pulse between [LIVE_MIN_ALPHA] and full, from the clock so every bar on screen agrees. */
+    private fun livePulseAlpha(): Int {
+        val phase = (SystemClock.uptimeMillis() % LIVE_PULSE_MS) / LIVE_PULSE_MS.toDouble()
+        val wave = 0.5 + 0.5 * cos(phase * 2 * PI)
+        return (LIVE_MIN_ALPHA + (FULL_ALPHA - LIVE_MIN_ALPHA) * wave).toInt()
     }
 
     private fun drawBookmarkPin(
@@ -228,6 +314,14 @@ fun updateChapterCoverageSummary(
 }
 
 private const val BAR_HEIGHT_DP = 6
+
+/** Narrowest a pulsing (in-progress) run is drawn, so one chapter of a long novel stays visible. */
+private const val LIVE_MIN_WIDTH_DP = 4
+private const val LIVE_PULSE_MS = 1100L
+private const val LIVE_MIN_ALPHA = 140
+private const val FULL_ALPHA = 255
+private const val RGB_MASK = 0x00FFFFFF
+private const val ALPHA_SHIFT = 24
 
 /** Height (dp) of the strip above the capsule reserved for the bookmark pin's triangle. */
 private const val BOOKMARK_MARKER_HEIGHT_DP = 5

@@ -20,6 +20,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,6 +29,9 @@ import timber.log.Timber
 internal val ScreenHost.narration: NarrationCoordinator get() = container.narration
 
 private val ScreenHost.container get() = app.appContainer
+
+/** The process-wide scope, for narration changes that must finish after the screen goes (a delete behind Undo). */
+internal val ScreenHost.narrationScope: CoroutineScope get() = container.applicationScope
 
 /**
  * Plays a chapter's generated audio, or, when it has none yet, generates it first (at the front of

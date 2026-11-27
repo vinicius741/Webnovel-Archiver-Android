@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.feature.narration.showNarration
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.story.StoryTab
 import com.vinicius741.webnovelarchiver.narration.NarrationChapterStatus
+import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
 import com.vinicius741.webnovelarchiver.narration.NarrationJobState
 import com.vinicius741.webnovelarchiver.narration.NarrationOrigin
 import com.vinicius741.webnovelarchiver.narration.NarrationPack
@@ -64,6 +65,35 @@ internal fun ScreenHost.chapterAudioLabels(story: Story): Map<String, String> {
         )
     }.getOrDefault(emptyList()).forEach { labels.putIfAbsent(it.chapterId, AUDIO_READY_LABEL) }
     return labels
+}
+
+/**
+ * Each chapter's audio for the bulk actions, by chapter id: queued (failed jobs count as queued,
+ * they still hold a place), generating, or ready with its pack's size and length. In memory only.
+ */
+internal fun chapterAudioInfo(
+    narration: NarrationCoordinator,
+    story: Story,
+): Map<String, ChapterAudioInfo> {
+    val info = HashMap<String, ChapterAudioInfo>()
+    val running =
+        narration.progress.value
+            ?.takeUnless { it.preparing }
+            ?.job
+            ?.id
+    narration.queueState.value.jobs
+        .filter { it.storyId == story.id }
+        .forEach { job ->
+            val state = if (job.id == running) ChapterAudioState.GENERATING else ChapterAudioState.QUEUED
+            info.putIfAbsent(job.chapterId, ChapterAudioInfo(state))
+        }
+    // A chapter queued to regenerate still has its pack: keep its size, which a delete frees too.
+    runCatching { narration.store.packsFor(story.id) }.getOrDefault(emptyList()).forEach { pack ->
+        val job = info[pack.chapterId]
+        info[pack.chapterId] =
+            ChapterAudioInfo(job?.state ?: ChapterAudioState.READY, pack.index.bytes, pack.index.totalDurationMs, hasPack = true)
+    }
+    return info
 }
 
 /** A chapter's long-press actions: read it, listen, and generate, regenerate or delete its audio. */

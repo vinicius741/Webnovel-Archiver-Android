@@ -18,7 +18,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.ReleaseCadencePlanning
 import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
-import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
@@ -32,7 +31,6 @@ import com.vinicius741.webnovelarchiver.operations.StoryOperationKind
 import com.vinicius741.webnovelarchiver.operations.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.BlurredBackdropView
 import com.vinicius741.webnovelarchiver.ui.Btn
-import com.vinicius741.webnovelarchiver.ui.ChapterCoverageBar
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -51,14 +49,14 @@ import java.util.Locale
 /*
  * The story hero: cover, title and pills (DetailsHeader.kt), the release forecast with Sync, the
  * notices, operation progress, the live download banner, the contextual primary action (DetailsCta.kt),
- * the quick actions and the offline coverage card. It leads the Overview tab, and on the inner
+ * the quick actions and the On this phone card (StoryPhoneCard.kt). It leads the Overview tab, and on the inner
  * screen it stays in its own pane beside every tab.
  */
 
 /** The hero and the slots the page's renderer patches in place from its state. */
 internal class StoryHero(
     val view: View,
-    val coverage: CoverageCard?,
+    val coverage: StoryPhoneCard?,
     val bannerSlot: LinearLayout,
     val ctaSlot: LinearLayout,
     /** The running sync / cleanup / EPUB's progress, when one ran at build time. */
@@ -97,7 +95,7 @@ internal fun ScreenHost.buildStoryHero(
     column.addView(buildQuickActions(story, operation?.kind))
     val hasEpub = !story.epubPaths.isNullOrEmpty() || !story.epubPath.isNullOrBlank()
     if (story.epubStale == true && hasEpub) column.addView(buildStaleEpubNotice(story, isBusy))
-    val coverage = if (story.chapters.isNotEmpty()) CoverageCard(this, story) else null
+    val coverage = if (story.chapters.isNotEmpty()) StoryPhoneCard(this, story, state.chapterStatuses) else null
     coverage?.let { column.addView(it.view) }
     val root =
         FrameLayout(app).apply {
@@ -276,79 +274,6 @@ private fun ScreenHost.buildQuickActions(
     }
 }
 
-/** "210 / 210 offline", the ivory bookmark chip, and the coverage bar; opens the Chapters tab. */
-internal class CoverageCard(
-    host: ScreenHost,
-    story: Story,
-) {
-    private val context = host.app
-    private val count = makeText(context, "", Type.TITLE_SMALL, ThemeManager.colors.onSurface)
-    private val bookmark = makeText(context, "", Type.LABEL_MEDIUM, ThemeManager.colors.bookmark)
-    private val bar = ChapterCoverageBar(context)
-    val view: View
-
-    init {
-        val colors = ThemeManager.colors
-        val radius = context.dp(COVERAGE_RADIUS_DP).toFloat()
-        bookmark.setCompoundDrawablesRelativeWithIntrinsicBounds(
-            context.tintedIcon(R.drawable.wna_bookmark, colors.bookmark)?.apply { setBounds(0, 0, context.dp(14), context.dp(14)) },
-            null,
-            null,
-            null,
-        )
-        bookmark.compoundDrawablePadding = context.dp(2)
-        val header =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(count)
-                addView(makeText(context, "offline", Type.BODY_SMALL, colors.onSurfaceVariant).apply { setPadding(context.dp(6), 0, 0, 0) })
-                addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
-                addView(bookmark)
-                addView(
-                    ImageView(
-                        context,
-                    ).apply { setImageDrawable(context.tintedIcon(R.drawable.wna_chevron_right, colors.onSurfaceVariant)) },
-                    LinearLayout.LayoutParams(context.dp(18), context.dp(18)).apply { marginStart = context.dp(Spacing.XS) },
-                )
-            }
-        view =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(context.dp(Spacing.MD + 2), context.dp(Spacing.MD), context.dp(Spacing.MD + 2), context.dp(Spacing.MD + 2))
-                background = ripple(strokeBg(colors.elevation1, radius, colors.line, context.dp(1)), radius, colors.onSurface)
-                isClickable = true
-                isFocusable = true
-                addView(header)
-                addView(
-                    bar,
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, bar.layoutParams.height).apply {
-                        topMargin =
-                            context.dp(Spacing.SM + 2)
-                    },
-                )
-                setOnClickListener { host.switchStoryTab(story.id, StoryTab.CHAPTERS) }
-                layoutParams =
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        topMargin = context.dp(Spacing.MD)
-                        bottomMargin = context.dp(Spacing.SM)
-                    }
-            }
-        render(story)
-    }
-
-    fun render(story: Story) {
-        count.text = "${"%,d".format(story.downloadedChapters)} / ${"%,d".format(story.chapters.size)}"
-        val bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
-        bookmark.text = if (bookmarkIndex >= 0) "Ch. ${bookmarkIndex + 1}" else ""
-        bookmark.visibility = if (bookmarkIndex >= 0) View.VISIBLE else View.GONE
-        bar.bind(StoryBookmarkPlanning.downloadedFlags(story), StoryBookmarkPlanning.bookmarkFraction(story))
-        view.contentDescription =
-            "${story.downloadedChapters} of ${story.chapters.size} chapters offline" +
-            (if (bookmarkIndex >= 0) ", bookmark at chapter ${bookmarkIndex + 1}" else "") + ". Tap to see chapters."
-    }
-}
-
 /** The live download banner (gold card) while chapters download, pause or end with failures; empty otherwise. */
 internal fun ScreenHost.renderHeroDownloadBanner(
     slot: LinearLayout,
@@ -409,7 +334,6 @@ internal fun formatAgo(
 
 private const val BACKDROP_HEIGHT_DP = 300
 private const val FORECAST_RADIUS_DP = 14
-private const val COVERAGE_RADIUS_DP = 16
 private const val LINE_SPACING = 1.1f
 internal const val DISABLED_ALPHA = 0.45f
 private const val DUE_FILL_MASK = 0x1AFFFFFF
