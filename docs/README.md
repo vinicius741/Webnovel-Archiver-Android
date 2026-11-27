@@ -75,7 +75,7 @@ How the Text-to-Speech subsystem works, plus audits and evaluations.
 | `narration-server-memory-plan.md` | Plan (2026-11-24, reviewed by Fable 5.2 and Gemini 4 Neon) for the narration server's idle memory (a worker process per model) and its memory ladder (free first, then fewer slots, stop last); what the journal showed about swap-driven stops. |
 | `built-in-models.md` | The three built-in voice models (Kokoro v0.19, Kokoro v1.0, Phonon 31M): the 2026-11-16 listening test that chose them, measured speeds, `BuiltInModel`/`BuiltInEngines`, Phonon's JNA runtime and `libptts_ffi.so` build, no download needed when computers generate, and the Google-profile stand-in for live speech. |
 | `kokoro-built-in-voices.md` | Built-in Kokoro neural voices: sherpa-onnx dependency, model download/verify/unpack, shared runtime, playback integration, the on-device speed test (generation speed, CPU/memory/thermal headroom, shareable report), native-code/R8 rules, licences, and emulator verification. |
-| `tts-podcast-player.md` | The podcast-style TTS player: per-story resume memory (`tts_positions.json`), stop-vs-finish semantics, mini-player + Now Playing screens, chapter-skip transport, and lifecycle rules. |
+| `tts-podcast-player.md` | The podcast-style TTS player: per-story resume memory (`tts_positions.json`), stop-vs-finish semantics, write cadence and crash loss, mini-player + Now Playing screens, chapter-skip transport, and lifecycle rules. |
 | `tts-audit.html` | Read-only audit of the current TTS implementation against modern Android best practices, with a prioritized recommendation list. |
 | `tts-media3-migration-evaluation.md` | Short evaluation recommending against a Media3 migration in the same change as the audio-focus/robustness fixes. |
 

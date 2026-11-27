@@ -187,6 +187,10 @@ class AppStorage(
 
     internal val aiSettingsDoc = JsonDocument(aiSettingsFile, typeOf<AiSettings>(), { AiSettings() }, PreferenceNormalization::aiSettings)
 
+    /** Per-story listening positions (`storyId → TtsStoryPosition`); same on-disk map as before it was cached. */
+    internal val ttsPositionsDoc =
+        JsonDocument<Map<String, TtsStoryPosition>>(ttsPositionsFile, typeOf<MutableMap<String, TtsStoryPosition>>(), { mutableMapOf() })
+
     private inline fun <reified T> typeOf(): Type = object : TypeToken<T>() {}.type
 
     /** Re-reads every cached document from disk; call after restore/import/clear replaced the root. */
@@ -201,6 +205,7 @@ class AppStorage(
         regexRulesDoc.reload()
         ttsSettingsDoc.reload()
         aiSettingsDoc.reload()
+        ttsPositionsDoc.reload()
     }
 
     @Synchronized
@@ -328,18 +333,18 @@ class AppStorage(
 
     fun clearTtsSession() = maintenanceCoordinator.withStorageAccess(this) { sessionFile.delete() }
 
-    fun getTtsStoryPositions(): MutableMap<String, TtsStoryPosition> =
-        read<MutableMap<String, TtsStoryPosition>>(ttsPositionsFile) ?: mutableMapOf()
+    /** Cached ([ttsPositionsDoc]): playback saves a position every few seconds, so it never re-reads the file. */
+    fun getTtsStoryPositions(): Map<String, TtsStoryPosition> = ttsPositionsDoc.get()
 
+    @Synchronized
     fun saveTtsStoryPosition(position: TtsStoryPosition) {
-        val positions = getTtsStoryPositions()
-        positions[position.storyId] = position
-        write(ttsPositionsFile, positions)
+        ttsPositionsDoc.set(ttsPositionsDoc.get() + (position.storyId to position.copy()))
     }
 
+    @Synchronized
     fun clearTtsStoryPosition(storyId: String) {
-        val positions = getTtsStoryPositions()
-        if (positions.remove(storyId) != null) write(ttsPositionsFile, positions)
+        val positions = ttsPositionsDoc.get()
+        if (storyId in positions) ttsPositionsDoc.set(positions - storyId)
     }
 
     @Synchronized

@@ -57,6 +57,27 @@ object TtsSessionPlanning {
             )
         }
 
+    /**
+     * True when [next] only moves playback forward through the same chapter of [previous] while it
+     * plays: the place moved, nothing the listener chose did (story, chapter, pause, speed, voice,
+     * history). Such updates can be saved on a slower cadence ([TtsSessionStore]); any other change
+     * is saved at once. A move backward counts as a change, so a rewind is never left unsaved.
+     */
+    fun isProgressOnly(
+        previous: TtsSession,
+        next: TtsSession,
+    ): Boolean =
+        next.wasPlaying &&
+            !next.isPaused &&
+            next.currentChunkIndex >= previous.currentChunkIndex &&
+            next.copy(
+                currentChunkIndex = previous.currentChunkIndex,
+                chunkOffsetMs = previous.chunkOffsetMs,
+                anchorText = previous.anchorText,
+                chunkingVersion = previous.chunkingVersion,
+                updatedAt = previous.updatedAt,
+            ) == previous
+
     fun isResumeEligible(session: TtsSession?): Boolean {
         if (session == null) return false
         if (session.storyId.isBlank() || session.chapterId.isBlank()) return false
