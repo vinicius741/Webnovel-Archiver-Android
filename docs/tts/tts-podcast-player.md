@@ -16,7 +16,7 @@ Two persisted concepts, deliberately separate:
   player is loaded (playing or paused). Cleared on explicit stop and natural completion. Drives
   the notification, MediaSession, reader transport, and mini-player visibility.
 - **Per-story positions** (`tts_positions.json`, map `storyId → TtsStoryPosition`) — each story's
-  last heard chapter + sentence chunk. Mirrored on every debounced session write; written on
+  last heard chapter + sentence chunk. Mirrored on every session write (see "Write cadence"); written on
   explicit stop; kept as `caughtUp` by natural completion; cleared only by a content-variant
   switch (chunk indices remap between source and polished text). Description narration
   (sentinel chapter `wna:description`) never touches this store.
@@ -117,6 +117,35 @@ inline content); otherwise the viewed chapter plays from the top.
 - `TtsSleepTimer` — handles countdown timers (15m, 30m, 45m, 60m) and end-of-chapter pause triggers.
 - `TtsSessionStore` mirrors every session write into `tts_positions.json` and owns
   stop/finish/clear semantics under one write mutex.
+
+## Write cadence and crash loss
+
+Both files are fsync'd atomic writes under the shared storage lock, so playback writes them
+sparingly:
+
+- A listener change (story, chapter, pause/play, speed, voice, a jump that lands in the history,
+  a move backward) is written 250 ms after it settles.
+- Plain forward progress through a playing chapter (`TtsSessionPlanning.isProgressOnly`) is
+  written at most once every 10 s (`TtsSessionStore.PROGRESS_INTERVAL_MS`), ending with the
+  latest sentence. That is 6–7 session writes and as many position writes per minute of
+  listening, instead of two per sentence.
+- Pause, stop, and natural completion write at once.
+- When playback moves to another story before its progress was written, that story's position
+  is still written first.
+
+So if the process dies while playing (no pause or stop ran), resume loses at most about 10.25 s
+of listening, rounded back to the start of the sentence as before. The repository's in-memory
+session (Reader seed, `TtsPlaybackPreparer.resume`) can likewise lag the live place by that much
+while playing; the live `TtsEngine.playbackState` is what screens show.
+
+`tts_positions.json` is cached in memory (`AppStorage.ttsPositionsDoc`), loaded once and
+reloaded with the other cached documents after a restore, import, or clear, so saving a position
+no longer re-reads and re-parses the whole map. Its on-disk format is unchanged.
+
+The `history` list (up to 10 jump-back places, `TtsPositionPlanning.MAX_HISTORY`) is most of each
+file: in a November 2026 sample it was 2.5 KB of a 3.4 KB `tts_session.json` (10 entries) and
+13 KB of a 23 KB `tts_positions.json` (49 entries over 20 stories). It is written along with each
+position; trimming it would change the backup format, so it was left as is.
 
 ## Architecture separation
 

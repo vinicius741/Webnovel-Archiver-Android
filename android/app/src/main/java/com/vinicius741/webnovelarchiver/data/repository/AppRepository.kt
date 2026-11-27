@@ -852,7 +852,7 @@ suspend fun AppRepository.getTtsStoryPosition(storyId: String): TtsStoryPosition
 
 suspend fun AppRepository.getTtsStoryPositions(): List<TtsStoryPosition> =
     storageTransaction {
-        storage.getTtsStoryPositions().values.toList()
+        storage.getTtsStoryPositions().values.map { it.copy() }
     }
 
 suspend fun AppRepository.saveTtsStoryPosition(position: TtsStoryPosition) {
