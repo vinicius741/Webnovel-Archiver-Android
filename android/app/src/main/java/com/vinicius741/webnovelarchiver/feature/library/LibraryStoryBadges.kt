@@ -34,35 +34,57 @@ private const val PILL_VERTICAL_PADDING_DP = 3
  * The next chapter may be out: the same rule as the Updates "May be out" list and its badge, so
  * the Library and Updates never disagree.
  */
-internal fun mayHaveNewChapter(story: Story): Boolean {
-    val now = System.currentTimeMillis()
-    return UpdatesPlanning.mayBeOut(ReleaseCadencePlanning.forecast(story, now), story.lastChapterSyncAt, now)
+internal fun mayHaveNewChapter(
+    story: Story,
+    now: Long = System.currentTimeMillis(),
+): Boolean = UpdatesPlanning.mayBeOut(ReleaseCadencePlanning.forecast(story, now), story.lastChapterSyncAt, now)
+
+/**
+ * List-card meta row: source, publication status, availability, score, and the "New?" hint; hidden when
+ * empty. Kept per card, it rebuilds its few pills only when their [LibraryBadgeKey] changes.
+ */
+internal class LibraryBadgeRow(
+    private val host: ScreenHost,
+) {
+    /** Wraps rather than squeezing the last pill when a narrow card cannot fit every badge. */
+    val view: WrapLayout =
+        WrapLayout(host.app).apply {
+            horizontalSpacingDp = Spacing.SM
+            verticalSpacingDp = Spacing.XS
+            setPadding(0, host.app.dp(Spacing.SM - 2), 0, 0)
+        }
+    private var shown: LibraryBadgeKey? = null
+
+    fun bind(
+        story: Story,
+        now: Long,
+    ) {
+        val key = LibraryBadgeKey.of(story, now)
+        if (key == shown) return
+        shown = key
+        view.removeAllViews()
+        host.libraryBadgeItems(story, key.mayHaveNewChapter).forEach(view::addView)
+        view.visibility = if (view.childCount == 0) View.GONE else View.VISIBLE
+    }
 }
 
-/** List-card meta row: source, publication status, availability, score, and the "New?" hint; null when empty. */
-internal fun ScreenHost.libraryBadgeRow(story: Story): View? {
+private fun ScreenHost.libraryBadgeItems(
+    story: Story,
+    mayHaveNewChapter: Boolean,
+): List<View> {
     val colors = ThemeManager.colors
-    val items =
-        listOfNotNull(
-            SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let {
-                makeText(app, it.name, Type.LABEL_MEDIUM, colors.primary).apply {
-                    includeFontPadding = false
-                    setPadding(0, dp(PILL_VERTICAL_PADDING_DP), 0, dp(PILL_VERTICAL_PADDING_DP))
-                }
-            },
-            publicationStatusBadge(story),
-            sourceAvailabilityBadge(story),
-            story.score?.takeIf { it.isNotBlank() }?.let { inlineScore(it) },
-            if (mayHaveNewChapter(story)) newChapterPill() else null,
-        )
-    if (items.isEmpty()) return null
-    // Wraps rather than squeezing the last pill when a narrow card cannot fit every badge.
-    return WrapLayout(app).apply {
-        horizontalSpacingDp = Spacing.SM
-        verticalSpacingDp = Spacing.XS
-        setPadding(0, dp(Spacing.SM - 2), 0, 0)
-        items.forEach(::addView)
-    }
+    return listOfNotNull(
+        SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let {
+            makeText(app, it.name, Type.LABEL_MEDIUM, colors.primary).apply {
+                includeFontPadding = false
+                setPadding(0, dp(PILL_VERTICAL_PADDING_DP), 0, dp(PILL_VERTICAL_PADDING_DP))
+            }
+        },
+        publicationStatusBadge(story),
+        sourceAvailabilityBadge(story),
+        story.score?.takeIf { it.isNotBlank() }?.let { inlineScore(it) },
+        if (mayHaveNewChapter) newChapterPill() else null,
+    )
 }
 
 /** "★ 4.74": a gold star and the score in bold. */
