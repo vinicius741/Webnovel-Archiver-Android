@@ -16,6 +16,8 @@ import java.io.File
  * Copies and deletes die between individual files, so half-copied roots and half-deleted
  * snapshots are part of the search. `renameIntoLive = false` forces every move into the live
  * root down the copy fallback, which is where non-atomic snapshot cleanup used to be unsafe.
+ * `renameToCandidate = false` does the same for the pre-journal move of the staged tree (in
+ * cacheDir) to the swap candidate beside the live root.
  */
 class RestoreCrashRecoveryTest {
     @get:Rule
@@ -28,6 +30,7 @@ class RestoreCrashRecoveryTest {
         private val dieAt: Int,
         private val live: File,
         private val renameIntoLive: Boolean,
+        private val renameToCandidate: Boolean = true,
     ) : RestoreFileOperations {
         var points = 0
             private set
@@ -47,7 +50,9 @@ class RestoreCrashRecoveryTest {
             destination: File,
         ): Boolean {
             point()
-            val moved = (renameIntoLive || destination != live) && source.renameTo(destination)
+            val candidate = destination.name.startsWith(RestoreStartupRecovery.SWAP_CANDIDATE_PREFIX)
+            val allowed = if (candidate) renameToCandidate else renameIntoLive || destination != live
+            val moved = allowed && source.renameTo(destination)
             point()
             return moved
         }
@@ -82,13 +87,17 @@ class RestoreCrashRecoveryTest {
     private val oldTree = mapOf("library.json" to "old", "novels/a/1.html" to "old-a1", "novels/b/1.html" to "old-b1")
     private val newTree = mapOf("library.json" to "new", "novels/c/1.html" to "new-c1", "covers/c.jpg" to "new-cover")
 
-    private fun reset() {
+    /** The extraction work directory in cacheDir; the swap candidate goes beside [live]. */
+    private val cacheWork get() = File(tmp.root, "cache/webnovel_restore")
+    private val cacheStaged get() = File(cacheWork, "1/staged_root")
+
+    private fun reset(stagedRoot: File = staged) {
         tmp.root
             .listFiles()
             .orEmpty()
             .forEach { it.deleteRecursively() }
         write(live, oldTree)
-        write(staged, newTree)
+        write(stagedRoot, newTree)
     }
 
     private fun write(
@@ -199,6 +208,49 @@ class RestoreCrashRecoveryTest {
                     reset()
                     attempt(restoreFiles, failure)
                     restoreFiles
+                }
+            }
+        }
+    }
+
+    /**
+     * The whole restore from a staged root in cacheDir: the pre-journal move beside the live root
+     * (a rename, or the verified-copy fallback), then the swap. After a death or failure anywhere,
+     * the next startup's recovery and staging sweep must leave one whole library and no debris.
+     */
+    @Test
+    fun deathWhileStagingBesideTheLiveRootLeavesOneLibraryAndNoDebris() {
+        for (renameToCandidate in listOf(true, false)) {
+            for (renameIntoLive in listOf(true, false)) {
+                forEachKillPoint { dieAt ->
+                    reset(cacheStaged)
+                    val files = DyingFiles(dieAt, live, renameIntoLive, renameToCandidate)
+                    val committer = RestoreRootCommitter(live, snapshot, journal, { live.mkdirs() }, RestoreRootSwap(files))
+                    var staging = true
+                    val committed =
+                        try {
+                            val candidate = committer.stageBesideLiveRoot(cacheStaged)
+                            staging = false
+                            committer.commit(candidate)
+                            true
+                        } catch (ignored: ProcessDeath) {
+                            false
+                        } catch (ignored: IllegalStateException) {
+                            committer.rollback()
+                            false
+                        }
+                    val label = "candidateRename=$renameToCandidate liveRename=$renameIntoLive dieAt=$dieAt"
+                    if (staging) {
+                        assertEquals("$label: staging must not touch the live root", oldTree, contents(live))
+                        assertFalse("$label: staging must not write a journal", journal.exists())
+                    }
+                    RestoreStartupRecovery.recoverState(live, snapshot, journal)
+                    if (!journal.exists()) RestoreStartupRecovery.sweepOrphanedStaging(tmp.root, cacheWork)
+                    assertResolved(label, committed)
+                    val debris = tmp.root.list()!!.filter { it.startsWith(RestoreStartupRecovery.SWAP_CANDIDATE_PREFIX) }
+                    assertTrue("$label: swap candidate left behind: $debris", debris.isEmpty())
+                    assertTrue("$label: cache work left behind", cacheWork.list().orEmpty().isEmpty())
+                    files
                 }
             }
         }

@@ -7,6 +7,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.nio.file.Files
 
 class RestoreRootCommitterTest {
     @get:Rule
@@ -102,6 +103,44 @@ class RestoreRootCommitterTest {
         assertTrue(File(live, "new").isFile)
         assertFalse(snapshot.exists())
         assertFalse(journal.exists())
+    }
+
+    @Test
+    fun stagingBesideLiveRootRenamesTheTreeInsteadOfCopyingIt() {
+        seed(live, "current")
+        val staged = seed(File(tmp.root, "cache/work/staged_root"), "new")
+        val inode = Files.getAttribute(File(staged, "new").toPath(), "unix:ino")
+
+        val candidate = committer().stageBesideLiveRoot(staged)
+
+        assertEquals(live.parentFile, candidate.parentFile)
+        assertTrue(candidate.name.startsWith(RestoreStartupRecovery.SWAP_CANDIDATE_PREFIX))
+        assertFalse(staged.exists())
+        assertEquals(inode, Files.getAttribute(File(candidate, "new").toPath(), "unix:ino"))
+        assertTrue(File(live, "current").isFile)
+        assertFalse(journal.exists())
+    }
+
+    @Test
+    fun stagingFallsBackToAVerifiedCopyWhenTheRenameIsRefused() {
+        seed(live, "current")
+        val staged = seed(File(tmp.root, "cache/work/staged_root"), "new")
+        val committer =
+            committer(
+                object : RestoreFileOperations {
+                    override fun rename(
+                        source: File,
+                        destination: File,
+                    ): Boolean = !destination.name.startsWith(RestoreStartupRecovery.SWAP_CANDIDATE_PREFIX) && source.renameTo(destination)
+                },
+            )
+
+        val candidate = committer.stageBesideLiveRoot(staged)
+        committer.commit(candidate)
+
+        assertEquals("new", File(live, "new").readText())
+        assertFalse(staged.exists())
+        assertFalse(candidate.exists())
     }
 
     @Test
