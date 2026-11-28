@@ -40,7 +40,7 @@ internal class TtsMiniPlayer(
                 onOpenPlayer = { host.showPlayer() },
                 onClose = controls::stop,
                 coverFor = { storyId ->
-                    host.repository.story(storyId)?.let { host.coverImage(it, COVER_WIDTH_DP, COVER_HEIGHT_DP, tapToOpen = false) }
+                    host.repository.readOnlyStory(storyId)?.let { host.coverImage(it, COVER_WIDTH_DP, COVER_HEIGHT_DP, tapToOpen = false) }
                 },
             )
         this.bar = bar

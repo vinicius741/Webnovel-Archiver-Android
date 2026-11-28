@@ -11,6 +11,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.repository.storyTitle
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
@@ -125,7 +126,7 @@ class AiJobForegroundService : Service() {
     }
 
     private fun showCoverOutcomeNotification(event: AiCoverJobEvent) {
-        val storyTitle = runCatching { appContainer.repository.story(event.storyId)?.title }.getOrNull()
+        val storyTitle = runCatching { appContainer.repository.storyTitle(event.storyId) }.getOrNull()
         val title =
             when (event) {
                 is AiCoverJobEvent.Succeeded ->
@@ -150,7 +151,7 @@ class AiJobForegroundService : Service() {
     }
 
     private fun showCharacterOutcomeNotification(event: CharacterJobEvent) {
-        val storyTitle = runCatching { appContainer.repository.story(event.storyId)?.title }.getOrNull()
+        val storyTitle = runCatching { appContainer.repository.storyTitle(event.storyId) }.getOrNull()
         val title =
             when (event) {
                 is CharacterJobEvent.Succeeded ->
