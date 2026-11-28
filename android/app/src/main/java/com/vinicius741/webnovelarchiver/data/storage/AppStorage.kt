@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.vinicius741.webnovelarchiver.cleanup.ChapterMarkupCompactor
 import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -611,6 +612,19 @@ class AppStorage(
         val file = resolveChapterPath(chapter.filePath)?.let(::File)?.takeIf(File::exists) ?: return false
         AtomicFileWrites.writeText(file, html)
         return true
+    }
+
+    /**
+     * Rewrites one chapter file through [compactor] under the storage lock, so a download or cleanup
+     * writing the same file cannot interleave. Returns the bytes saved; 0 when nothing changed.
+     */
+    @Synchronized
+    fun compactChapterFile(
+        chapter: Chapter,
+        compactor: ChapterMarkupCompactor,
+    ): Long {
+        val file = resolveChapterPath(chapter.filePath)?.let(::File)?.takeIf(File::isFile) ?: return 0
+        return ChapterMarkupCompaction.compactFile(file, compactor)
     }
 
     /** Deletes one chapter file, refusing any path outside this story's chapter directory. */

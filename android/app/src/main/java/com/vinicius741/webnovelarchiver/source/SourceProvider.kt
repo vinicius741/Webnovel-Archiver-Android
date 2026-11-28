@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.source
 
+import com.vinicius741.webnovelarchiver.cleanup.ChapterMarkupCompactor
 import com.vinicius741.webnovelarchiver.cleanup.InsertedNoticeMarker
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
@@ -68,6 +69,12 @@ interface SourceProvider {
 
     /** Non-null when this source marks the notices it injects into chapters. */
     val insertedNoticeMarker: InsertedNoticeMarker? get() = null
+
+    /**
+     * Non-null when this source adds markup to every chapter that the app never reads. It is dropped
+     * when a chapter is saved, from full backups, and once from chapters already on the device.
+     */
+    val chapterMarkupCompactor: ChapterMarkupCompactor? get() = null
 
     /** Request orchestration; API/auth/JS-backed sources override the HTML pipeline as one unit. */
     suspend fun loadStory(
