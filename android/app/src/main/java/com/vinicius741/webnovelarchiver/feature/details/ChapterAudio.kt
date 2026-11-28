@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
+import com.vinicius741.webnovelarchiver.data.repository.hasStory
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.narration.NarrationScreenPlanning
@@ -32,7 +33,7 @@ internal fun ScreenHost.showStoryChapters(
     storyId: String,
     chapterId: String? = null,
 ) {
-    if (repository.story(storyId) == null) return showNarration()
+    if (!repository.hasStory(storyId)) return showNarration()
     if (chapterId != null) StoryTabMemory.focusChapter[storyId] = chapterId
     switchStoryTab(storyId, StoryTab.CHAPTERS)
 }

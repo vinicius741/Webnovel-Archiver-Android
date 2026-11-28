@@ -142,7 +142,7 @@ class ArchitectureRulesTest {
 
     @Test
     fun oldScreenPatternOnlyShrinks() {
-        assertRatchet("`fun ScreenHost.` extensions", count(".", Regex("""\bfun\s+ScreenHost\.""")), baseline = 314)
+        assertRatchet("`fun ScreenHost.` extensions", count(".", Regex("""\bfun\s+ScreenHost\.""")), baseline = 309)
         assertRatchet("`appContainer` lookups in feature/", count("feature", Regex("""\bappContainer\b""")), baseline = 54)
         val hostProperties =
             File(root, "navigation/ScreenHost.kt")

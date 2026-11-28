@@ -42,7 +42,7 @@ private class RepositoryTabsData(
 
     override fun novelCounts(): Map<String, Int> =
         repository
-            .library()
+            .readOnlyLibrary()
             .mapNotNull { it.tabId }
             .groupingBy { it }
             .eachCount()
@@ -50,11 +50,11 @@ private class RepositoryTabsData(
     override suspend fun saveTabs(tabs: List<Tab>) = repository.tabs.save(tabs)
 
     override suspend fun unassign(tabId: String) {
-        repository.library().forEach { story ->
-            if (story.tabId == tabId) {
-                story.tabId = null
-                repository.addOrUpdateStory(story)
-            }
+        // Copy only the stories in the tab: each copy is edited and saved.
+        repository.readOnlyLibrary().filter { it.tabId == tabId }.forEach { inTab ->
+            val story = repository.story(inTab.id) ?: return@forEach
+            story.tabId = null
+            repository.addOrUpdateStory(story)
         }
     }
 

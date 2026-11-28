@@ -12,6 +12,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.repository.storyTitle
 import com.vinicius741.webnovelarchiver.feature.player.TTS_MINI_PLAYER_TAG
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -160,7 +161,7 @@ internal fun ScreenHost.attachAiJobChip(root: ViewGroup) {
                     dismissed = held.dismissed,
                     viewingStoryId = viewing,
                 ),
-            ) { storyId -> repository.story(storyId)?.title }
+            ) { storyId -> repository.storyTitle(storyId) }
         current = next
         if (next == null) {
             chip.view.visibility = View.GONE

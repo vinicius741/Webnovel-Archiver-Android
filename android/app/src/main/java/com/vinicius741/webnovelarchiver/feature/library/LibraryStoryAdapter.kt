@@ -4,8 +4,9 @@ import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListUpdateCallback
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -15,11 +16,14 @@ import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeText
 
-/** Builds only the cards visible in a page; the same adapter serves single and paged libraries. */
+/**
+ * Builds only the cards visible in a page; the same adapter serves single and paged libraries. Each holder
+ * builds its card once and rebinds values into it. List changes notify only the cards that moved, arrived,
+ * left or now show something else ([LibraryCardDiff]); download progress alone never rebinds a card.
+ */
 internal class LibraryStoryAdapter(
     private val host: ScreenHost,
     private val grid: LibraryGridSpec,
@@ -33,6 +37,7 @@ internal class LibraryStoryAdapter(
     private var tags: Set<String> = emptySet()
     private var sortOption = "lastUpdated"
     private var sortAscending = false
+    private var list: RecyclerView? = null
 
     init {
         updateVisible()
@@ -68,14 +73,15 @@ internal class LibraryStoryAdapter(
         this.sortOption = sortOption
         this.sortAscending = sortAscending
         updateVisible()
-        // The count line names the query, so it changes even when the same novels match.
-        if (queryChanged && visible.isNotEmpty()) notifyItemChanged(0)
+        // The count line names the query, so it changes even when the same novels match; the empty state's copy
+        // depends on the search and tags.
+        if (queryChanged || visible.isEmpty()) notifyItemChanged(0)
     }
 
     /** Rebinds one story's card after its selection changed, or every card for [storyId] == null (Select All). */
     fun refreshCards(storyId: String?) {
         if (storyId == null) {
-            notifyDataSetChanged()
+            if (visible.isNotEmpty()) notifyItemRangeChanged(HEADER_ROWS, visible.size)
             return
         }
         val index = visible.indexOfFirst { it.id == storyId }
@@ -88,14 +94,80 @@ internal class LibraryStoryAdapter(
     }
 
     private fun updateVisible() {
+        val previous = visible
         val next = LibraryQuery.filterAndSort(stories, query, tabId, tags, sortOption, sortAscending)
-        // Download progress changes update the backing stories without rebinding during a gesture.
-        if (next.map(Story::id) == visible.map(Story::id)) {
-            visible = next
-            return
-        }
         visible = next
-        notifyDataSetChanged()
+        when {
+            previous.isEmpty() && next.isEmpty() -> Unit
+            // The empty state swaps with the count row and the cards.
+            previous.isEmpty() || next.isEmpty() -> notifyDataSetChanged()
+            else -> {
+                // Download progress alone changes no card's content, so it rebinds nothing during a gesture.
+                val diff = LibraryCardDiff.calculate(previous, next, System.currentTimeMillis())
+                keepingFirstRowIndex { CardUpdates().also(diff::dispatchUpdatesTo).structural }
+                if (previous.size != next.size) notifyItemChanged(0)
+            }
+        }
+    }
+
+    /**
+     * Keeps the first visible row index and its offset across a move, arrival or departure, as the full
+     * rebind this replaced did, so a story jumping to the top on a sync does not drag the list with it.
+     */
+    private fun keepingFirstRowIndex(dispatch: () -> Boolean) {
+        val list = list
+        val manager = list?.layoutManager as? LinearLayoutManager
+        val first = manager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
+        val firstView = manager?.findViewByPosition(first)
+        val structural = dispatch()
+        if (!structural || firstView == null) return
+        val margin = (firstView.layoutParams as RecyclerView.LayoutParams).topMargin
+        manager.scrollToPositionWithOffset(first, manager.getDecoratedTop(firstView) - margin - list.paddingTop)
+    }
+
+    /** Forwards a card diff past the count row, noting whether any card moved, arrived or left. */
+    private inner class CardUpdates : ListUpdateCallback {
+        var structural = false
+
+        override fun onInserted(
+            position: Int,
+            count: Int,
+        ) {
+            structural = true
+            notifyItemRangeInserted(position + HEADER_ROWS, count)
+        }
+
+        override fun onRemoved(
+            position: Int,
+            count: Int,
+        ) {
+            structural = true
+            notifyItemRangeRemoved(position + HEADER_ROWS, count)
+        }
+
+        override fun onMoved(
+            fromPosition: Int,
+            toPosition: Int,
+        ) {
+            structural = true
+            notifyItemMoved(fromPosition + HEADER_ROWS, toPosition + HEADER_ROWS)
+        }
+
+        override fun onChanged(
+            position: Int,
+            count: Int,
+            payload: Any?,
+        ) {
+            notifyItemRangeChanged(position + HEADER_ROWS, count, payload)
+        }
+    }
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        list = recyclerView
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        if (list === recyclerView) list = null
     }
 
     override fun getItemCount(): Int = if (visible.isEmpty()) 1 else visible.size + HEADER_ROWS
@@ -122,17 +194,12 @@ internal class LibraryStoryAdapter(
         val card =
             when {
                 viewType != STORY -> null
-                grid.viewMode == LibraryViewMode.COVERS -> makeLibraryCoverTile(parent.context)
-                else ->
-                    makeCard(parent.context).apply {
-                        val pad = parent.context.dp(Space.MD)
-                        setPadding(pad, pad, pad, pad)
-                        clipToOutline = true
-                    }
+                grid.viewMode == LibraryViewMode.COVERS -> LibraryCoverTile(host)
+                else -> LibraryStoryCard(host)
             }
         card?.let {
             root.addView(
-                it,
+                it.root,
                 // GridLayoutManager remeasures each item to the tallest height in its row.
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
             )
@@ -146,12 +213,7 @@ internal class LibraryStoryAdapter(
     ) {
         val card = holder.card
         if (card != null) {
-            val story = visible[position - HEADER_ROWS]
-            if (grid.viewMode == LibraryViewMode.COVERS) {
-                host.bindLibraryCoverTile(card, story, events)
-            } else {
-                host.bindLibraryStoryCard(card, story, events)
-            }
+            card.bind(visible[position - HEADER_ROWS], events)
             return
         }
         holder.root.removeAllViews()
@@ -191,7 +253,7 @@ internal class LibraryStoryAdapter(
 
     class Holder(
         val root: FrameLayout,
-        val card: LinearLayout?,
+        val card: LibraryCardView?,
     ) : RecyclerView.ViewHolder(root)
 
     private companion object {

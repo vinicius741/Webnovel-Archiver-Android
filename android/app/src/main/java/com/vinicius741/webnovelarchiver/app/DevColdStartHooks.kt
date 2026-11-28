@@ -46,7 +46,7 @@ internal suspend fun MainActivity.writeDevLibraryReport() {
         runCatching {
             val report =
                 DevLibraryReportPlanning.build(
-                    library = repository.library(),
+                    library = repository.readOnlyLibrary(),
                     tabs = repository.tabs.get(),
                     storageIssues = repository.getStorageHealth().issues,
                     appVersion = BuildConfig.VERSION_NAME,

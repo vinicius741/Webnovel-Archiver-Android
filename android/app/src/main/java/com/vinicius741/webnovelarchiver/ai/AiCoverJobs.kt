@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.hasStory
 import com.vinicius741.webnovelarchiver.data.repository.persistAiCoverDraftIfStoryExists
 import com.vinicius741.webnovelarchiver.data.repository.saveAiCoverPromptDraft
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
@@ -83,7 +84,7 @@ class AiCoverJobCoordinator(
             val record =
                 AiCoverDraftRecord.Image(
                     engine.draft(storyId, { message -> update { it.copy(message = message) } }) { prompt ->
-                        if (repository.story(storyId) != null) {
+                        if (repository.hasStory(storyId)) {
                             repository.saveAiCoverPromptDraft(storyId, prompt)
                             update { it.copy(persistedPrompt = prompt) }
                         }

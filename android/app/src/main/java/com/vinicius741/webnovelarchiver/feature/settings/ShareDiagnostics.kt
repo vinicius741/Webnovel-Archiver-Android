@@ -24,7 +24,7 @@ internal fun ScreenHost.shareDiagnostics() {
             listOf(
                 ActivityLogExporter.export(
                     directory = directory,
-                    library = repository.library(),
+                    library = repository.readOnlyLibrary(),
                     queue = queue,
                     reliability = container.network.reliabilitySnapshots(),
                 ),

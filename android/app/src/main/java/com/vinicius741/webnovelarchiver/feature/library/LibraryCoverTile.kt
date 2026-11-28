@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -12,76 +13,128 @@ import androidx.core.graphics.ColorUtils
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.ChapterCoverageBar
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.loadStoryCover
+import com.vinicius741.webnovelarchiver.ui.makeCover
+import com.vinicius741.webnovelarchiver.ui.makeCoverPlaceholder
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
-/** Bare tile root for the cover grid; the cover itself is the visual surface, so no card chrome. */
-internal fun makeLibraryCoverTile(context: Context): LinearLayout =
-    LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        val inset = context.dp(2)
-        setPadding(inset, inset, inset, inset)
-    }
-
 /**
- * Cover-first tile: the whole 2:3 cover with only small corner badges on the art, the chapter
- * coverage capsule below it (never over the art), then title and author.
+ * Cover-first tile: the whole 2:3 cover with only small corner badges on the art, the chapter coverage
+ * capsule below it (never over the art), then title and author. The views are built once per holder.
  */
-internal fun ScreenHost.bindLibraryCoverTile(
-    tile: LinearLayout,
-    story: Story,
-    events: LibraryCardEvents,
-) {
-    tile.removeAllViews()
-    val selected = events.selectionOf(story.id)
-    val frame = CoverAspectFrame(app)
-    frame.addView(
-        coverImage(story, COVER_SOURCE_WIDTH_DP, COVER_SOURCE_WIDTH_DP * 3 / 2, tapToOpen = false).apply {
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        },
-    )
-    val corner = mutableListOf<ImageView>()
-    if (mayHaveNewChapter(story)) corner += cornerBadge(R.drawable.wna_sync, ThemeManager.colors.primary, NEW_CHAPTER_DESCRIPTION)
-    corner.forEachIndexed { index, badge ->
-        (badge.layoutParams as FrameLayout.LayoutParams).marginEnd = dp(Spacing.XS + 2) + index * dp(CORNER_BADGE_DP + Spacing.XS)
-        frame.addView(badge)
-    }
-    if (selected != null) frame.addView(selectionCheck(selected))
-    if (selected == true) {
-        frame.foreground = strokeBg(Color.TRANSPARENT, dp(COVER_RADIUS_DP).toFloat(), ThemeManager.colors.primary, dp(SELECTED_OUTLINE_DP))
-    }
-    tile.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-    if (story.totalChapters > 0) {
-        tile.addView(
-            makeLibraryCoverageBar(story),
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(dp(2), dp(Spacing.SM), dp(2), 0)
-            },
-        )
-    }
-    tile.addView(
-        makeText(app, story.title, Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
+internal class LibraryCoverTile(
+    private val host: ScreenHost,
+) : LibraryCardView {
+    private val app = host.app
+
+    /** Bare tile root; the cover itself is the visual surface, so no card chrome. */
+    override val root: LinearLayout =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            val inset = app.dp(2)
+            setPadding(inset, inset, inset, inset)
+            makeLibraryCardTappable(this)
+        }
+    private val frame = CoverAspectFrame(app)
+    private val cover =
+        LibraryCoverSlot(host, COVER_SOURCE_WIDTH_DP, COVER_SOURCE_WIDTH_DP * 3 / 2) {
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+    private val newChapterBadge =
+        host.cornerBadge(R.drawable.wna_sync, ThemeManager.colors.primary, NEW_CHAPTER_DESCRIPTION).apply {
+            (layoutParams as FrameLayout.LayoutParams).marginEnd = app.dp(Spacing.XS + 2)
+        }
+    private val coverage = ChapterCoverageBar(app)
+    private val title =
+        makeText(app, "", Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
             textSize = TILE_TITLE_SP
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(2), dp(Spacing.SM), dp(2), 0)
-        },
-    )
-    tile.addView(
-        makeText(app, story.author, Type.BODY_SMALL, ThemeManager.colors.faint).apply {
+            setPadding(app.dp(2), app.dp(Spacing.SM), app.dp(2), 0)
+        }
+    private val author =
+        makeText(app, "", Type.BODY_SMALL, ThemeManager.colors.faint).apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(2), dp(2), dp(2), 0)
-        },
-    )
-    wireLibraryStoryContent(tile, story, selected, events)
+            setPadding(app.dp(2), app.dp(2), app.dp(2), 0)
+        }
+
+    init {
+        cover.addArtTo(frame)
+        frame.addView(newChapterBadge)
+        frame.addView(cover.check)
+        root.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        root.addView(
+            coverage,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(app.dp(2), app.dp(Spacing.SM), app.dp(2), 0)
+            },
+        )
+        root.addView(title)
+        root.addView(author)
+    }
+
+    override fun bind(
+        story: Story,
+        events: LibraryCardEvents,
+    ) {
+        val selected = events.selectionOf(story.id)
+        cover.bind(story, selected)
+        newChapterBadge.visibility = if (mayHaveNewChapter(story)) View.VISIBLE else View.GONE
+        frame.foreground =
+            if (selected == true) {
+                strokeBg(Color.TRANSPARENT, app.dp(COVER_RADIUS_DP).toFloat(), ThemeManager.colors.primary, app.dp(SELECTED_OUTLINE_DP))
+            } else {
+                null
+            }
+        bindLibraryCoverageBar(coverage, story)
+        title.text = story.title
+        author.text = story.author
+        wireLibraryStoryContent(root, story, selected, events)
+        remeasureLibraryCard(root)
+    }
+}
+
+/**
+ * A story's cover, built once per card: the art, the no-cover placeholder in its place, and the selection
+ * check over its top-start corner. [addArtTo] adds the art; the owner adds [check] above anything else.
+ */
+internal class LibraryCoverSlot(
+    private val host: ScreenHost,
+    widthDp: Int,
+    heightDp: Int,
+    params: () -> FrameLayout.LayoutParams,
+) {
+    private val image = makeCover(host.app, widthDp, heightDp).apply { layoutParams = params() }
+    private val placeholder = makeCoverPlaceholder(host.app, widthDp, heightDp).apply { layoutParams = params() }
+    val check: ImageView = makeSelectionCheck(host.app)
+
+    fun addArtTo(frame: FrameLayout) {
+        frame.addView(image)
+        frame.addView(placeholder)
+    }
+
+    fun bind(
+        story: Story,
+        selected: Boolean?,
+    ) {
+        // Coil sizes a load from the view, and a reused view still has its previous slot's size; grid columns
+        // differ by a pixel, so the cover would decode for the wrong width. Without bounds, Coil waits for this
+        // slot's layout, as it did for the fresh view each bind used to create.
+        image.layout(0, 0, 0, 0)
+        val hasCover = host.loadStoryCover(story, image)
+        image.visibility = if (hasCover) View.VISIBLE else View.GONE
+        placeholder.visibility = if (hasCover) View.GONE else View.VISIBLE
+        bindSelectionCheck(check, selected)
+    }
 }
 
 /** A small icon on a dark disc at the cover's top-end corner. */
@@ -101,31 +154,46 @@ private fun ScreenHost.cornerBadge(
     }
 }
 
-/** The round check on a cover's top-start corner in selection mode: hollow, or gold with a check. */
-internal fun ScreenHost.selectionCheck(selected: Boolean): ImageView {
-    val colors = ThemeManager.colors
-    val size = dp(CHECK_DP)
-    return ImageView(app).apply {
+/** The round check on a cover's top-start corner in selection mode; [bindSelectionCheck] styles it. */
+private fun makeSelectionCheck(context: Context): ImageView {
+    val size = context.dp(CHECK_DP)
+    return ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(3), dp(3), dp(3), dp(3))
-        if (selected) {
-            background = roundedBg(colors.primary, size / 2f)
-            setImageDrawable(app.tintedIcon(R.drawable.wna_check, colors.onPrimary))
-            contentDescription = "Selected"
-        } else {
-            background =
-                strokeBg(
-                    ColorUtils.setAlphaComponent(android.graphics.Color.BLACK, IDLE_CHECK_ALPHA),
-                    size / 2f,
-                    android.graphics.Color.WHITE,
-                    dp(2),
-                )
-            contentDescription = "Not selected"
-        }
+        setPadding(context.dp(3), context.dp(3), context.dp(3), context.dp(3))
         layoutParams =
             FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.START).apply {
-                setMargins(dp(Spacing.XS + 2), dp(Spacing.XS + 2), 0, 0)
+                setMargins(context.dp(Spacing.XS + 2), context.dp(Spacing.XS + 2), 0, 0)
             }
+    }
+}
+
+/** Hidden while browsing; in selection mode hollow, or gold with a check when [selected]. */
+private fun bindSelectionCheck(
+    check: ImageView,
+    selected: Boolean?,
+) {
+    if (selected == null) {
+        check.visibility = View.GONE
+        return
+    }
+    val colors = ThemeManager.colors
+    val context = check.context
+    val size = context.dp(CHECK_DP)
+    check.visibility = View.VISIBLE
+    if (selected) {
+        check.background = roundedBg(colors.primary, size / 2f)
+        check.setImageDrawable(context.tintedIcon(R.drawable.wna_check, colors.onPrimary))
+        check.contentDescription = "Selected"
+    } else {
+        check.background =
+            strokeBg(
+                ColorUtils.setAlphaComponent(Color.BLACK, IDLE_CHECK_ALPHA),
+                size / 2f,
+                Color.WHITE,
+                context.dp(2),
+            )
+        check.setImageDrawable(null)
+        check.contentDescription = "Not selected"
     }
 }
 

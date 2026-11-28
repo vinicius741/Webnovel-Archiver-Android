@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.ai
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
 import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
+import com.vinicius741.webnovelarchiver.data.storage.CoverWebpEncoder
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -28,6 +29,8 @@ class AiCoverArtEngine internal constructor(
     private val client: OpenRouterClient,
     private val evidenceSelector: ChapterEvidenceSelector,
     private val evidenceStore: ChapterEvidenceStore,
+    /** Turns a large JPEG/PNG result into WebP before anything stores it; see [AiCoverPlanning.compactCover]. */
+    private val encodeWebp: (ByteArray) -> ByteArray? = CoverWebpEncoder::encode,
 ) {
     /** Catalog cache for the process lifetime; null until first success, so failures fall back to the minimal request shape. */
     @Volatile
@@ -167,7 +170,15 @@ class AiCoverArtEngine internal constructor(
             outcome = OUTCOME_COMPLETED,
         )
         Timber.i("AI cover drafted for %s with %s", storyId, context.settings.imageModel)
-        return AiCoverDraft(prompt = cleanedPrompt, bytes = image.bytes, mediaType = image.mediaType)
+        // Compact once, on arrival: the draft, its version-history copy and the applied cover then
+        // share the same bytes (version ids are content hashes), so nothing is re-encoded later.
+        val webp = AiCoverPlanning.compactCover(image.bytes, encodeWebp)
+        return if (webp != null) {
+            Timber.i("AI cover compacted to WebP: %d -> %d bytes", image.bytes.size, webp.size)
+            AiCoverDraft(prompt = cleanedPrompt, bytes = webp, mediaType = "image/webp")
+        } else {
+            AiCoverDraft(prompt = cleanedPrompt, bytes = image.bytes, mediaType = image.mediaType)
+        }
     }
 
     /** Shared validation for both stages: key present, story exists, snapshot not archived. */
