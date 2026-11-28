@@ -411,4 +411,53 @@ class AiCoverPlanningTest {
         assertEquals("png", AiCoverPlanning.coverFileExtension(null))
         assertEquals("png", AiCoverPlanning.coverFileExtension("application/octet-stream"))
     }
+
+    private fun image(
+        size: Int,
+        vararg magic: Int,
+    ): ByteArray = ByteArray(size).also { bytes -> magic.forEachIndexed { i, b -> bytes[i] = b.toByte() } }
+
+    private val jpeg = intArrayOf(0xFF, 0xD8, 0xFF, 0xE0)
+    private val png = intArrayOf(0x89, 0x50, 0x4E, 0x47)
+    private val webp = intArrayOf(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50)
+
+    @Test
+    fun `sniffCoverFormat reads the container from magic bytes not the media type`() {
+        assertEquals("jpg", AiCoverPlanning.sniffCoverFormat(image(16, *jpeg)))
+        assertEquals("png", AiCoverPlanning.sniffCoverFormat(image(16, *png)))
+        assertEquals("webp", AiCoverPlanning.sniffCoverFormat(image(16, *webp)))
+        assertNull(AiCoverPlanning.sniffCoverFormat(image(16, 0x47, 0x49, 0x46)))
+        // RIFF without the WEBP form type (e.g. a WAV) and truncated headers are unknown.
+        assertNull(AiCoverPlanning.sniffCoverFormat(image(16, 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45)))
+        assertNull(AiCoverPlanning.sniffCoverFormat(image(2, 0xFF, 0xD8)))
+    }
+
+    @Test
+    fun `compactCover re-encodes only large JPEG and PNG covers into a smaller WebP`() {
+        val big = AiCoverPlanning.COMPACT_COVER_MIN_BYTES
+        val smallerWebp = image(big / 2, *webp)
+        var calls = 0
+        val encoder = { _: ByteArray -> smallerWebp.also { calls++ } }
+
+        assertEquals(smallerWebp, AiCoverPlanning.compactCover(image(big, *jpeg), encoder))
+        assertEquals(smallerWebp, AiCoverPlanning.compactCover(image(big, *png), encoder))
+        assertEquals(2, calls)
+        // Small, already WebP, or unknown bytes never reach the encoder.
+        assertNull(AiCoverPlanning.compactCover(image(big - 1, *jpeg), encoder))
+        assertNull(AiCoverPlanning.compactCover(image(big, *webp), encoder))
+        assertNull(AiCoverPlanning.compactCover(image(big, 0x47, 0x49, 0x46), encoder))
+        assertEquals(2, calls)
+    }
+
+    @Test
+    fun `compactCover keeps the original when the encoder fails or barely helps`() {
+        val original = image(1_000_000, *jpeg)
+
+        assertNull(AiCoverPlanning.compactCover(original) { null })
+        // Saving under a tenth is not worth a lossy generation.
+        assertNull(AiCoverPlanning.compactCover(original) { image(900_001, *webp) })
+        assertEquals(900_000, AiCoverPlanning.compactCover(original) { image(900_000, *webp) }?.size)
+        // Output that is not WebP is never stored under a WebP name.
+        assertNull(AiCoverPlanning.compactCover(original) { image(100_000, *jpeg) })
+    }
 }

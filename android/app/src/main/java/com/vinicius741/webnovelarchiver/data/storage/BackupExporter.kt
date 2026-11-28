@@ -1,11 +1,14 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
+import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.data.backup.BackupExportPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupContentPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import timber.log.Timber
 import java.io.File
 import java.time.Instant
+import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -14,6 +17,7 @@ private const val PROGRESS_REPORT_EVERY = 25
 
 internal class BackupExporter(
     private val storage: AppStorage,
+    private val encodeWebp: (ByteArray) -> ByteArray? = CoverWebpEncoder::encode,
 ) {
     private val gson get() = storage.gson
 
@@ -26,7 +30,7 @@ internal class BackupExporter(
         val library = storage.getLibrary()
         BackupExportPlanning.validateFullBackup(library.size)?.let { error(it) }
         val metricFiles = collectMetricFiles(library)
-        val coverFiles = collectCoverFiles(library)
+        val coverFiles = collectCoverFiles(library, onProgress)
         // R10: expected-but-absent content is counted and reported, and the manifest records it —
         // a successful export never silently omits content the library reports as available.
         val chapterPlan =
@@ -106,9 +110,8 @@ internal class BackupExporter(
                         markFileWritten()
                     }
                     coverFiles.forEach { cover ->
-                        zip.putNextEntry(ZipEntry(cover.path))
-                        cover.source.inputStream().use { it.copyTo(zip) }
-                        zip.closeEntry()
+                        zip.putStoredEntry(cover.path, cover.source.readBytes())
+                        if (cover.compacted) cover.source.delete()
                         markFileWritten()
                     }
                 }
@@ -136,7 +139,10 @@ internal class BackupExporter(
             "format" to "webnovel-archiver-full-backup",
             "version" to 1,
             "exportDate" to Instant.now().toString(),
-            "library" to library.map(::storyWithoutTransientPaths),
+            "library" to
+                coverFiles.associate { it.storyId to it.path }.let { covers ->
+                    library.map { storyWithoutTransientPaths(it, covers[it.id]) }
+                },
             "config" to fullConfig(),
             "chapterFiles" to
                 chapterFiles.map {
@@ -179,11 +185,17 @@ internal class BackupExporter(
         )
     }
 
-    private fun storyWithoutTransientPaths(story: Story): Story =
+    /** [coverPath] is the story's in-Zip cover path, renamed when the export re-encoded it as WebP. */
+    private fun storyWithoutTransientPaths(
+        story: Story,
+        coverPath: String?,
+    ): Story =
         story.copy(
             chapters = story.chapters.map { it.copy(filePath = null, content = null) }.toMutableList(),
             epubPath = null,
             epubPaths = null,
+            // Restore keeps aiCoverPath only when it equals the story's coverFiles path.
+            aiCoverPath = coverPath ?: story.aiCoverPath,
         )
 
     /** Collects each story's trend-history file that actually exists on disk. Stories that have never
@@ -195,13 +207,61 @@ internal class BackupExporter(
             FullBackupMetricFile(storyId = story.id, path = FullBackupPaths.metricPath(story.id), source = source)
         }
 
-    /** Collects each story's generated AI cover that is recorded and present on disk. */
-    private fun collectCoverFiles(library: List<Story>): List<FullBackupCoverFile> =
-        library.mapNotNull { story ->
-            val path = story.aiCoverPath?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val source = storage.resolveAbsolutePath(path) ?: return@mapNotNull null
-            FullBackupCoverFile(storyId = story.id, path = path, source = source)
+    /**
+     * Collects each story's generated AI cover that is recorded and present on disk. A large JPEG
+     * or PNG goes into the Zip as WebP under a `.webp` path (a lossy copy staged in the cache;
+     * the cover on the device is never touched); the rest ship byte for byte.
+     */
+    private fun collectCoverFiles(
+        library: List<Story>,
+        onProgress: (String) -> Unit,
+    ): List<FullBackupCoverFile> {
+        val covers =
+            library.mapNotNull { story ->
+                val path = story.aiCoverPath?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val source = storage.resolveAbsolutePath(path) ?: return@mapNotNull null
+                FullBackupCoverFile(storyId = story.id, path = path, source = source)
+            }
+        val staging = File(storage.context.cacheDir, "backup_covers").apply { deleteRecursively() }
+        val taken = covers.mapTo(mutableSetOf()) { it.path }
+        val startedAt = System.nanoTime()
+        if (covers.isNotEmpty()) onProgress("Compressing ${covers.size} cover${if (covers.size == 1) "" else "s"}…")
+        val result =
+            covers.mapIndexed { index, cover ->
+                val path = FullBackupPaths.compactCoverPath(cover.path, taken) ?: return@mapIndexed cover
+                val webp = AiCoverPlanning.compactCover(cover.source.readBytes(), encodeWebp) ?: return@mapIndexed cover
+                staging.mkdirs()
+                val staged = File(staging, "$index.webp").apply { writeBytes(webp) }
+                taken += path
+                cover.copy(path = path, source = staged, compacted = true)
+            }
+        Timber.i(
+            "Backup covers: %d of %d re-encoded as WebP, %d -> %d bytes in %d ms",
+            result.count { it.compacted },
+            result.size,
+            covers.sumOf { it.source.length() },
+            result.sumOf { it.source.length() },
+            (System.nanoTime() - startedAt) / 1_000_000,
+        )
+        return result
+    }
+}
+
+/** Images are already compressed, so they are stored: deflating them costs time and saves nothing. */
+internal fun ZipOutputStream.putStoredEntry(
+    path: String,
+    bytes: ByteArray,
+) {
+    val entry =
+        ZipEntry(path).apply {
+            method = ZipEntry.STORED
+            size = bytes.size.toLong()
+            compressedSize = bytes.size.toLong()
+            crc = CRC32().apply { update(bytes) }.value
         }
+    putNextEntry(entry)
+    write(bytes)
+    closeEntry()
 }
 
 private data class FullBackupChapterFile(
@@ -225,4 +285,6 @@ private data class FullBackupCoverFile(
     val storyId: String,
     val path: String,
     val source: File,
+    /** [source] is a staged WebP copy, deleted once written. */
+    val compacted: Boolean = false,
 )

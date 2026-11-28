@@ -1,12 +1,14 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 class FullBackupZipExtractorTest {
@@ -62,6 +64,27 @@ class FullBackupZipExtractorTest {
             result.files,
         )
         assertEquals("""{"snapshots":[]}""", File(output, "metrics/story.json").readText())
+    }
+
+    @Test
+    fun extractsStoredCoverEntriesByteForByte() {
+        val cover = ByteArray(70_000) { (it * 31).toByte() }
+        val zip =
+            File(directory, "stored.zip").also { file ->
+                ZipOutputStream(file.outputStream()).use { out ->
+                    out.putNextEntry(ZipEntry("manifest.json"))
+                    out.write("{}".toByteArray())
+                    out.closeEntry()
+                    out.putStoredEntry("covers/story.webp", cover)
+                }
+            }
+        val output = File(directory, "output")
+
+        val result = FullBackupZipExtractor.extract(zip, output, Long.MAX_VALUE)
+
+        assertEquals(setOf("manifest.json", "covers/story.webp"), result.files)
+        assertArrayEquals(cover, File(output, "covers/story.webp").readBytes())
+        assertEquals(ZipEntry.STORED, ZipFile(zip).use { it.getEntry("covers/story.webp").method })
     }
 
     private fun zipOf(vararg entries: Pair<String, String>): File =
