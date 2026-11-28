@@ -46,6 +46,14 @@ class RoyalRoadParagraphClassesTest {
     }
 
     @Test
+    fun leavesARunOnAttributeAlone() {
+        // Without a space before the next attribute, dropping the class would fuse `<p` and `style`.
+        val html = """<p class="$paragraph"style="margin: 0">Text.</p>"""
+
+        assertSame(html, RoyalRoadParagraphClasses.compact(html))
+    }
+
+    @Test
     fun returnsTheSameInstanceWhenNothingIsLeftToDrop() {
         val once = RoyalRoadParagraphClasses.compact("""<p class="$paragraph">Story.</p>""")
 

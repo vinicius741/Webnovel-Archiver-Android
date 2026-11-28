@@ -30,7 +30,7 @@ internal class FullBackupRestorer(
 
     fun import(uri: Uri): String {
         val temp =
-            RestoreFailureMessages.createInputFile(context.cacheDir)
+            RestoreFailureMessages.createInputFile(storage.restoreRoot)
                 ?: return RestoreFailureMessages.storage("could not create temporary file")
         return try {
             val input =
@@ -68,6 +68,8 @@ internal class FullBackupRestorer(
             val manifest = readAndValidateManifest(raw)
             verifyZipIndex(extracted.files, manifest.chapterFiles, manifest.metricFiles, manifest.coverFiles, manifest.rewriteFiles)
             val stories = buildStagedRoot(raw, staged, manifest)
+            // The data trees have moved out; what is left (the manifest, legacy chapter_rewrites/) is never read again.
+            cleanup(raw)
             verifyStagedTree(staged, stories)?.let { return it }
             swapCandidate = committer.stageBesideLiveRoot(staged)
             synchronized(storage) { committer.commit(checkNotNull(swapCandidate)) }
@@ -191,9 +193,9 @@ internal class FullBackupRestorer(
 }
 
 private object RestoreFailureMessages {
-    fun createInputFile(cacheDirectory: File): File? =
+    fun createInputFile(workDirectory: File): File? =
         try {
-            File.createTempFile("webnovel_restore", ".zip", cacheDirectory)
+            File.createTempFile("webnovel_restore", ".zip", workDirectory)
         } catch (error: IOException) {
             Timber.e(error, "Could not create full-backup input staging file")
             null

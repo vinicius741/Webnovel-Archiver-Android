@@ -117,7 +117,7 @@ class OfflineBrowserDeviceTest {
         assertTrue(storage.root.canonicalPath.startsWith(scoped.filesDir.canonicalPath + "/"))
         assertFalse(storage.root.canonicalPath.startsWith(base.filesDir.canonicalPath + "/webnovel_archiver/"))
         assertTrue(storage.preRestoreSnapshotDir.canonicalPath.startsWith(scoped.filesDir.canonicalPath + "/"))
-        assertTrue(storage.restoreRoot.canonicalPath.startsWith(scoped.cacheDir.canonicalPath + "/"))
+        assertTrue(storage.restoreRoot.canonicalPath.startsWith(scoped.filesDir.canonicalPath + "/"))
         assertTrue(scoped.applicationContext === scoped)
     }
 

@@ -39,7 +39,7 @@ used the browser's rendered page, which is also what the app's Cloudflare render
 
 Royal Road also gives every chapter paragraph its own random class, `<p class="cnMx...">`: 44
 characters of Base64 that decode to `rs` plus 31 hex digits. Nothing in the app reads them (the
-reader's and the EPUB's CSS never select them, and TTS ignores classes), yet they are about 30% of a
+reader's and the EPUB's CSS never select them, and TTS ignores classes), yet they are about 22% of a
 stored chapter. `source/RoyalRoadParagraphClasses.kt` drops them, and only them: the notice
 marker's `<span>` class (`r` + 32 hex) and every other class stay, so the marker rules above keep
 working. It is Royal Road's `SourceProvider.chapterMarkupCompactor` and runs in three places:
@@ -49,9 +49,13 @@ working. It is Royal Road's `SourceProvider.chapterMarkupCompactor` and runs in 
 - **Full backups:** `BackupExporter` writes each Royal Road chapter without them, so backups of a
   library downloaded before this change shrink right away. The manifest lists paths only.
 - **Chapters already on the device:** `data/storage/StoredChapterCompaction` rewrites them once, in
-  the background 30 s after startup, one atomic file write under the storage lock at a time. Its
-  progress (`chapter_compaction.txt` in the storage root) makes it resumable, and once finished it
-  never runs again. The activity log records `chapter_compaction_finished` with the bytes saved.
+  the background 30 s after startup, one atomic file write under the storage lock at a time, with a
+  10 ms pause between files so the reader, playback saves and downloads always get the lock. Its
+  progress (`chapter_compaction.txt` in the storage root, headed `progress v1`) makes it resumable,
+  and once finished it never runs again. A file that cannot be rewritten is skipped and its story
+  retried on the next launch; the stories after it still run. The activity log records
+  `chapter_compaction_finished` (or `_stopped`, `_failed`) with the files checked, compacted and
+  failed and the bytes saved.
 
 `RoyalRoadParagraphClassesTest` checks that the TTS chunks, the reader's annotated HTML and plain
 text, the EPUB chapter body and the cleanup result are unchanged (apart from the dropped classes) on

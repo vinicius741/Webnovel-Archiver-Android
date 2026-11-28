@@ -16,8 +16,8 @@ import java.io.File
  * Copies and deletes die between individual files, so half-copied roots and half-deleted
  * snapshots are part of the search. `renameIntoLive = false` forces every move into the live
  * root down the copy fallback, which is where non-atomic snapshot cleanup used to be unsafe.
- * `renameToCandidate = false` does the same for the pre-journal move of the staged tree (in
- * cacheDir) to the swap candidate beside the live root.
+ * `renameToCandidate = false` does the same for the pre-journal move of the staged tree (in the
+ * filesDir work directory) to the swap candidate beside the live root.
  */
 class RestoreCrashRecoveryTest {
     @get:Rule
@@ -87,9 +87,9 @@ class RestoreCrashRecoveryTest {
     private val oldTree = mapOf("library.json" to "old", "novels/a/1.html" to "old-a1", "novels/b/1.html" to "old-b1")
     private val newTree = mapOf("library.json" to "new", "novels/c/1.html" to "new-c1", "covers/c.jpg" to "new-cover")
 
-    /** The extraction work directory in cacheDir; the swap candidate goes beside [live]. */
-    private val cacheWork get() = File(tmp.root, "cache/webnovel_restore")
-    private val cacheStaged get() = File(cacheWork, "1/staged_root")
+    /** The restore work directory in filesDir ([tmp] root); the swap candidate goes beside [live]. */
+    private val restoreWork get() = File(tmp.root, "webnovel_restore_work")
+    private val workStaged get() = File(restoreWork, "1/staged_root")
 
     private fun reset(stagedRoot: File = staged) {
         tmp.root
@@ -214,7 +214,7 @@ class RestoreCrashRecoveryTest {
     }
 
     /**
-     * The whole restore from a staged root in cacheDir: the pre-journal move beside the live root
+     * The whole restore from a staged root in the work directory: the pre-journal move beside the live root
      * (a rename, or the verified-copy fallback), then the swap. After a death or failure anywhere,
      * the next startup's recovery and staging sweep must leave one whole library and no debris.
      */
@@ -223,13 +223,13 @@ class RestoreCrashRecoveryTest {
         for (renameToCandidate in listOf(true, false)) {
             for (renameIntoLive in listOf(true, false)) {
                 forEachKillPoint { dieAt ->
-                    reset(cacheStaged)
+                    reset(workStaged)
                     val files = DyingFiles(dieAt, live, renameIntoLive, renameToCandidate)
                     val committer = RestoreRootCommitter(live, snapshot, journal, { live.mkdirs() }, RestoreRootSwap(files))
                     var staging = true
                     val committed =
                         try {
-                            val candidate = committer.stageBesideLiveRoot(cacheStaged)
+                            val candidate = committer.stageBesideLiveRoot(workStaged)
                             staging = false
                             committer.commit(candidate)
                             true
@@ -245,11 +245,11 @@ class RestoreCrashRecoveryTest {
                         assertFalse("$label: staging must not write a journal", journal.exists())
                     }
                     RestoreStartupRecovery.recoverState(live, snapshot, journal)
-                    if (!journal.exists()) RestoreStartupRecovery.sweepOrphanedStaging(tmp.root, cacheWork)
+                    if (!journal.exists()) RestoreStartupRecovery.sweepOrphanedStaging(tmp.root, restoreWork)
                     assertResolved(label, committed)
                     val debris = tmp.root.list()!!.filter { it.startsWith(RestoreStartupRecovery.SWAP_CANDIDATE_PREFIX) }
                     assertTrue("$label: swap candidate left behind: $debris", debris.isEmpty())
-                    assertTrue("$label: cache work left behind", cacheWork.list().orEmpty().isEmpty())
+                    assertTrue("$label: restore work left behind", restoreWork.list().orEmpty().isEmpty())
                     files
                 }
             }
@@ -259,14 +259,14 @@ class RestoreCrashRecoveryTest {
     @Test
     fun startupSweepsOrphanedStagingOnlyFromKilledRestores() {
         val filesDir = File(tmp.root, "files").apply { mkdirs() }
-        val workDir = File(tmp.root, "cache/webnovel_restore").apply { mkdirs() }
+        val workDir = File(filesDir, "webnovel_restore_work").apply { mkdirs() }
         write(File(filesDir, "${RestoreStartupRecovery.SWAP_CANDIDATE_PREFIX}123"), newTree)
         write(File(filesDir, "webnovel_archiver"), oldTree)
         write(File(workDir, "456/raw_extraction"), newTree)
 
         RestoreStartupRecovery.sweepOrphanedStaging(filesDir, workDir)
 
-        assertEquals(listOf("webnovel_archiver"), filesDir.list()!!.toList())
+        assertEquals(listOf("webnovel_archiver", "webnovel_restore_work"), filesDir.list()!!.sorted())
         assertEquals(oldTree, contents(File(filesDir, "webnovel_archiver")))
         assertTrue(workDir.isDirectory && workDir.list()!!.isEmpty())
     }

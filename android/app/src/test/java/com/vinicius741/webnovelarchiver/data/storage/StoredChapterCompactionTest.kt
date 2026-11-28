@@ -112,6 +112,37 @@ class StoredChapterCompactionTest {
         }
 
     @Test
+    fun aFileThatCannotBeRewrittenDoesNotBlockTheStoriesAfterIt() =
+        runBlocking {
+            val broken = story("rr_1", chapterFile("a.html", "<p>NOISEa</p>"))
+            val later = story("rr_2", chapterFile("b.html", "<p>NOISEb</p>"))
+            val compactFile = { chapter: Chapter, compactor: ChapterMarkupCompactor ->
+                if (chapter.filePath == "a.html") error("rename refused")
+                ChapterMarkupCompaction.compactFile(File(temp.root, chapter.filePath!!), compactor)
+            }
+
+            val outcome = compaction(listOf(broken, later), compactFile).runIfPending()!!
+
+            assertEquals(StoredChapterCompaction.Outcome(1, 2, 1, 5, finished = false, filesFailed = 1), outcome)
+            assertEquals("<p>b</p>", read("b.html"))
+            // Only the failed story is left for the next launch.
+            assertEquals(listOf("progress v1", "rr_2"), File(temp.root, "chapter_compaction.txt").readLines())
+        }
+
+    @Test
+    fun aProgressFileWithoutTheVersionHeaderStartsOver() =
+        runBlocking {
+            File(temp.root, "chapter_compaction.txt").writeText("rr_1\n")
+            val stories = listOf(story("rr_1", chapterFile("a.html", "<p>NOISEa</p>")))
+
+            val outcome = compaction(stories).runIfPending()!!
+
+            assertEquals(StoredChapterCompaction.Outcome(1, 1, 1, 5, finished = true), outcome)
+            assertEquals("<p>a</p>", read("a.html"))
+            assertEquals("finished v1", File(temp.root, "chapter_compaction.txt").readText().trim())
+        }
+
+    @Test
     fun leavesFilesThatAreNotValidUtf8Untouched() {
         val bytes =
             byteArrayOf('N'.code.toByte(), 'O'.code.toByte(), 'I'.code.toByte(), 'S'.code.toByte(), 'E'.code.toByte(), 0xC3.toByte())

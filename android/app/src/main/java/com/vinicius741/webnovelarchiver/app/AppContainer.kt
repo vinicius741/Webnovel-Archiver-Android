@@ -315,7 +315,7 @@ class AppContainer internal constructor(
                 root = storage.root,
                 lock = storage,
                 compactFile = storage::compactChapterFile,
-                stories = repository::library,
+                stories = repository::readOnlyLibrary,
                 compactorFor = { story -> SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.chapterMarkupCompactor },
                 libraryGeneration = repository::libraryGeneration,
             ).runIfPending()

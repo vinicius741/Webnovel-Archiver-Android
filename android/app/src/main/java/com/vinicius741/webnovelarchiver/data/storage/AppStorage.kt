@@ -77,7 +77,14 @@ class AppStorage(
     internal val characters = CharacterStore(root, ::safeName)
     internal val aiUsage = AiUsageFileStore(root, gson, appVersion)
     internal val backupRoot = File(root, "backups").apply { mkdirs() }
-    internal val restoreRoot = File(this.context.cacheDir, "webnovel_restore").apply { mkdirs() }
+
+    /**
+     * Full-restore work directory (input ZIP copy, extraction, staged root). In filesDir, not
+     * cacheDir: the extraction is renamed into the live root, and a tree moved out of cacheDir keeps
+     * the cache group and setgid bit (Android would count the library as cache), while the system
+     * may trim cacheDir mid-restore on a nearly full device. Startup recovery sweeps it.
+     */
+    internal val restoreRoot = File(this.context.filesDir, RestoreStartupRecovery.RESTORE_WORK_DIR_NAME).apply { mkdirs() }
 
     init {
         // Retired Chapter polish feature: its polished variants and drafts are unreachable now.

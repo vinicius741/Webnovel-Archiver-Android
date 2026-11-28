@@ -1,15 +1,17 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
 import com.vinicius741.webnovelarchiver.data.backup.BackupInputLimits
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import timber.log.Timber
 import java.io.File
 
 /**
  * Moves restore trees without rewriting their data. Full restore writes the backup's files once,
  * during extraction; every later step (raw extraction → staged root → swap candidate beside the
- * live root) is a rename. cacheDir and filesDir share a filesystem on Android, so the renames
- * succeed. When one is refused anyway (another filesystem, an odd OEM layout), the move falls back
- * to a copy that is space-checked first, verified byte-for-byte by size, and removed if incomplete.
+ * live root) is a rename inside filesDir ([AppStorage.restoreRoot]). When a rename is refused anyway
+ * (an odd OEM layout), the move falls back to a copy that is space-checked first in whole blocks,
+ * verified by file count and total size, removed if incomplete, and recorded in the activity log.
  *
  * Every move here happens before the restore journal is written, so the live root is untouched
  * and a process death only leaves staging debris that [RestoreStartupRecovery] sweeps.
@@ -54,15 +56,23 @@ internal class RestoreTreeMove(
         source: File,
         destination: File,
     ) {
-        val expectedBytes = byteCount(source)
+        val expected = TreeSize.of(source)
         val parent = checkNotNull(destination.parentFile) { "Restore target has no parent" }
-        check(BackupInputLimits.hasSwapSpace(usableSpace(parent), expectedBytes)) {
+        check(BackupInputLimits.hasSwapSpace(usableSpace(parent), expected.allocatedBytes)) {
             "Not enough free app-storage space to commit this restore"
         }
+        ActivityLog.record(
+            ActivityCategory.BACKUP,
+            "restore_tree_copied",
+            "tree" to source.name,
+            "files" to expected.files,
+            "bytes" to expected.bytes,
+        )
         var completed = false
         try {
             files.copyTree(source, destination)
-            check(byteCount(destination) == expectedBytes) { "Restore copy of ${source.name} did not complete" }
+            val copied = TreeSize.of(destination)
+            check(copied.files == expected.files && copied.bytes == expected.bytes) { "Restore copy of ${source.name} did not complete" }
             completed = true
         } finally {
             if (!completed && destination.exists() && !files.deleteTree(destination)) {
@@ -71,7 +81,27 @@ internal class RestoreTreeMove(
         }
     }
 
-    private fun byteCount(file: File): Long = file.walkTopDown().filter(File::isFile).sumOf(File::length)
+    /** A tree's file count, logical bytes, and the disk its files occupy in whole blocks. */
+    private data class TreeSize(
+        val files: Int,
+        val bytes: Long,
+        val allocatedBytes: Long,
+    ) {
+        companion object {
+            fun of(root: File): TreeSize {
+                var files = 0
+                var bytes = 0L
+                var allocated = 0L
+                root.walkTopDown().filter(File::isFile).forEach { file ->
+                    val length = file.length()
+                    files += 1
+                    bytes += length
+                    allocated += BackupInputLimits.allocatedBytes(length)
+                }
+                return TreeSize(files, bytes, allocated)
+            }
+        }
+    }
 
     private companion object {
         val ADOPTED_TREES = listOf("novels", "metrics", "covers")
