@@ -81,6 +81,28 @@ class TextCleanupTest {
     }
 
     @Test
+    fun prepareTtsChunksSpeakALineInsideATableBoxOnce() {
+        // Royal Road's system boxes: the div used to be spoken as well as the paragraph inside it.
+        val html =
+            """
+            <p>My screen had changed again overnight.</p>
+            <div style="max-width: 100%; overflow:auto">
+             <table><tbody><tr><td><p><i>Days remaining: 19</i></p></td></tr></tbody></table>
+            </div>
+            <div><table><tr><td>Level up!</td></tr></table></div>
+            <p>Nineteen.</p>
+            """.trimIndent()
+
+        assertEquals(
+            listOf("My screen had changed again overnight.", "Days remaining: 19", "Level up!", "Nineteen."),
+            TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 400),
+        )
+        val annotated = TtsTextPreparation.prepareTtsAnnotatedHtml(html, emptyList())
+        assertEquals(4, annotated.chunks.size)
+        assertEquals(1, Jsoup.parse(annotated.annotatedHtml).select("[data-tts-group=1]").size)
+    }
+
+    @Test
     fun prepareTtsChunksSkipChapterNavigationLines() {
         val html =
             """

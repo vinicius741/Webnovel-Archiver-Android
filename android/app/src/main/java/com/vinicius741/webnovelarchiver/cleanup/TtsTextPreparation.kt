@@ -17,6 +17,7 @@ object TtsTextPreparation {
 
     private val HEADING_TAGS = setOf("h1", "h2", "h3", "h4", "h5", "h6")
     private const val SCENE_BREAK_MARKS = "*~=_#•·◆◇★☆+-—–"
+    private const val INNER_BLOCKS = "p,h1,h2,h3,h4,h5,h6,li,ul,ol,blockquote,div"
     private val NAVIGATION_PART =
         Regex("""(?i)table of contents|contents|toc|index|(previous|prev|next)( chapter)?|chapter\s+[\w.-]+""")
 
@@ -46,7 +47,7 @@ object TtsTextPreparation {
 
         val doc = Jsoup.parseBodyFragment(html)
         LooseHtmlStructure.wrapBreakSeparatedParagraphs(doc.body())
-        return buildUnits(doc, regexRules, contributingElements(doc), legacy = true).map { it.text }
+        return buildUnits(doc, regexRules, contributingElements(doc, legacy = true), legacy = true).map { it.text }
     }
 
     /** Result of [prepareTtsAnnotatedHtml]: the chunk-tagged HTML plus the aligned chunk list. */
@@ -148,16 +149,28 @@ object TtsTextPreparation {
         val unitGroups: List<Int>,
     )
 
-    private fun contributingElements(doc: org.jsoup.nodes.Document): List<Element> {
+    /**
+     * The elements whose text is spoken. A container holding another of them is dropped: its .text()
+     * duplicates the inner elements, and rebuilding it would detach the inner nodes' data-tts-group
+     * from the rendered HTML. The inner element can sit deeper than a direct child: Royal Road's
+     * boxes are a `div` around a `table` around the `p`, and narration read their line twice.
+     * [legacy] keeps the old direct-children rule, for remapping positions saved back then.
+     */
+    private fun contributingElements(
+        doc: org.jsoup.nodes.Document,
+        legacy: Boolean = false,
+    ): List<Element> {
         doc.select("script,style,noscript,iframe").remove()
-        // Drop containers with block children: their .text() duplicates the inner elements, and
-        // rebuilding them would detach the inner nodes' data-tts-group from the rendered HTML.
         val containers = setOf("div", "blockquote", "li")
         return doc
             .select("p,h1,h2,h3,h4,h5,h6,li,blockquote,div,hr")
             .filterNot { element ->
                 element.tagName().lowercase(Locale.ROOT) in containers &&
-                    element.select("> p, > div, > h1, > h2, > h3, > h4, > h5, > h6, > ul, > ol, > blockquote").isNotEmpty()
+                    if (legacy) {
+                        element.select("> p, > div, > h1, > h2, > h3, > h4, > h5, > h6, > ul, > ol, > blockquote").isNotEmpty()
+                    } else {
+                        element.select(INNER_BLOCKS).any { it !== element }
+                    }
             }
     }
 
