@@ -30,6 +30,13 @@ data class RestoredRewriteFileIndex(
     val path: String,
 )
 
+/** A version-3 [ChapterPack] listed in a full-backup manifest. Its chapter files are indexed in
+ *  `chapterFiles` like loose ones; this entry only accounts for the pack's own ZIP entry. */
+data class RestoredChapterPackIndex(
+    val storyId: String,
+    val path: String,
+)
+
 object FullBackupRestorePlanning {
     /** Prefix of every restore-failure message returned to the UI; the only success return is [restoreSummary]. */
     const val RESTORE_FAILED_PREFIX = "Restore failed"

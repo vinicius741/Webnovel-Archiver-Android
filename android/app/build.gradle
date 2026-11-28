@@ -246,6 +246,11 @@ dependencies {
     implementation 'net.java.dev.jna:jna:5.17.0@aar'
     // Commons Compress — unpacks the Kokoro model, published only as a .tar.bz2.
     implementation 'org.apache.commons:commons-compress:1.28.0'
+    // zstd-jni — compresses each story's chapters as one stream in full backups
+    // (data/backup/ChapterPack). The AAR carries the Android native libraries; JVM unit tests use the
+    // plain JAR, which bundles host libraries. proguard-rules.pro keeps the classes its JNI reads.
+    implementation 'com.github.luben:zstd-jni:1.5.7-26@aar'
+    testImplementation 'com.github.luben:zstd-jni:1.5.7-26'
     // ML Kit text recognition (Latin script) — reads scanned PDF pages in the Local source
     // (source/local/AndroidPdfPages). The bundled artifact ships the model and its native library in
     // the APK (about 10 MB more to download for the two phone ABIs; the arm64 library is 11 MB once
