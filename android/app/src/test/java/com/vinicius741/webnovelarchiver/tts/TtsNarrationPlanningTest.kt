@@ -94,9 +94,32 @@ class TtsNarrationPlanningTest {
 
     @Test
     fun spokenTitleIsSkippedWhenTheTextAlreadyOpensWithIt() {
-        assertNull(TtsNarrationPlanning.spokenChapterTitle("1.2 - Temple", "1.2 - Temple of Promise begins."))
-        assertEquals("1.2, Temple", TtsNarrationPlanning.spokenChapterTitle("1.2 - Temple", "He stood there."))
-        assertNull(TtsNarrationPlanning.spokenChapterTitle("  ", "He stood there."))
+        assertNull(TtsNarrationPlanning.spokenChapterTitle("1.2 - Temple", listOf("1.2 - Temple of Promise begins.")))
+        assertEquals("1.2, Temple", TtsNarrationPlanning.spokenChapterTitle("1.2 - Temple", listOf("He stood there.")))
+        assertNull(TtsNarrationPlanning.spokenChapterTitle("  ", listOf("He stood there.")))
+        assertEquals("Chapter 3", TtsNarrationPlanning.spokenChapterTitle("Chapter 3", emptyList()))
+    }
+
+    @Test
+    fun spokenTitleIsSkippedWhenATitleLineFollowsANavigationLine() {
+        // Patreon posts, as downloaded: announcing "Chapter 86" said it twice.
+        val patreon = listOf("<< Chapter 85 | Table of Contents | Chapter 87 >>", "-oOo- Chapter 86 -oOo-", "A pug-faced man landed.")
+        assertNull(TtsNarrationPlanning.spokenChapterTitle("Chapter 86", patreon))
+        assertNull(TtsNarrationPlanning.spokenChapterTitle("Chapter 81", listOf("-oOo-", "Chapter 81", "-oOo-")))
+    }
+
+    @Test
+    fun spokenTitleStaysWhenTheOpeningOnlyMentionsIt() {
+        // Another chapter's number, the title's words inside a sentence, or the title only after the opening.
+        assertEquals(
+            "Chapter 8",
+            TtsNarrationPlanning.spokenChapterTitle("Chapter 8", listOf("<< Chapter 7 | Table of Contents | Chapter 9 >>")),
+        )
+        assertEquals("Rain", TtsNarrationPlanning.spokenChapterTitle("Rain", listOf("It had not stopped since the morning, the rain.")))
+        assertEquals(
+            "Chapter 2",
+            TtsNarrationPlanning.spokenChapterTitle("Chapter 2", listOf("One.", "Two.", "Three.", "Chapter 2")),
+        )
     }
 
     @Test

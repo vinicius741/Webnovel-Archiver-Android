@@ -684,7 +684,16 @@ private class RepositoryNarrationSource(
             storyTitle = story.title,
             chapterTitle = chapter.title,
             sentences = narration.map { it.text },
-            spokenTitle = TtsNarrationPlanning.spokenChapterTitle(chapter.title, narration.firstOrNull()?.text),
+            spokenTitle =
+                TtsNarrationPlanning.spokenChapterTitle(
+                    chapter.title,
+                    narration
+                        .take(
+                            TtsNarrationPlanning.TITLE_SEARCH_CHUNKS,
+                        ).map {
+                            it.text
+                        },
+                ),
         )
     }
 

@@ -125,15 +125,20 @@ internal enum class BuiltInModel(
 /**
  * Text as Phonon should receive it. Its runtime splits sentences and spells out numbers itself, and
  * reads quotes as part of the delivery, so only what web novels add for emphasis goes: asterisks,
- * which would otherwise be read out or leave a gap.
+ * which would otherwise be read out or leave a gap, and accents ([LatinAccents]).
  */
 internal object PhononTextPlanning {
     /** Part of Phonon's cache key: bump it whenever [spokenText] changes. */
-    const val VERSION = 1
+    const val VERSION = 2
 
     private val WHITESPACE = Regex("""\s+""")
 
-    fun spokenText(text: String): String = text.replace('*', ' ').replace(WHITESPACE, " ").trim()
+    fun spokenText(text: String): String =
+        LatinAccents
+            .fold(text)
+            .replace('*', ' ')
+            .replace(WHITESPACE, " ")
+            .trim()
 }
 
 private object BuiltInCatalog {

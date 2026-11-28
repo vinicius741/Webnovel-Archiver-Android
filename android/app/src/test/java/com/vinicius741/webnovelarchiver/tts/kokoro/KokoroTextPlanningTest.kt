@@ -28,6 +28,17 @@ class KokoroTextPlanningTest {
     }
 
     @Test
+    fun `accented latin letters are spoken as plain letters`() {
+        // Kokoro read these as "Ph letter 1EA1 m".
+        assertEquals("Pham Diep favors Summer.", spoken("Phạm Diệp favors Summer."))
+        assertEquals("Do Van Duc smiled.", spoken("Đỗ Văn Đức smiled."))
+        assertEquals("A naive cafe.", spoken("A naïve café."))
+        assertEquals("Pham.", spoken("Pha\u0323m."))
+        assertEquals("「北京」 and 서울.", spoken("「北京」 and 서울."))
+        assertEquals("Phonon: Pham Diep.", PhononTextPlanning.spokenText("Phonon: Phạm Diệp."))
+    }
+
+    @Test
     fun `asterisks are not spoken`() {
         assertEquals("Nobody moved.", spoken("*Nobody moved.*"))
         assertEquals("Thump The door shook.", spoken("*Thump* The door shook."))

@@ -17,6 +17,8 @@ object TtsTextPreparation {
 
     private val HEADING_TAGS = setOf("h1", "h2", "h3", "h4", "h5", "h6")
     private const val SCENE_BREAK_MARKS = "*~=_#•·◆◇★☆+-—–"
+    private val NAVIGATION_PART =
+        Regex("""(?i)table of contents|contents|toc|index|(previous|prev|next)( chapter)?|chapter\s+[\w.-]+""")
 
     fun prepareTtsChunks(
         html: String,
@@ -183,6 +185,7 @@ object TtsTextPreparation {
                 markLastUnitAsSceneEnd(units)
                 return@forEachIndexed
             }
+            if (!legacy && isNavigationLine(ttsText)) return@forEachIndexed
 
             val spokenSentences = TtsSentenceSplitting.splitIntoChunkableSentences(ttsText, legacy)
             val displaySentences = TtsSentenceSplitting.splitIntoChunkableSentences(displayText, legacy)
@@ -222,6 +225,15 @@ object TtsTextPreparation {
 
     /** A line like `* * *` or `-----`: it marks a scene change and has nothing to speak. */
     private fun isSceneBreakText(text: String): Boolean = !TtsSentenceSplitting.isSpeakable(text) && text.any { it in SCENE_BREAK_MARKS }
+
+    /**
+     * A chapter navigation line such as `<< Chapter 85 | Table of Contents | Chapter 87 >>`, which
+     * Patreon posts open with. The reader still shows it; narration skips it.
+     */
+    private fun isNavigationLine(text: String): Boolean {
+        val parts = text.split('|').map { it.trim().trim('<', '>', '«', '»', ' ').trim() }
+        return parts.size >= 2 && parts.all { NAVIGATION_PART.matches(it) }
+    }
 
     /** One sentence per chunk, so the reader can highlight exactly the sentence being spoken. */
     private fun planChunks(units: List<TtsUnit>): ChunkPlan {

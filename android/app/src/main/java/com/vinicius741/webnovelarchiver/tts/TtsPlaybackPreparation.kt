@@ -288,12 +288,7 @@ private class TtsPlaybackBuilder(
             startIndex = point.chunkIndex,
             narration = narration,
             startOffsetMs = point.offsetMs,
-            spokenTitle =
-                when {
-                    !announce -> null
-                    plays(input.generated, narration) -> input.generated?.title
-                    else -> TtsNarrationPlanning.spokenChapterTitle(input.chapter.title, narration.first().text)
-                },
+            spokenTitle = if (announce) spokenTitle(input, narration) else null,
             olderText = input.olderText,
         )
     }
@@ -313,6 +308,28 @@ private class TtsPlaybackBuilder(
         // Paragraph and scene pauses carry over wherever a sentence is unchanged.
         val boundaries = fromText.associate { it.text to it.boundaryAfter }
         return generated.sentences.map { TtsNarrationChunk(it, boundaries[it] ?: TtsChunkBoundary.SENTENCE) }
+    }
+
+    /**
+     * The generated pack's own title when it plays, else the chapter's. Packs made before the title
+     * check looked past the first sentence may hold a title the text repeats a line later; that one
+     * is skipped rather than said twice.
+     */
+    private fun spokenTitle(
+        input: PreparationInput,
+        narration: List<TtsNarrationChunk>,
+    ): String? {
+        val title =
+            TtsNarrationPlanning.spokenChapterTitle(
+                input.chapter.title,
+                narration
+                    .take(
+                        TtsNarrationPlanning.TITLE_SEARCH_CHUNKS,
+                    ).map {
+                        it.text
+                    },
+            )
+        return if (plays(input.generated, narration)) input.generated?.title?.takeIf { title != null } else title
     }
 
     private fun plays(

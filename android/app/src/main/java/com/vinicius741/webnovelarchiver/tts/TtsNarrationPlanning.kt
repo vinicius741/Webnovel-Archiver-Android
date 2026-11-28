@@ -76,16 +76,41 @@ internal object TtsNarrationPlanning {
             null -> TtsChunkPoint(0)
         }
 
-    /** What to say at a chapter's start; null when its text already opens with the title. */
+    /**
+     * What to say at a chapter's start; null when its text already opens with the title. [opening] is
+     * the chapter's first chunks (more than [TITLE_SEARCH_CHUNKS] are ignored).
+     */
     fun spokenChapterTitle(
         title: String,
-        firstChunk: String?,
+        opening: List<String>,
     ): String? {
         val spoken = title.replace(Regex("""\s+[-–—:|]+\s+"""), ", ").trim()
         if (spoken.isBlank()) return null
-        if (firstChunk != null && comparable(firstChunk).startsWith(comparable(title))) return null
+        if (opensWithTitle(title, opening)) return null
         return spoken
     }
+
+    /**
+     * The first chunk starts with the title, or one of the first few is the title on its own give or
+     * take a decoration such as `-oOo- Chapter 86 -oOo-`. Patreon posts put a navigation line
+     * (`<< Chapter 85 | Table of Contents`) above it, and announcing the title as well said it twice.
+     */
+    private fun opensWithTitle(
+        title: String,
+        opening: List<String>,
+    ): Boolean {
+        val first = opening.firstOrNull() ?: return false
+        if (comparable(first).startsWith(comparable(title))) return true
+        val titleWords = words(title)
+        if (titleWords.isEmpty()) return false
+        return opening.take(TITLE_SEARCH_CHUNKS).any { chunk ->
+            val chunkWords = words(chunk)
+            chunkWords.size - titleWords.size in 0..MAX_TITLE_DECORATION_WORDS &&
+                chunkWords.windowed(titleWords.size).any { it == titleWords }
+        }
+    }
+
+    private fun words(text: String): List<String> = WORD.findAll(text.lowercase(Locale.ROOT)).map { it.value }.toList()
 
     /** The word start nearest after [offsetMs] into a speech item, for resuming within a sentence. */
     fun charOffsetAt(
@@ -122,6 +147,13 @@ internal object TtsNarrationPlanning {
     private fun comparable(text: String): String = text.lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
 
     private val BLANK_LINE = Regex("""\n\s*\n""")
+    private val WORD = Regex("""[\p{L}\p{N}]+""")
+
+    /** How many opening chunks may hold the title: a navigation line and a separator can come first. */
+    const val TITLE_SEARCH_CHUNKS = 3
+
+    /** Words around the title that still make a chunk the title, like the two `oOo` of `-oOo- Chapter 86 -oOo-`. */
+    private const val MAX_TITLE_DECORATION_WORDS = 2
 }
 
 /**

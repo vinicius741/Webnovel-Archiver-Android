@@ -98,6 +98,42 @@ class TtsPlaybackPreparerTest {
         }
 
     @Test
+    fun aGeneratedTitleTheTextRepeatsIsSkipped() =
+        runTest {
+            // Patreon posts open with a navigation line, then the title: packs made before that was
+            // recognised hold a title clip that said the chapter number twice.
+            val html = "<p>&lt;&lt; Chapter 85 | Table of Contents</p><p>-oOo- Chapter 86 -oOo-</p><p>He landed.</p>"
+            val story = Story(id = "story", chapters = mutableListOf(Chapter(id = "one", title = "Chapter 86", content = html)))
+            val sentences = listOf("<< Chapter 85 | Table of Contents", "-oOo- Chapter 86 -oOo-", "He landed.")
+            val recipe =
+                NarrationRecipe(
+                    storyId = "story",
+                    chapterId = "one",
+                    chunkingVersion = TtsTextPreparation.CHUNKING_VERSION,
+                    title = "Chapter 86",
+                    sentences = sentences,
+                )
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val prepared =
+                TtsPlaybackPreparer(FakeTtsPlaybackSource(story, null, recipe = recipe), dispatcher, dispatcher)
+                    .prepare("story", "one") ?: error("Expected playback")
+
+            assertEquals(sentences, prepared.chunks)
+            assertEquals(null, prepared.spokenTitle)
+            // A title the text does not repeat still plays from the pack.
+            val plain =
+                Story(id = "story", chapters = mutableListOf(Chapter(id = "one", title = "Chapter 86", content = "<p>He landed.</p>")))
+            val titled =
+                TtsPlaybackPreparer(
+                    FakeTtsPlaybackSource(plain, null, recipe = recipe.copy(sentences = listOf("He landed."))),
+                    dispatcher,
+                    dispatcher,
+                ).prepare("story", "one") ?: error("Expected playback")
+            assertEquals("Chapter 86", titled.spokenTitle)
+        }
+
+    @Test
     fun anOldDescriptionSessionIsNeitherPreparedNorResumed() =
         runTest {
             // Description read-aloud was removed; a session an older version saved must stay silent.

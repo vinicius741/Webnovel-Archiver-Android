@@ -81,6 +81,35 @@ class TextCleanupTest {
     }
 
     @Test
+    fun prepareTtsChunksSkipChapterNavigationLines() {
+        val html =
+            """
+            <p>&lt;&lt; Chapter 85 | Table of Contents | Chapter 87 &gt;&gt;</p>
+            <p>-oOo- Chapter 86 -oOo-</p>
+            <p>The bell rang.</p>
+            <p>&lt;&lt; Chapter 83 | Table of Contents</p>
+            <p>Previous Chapter | Next Chapter</p>
+            """.trimIndent()
+
+        assertEquals(listOf("-oOo- Chapter 86 -oOo-", "The bell rang."), TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 400))
+    }
+
+    @Test
+    fun prepareTtsChunksKeepStoryLinesThatLookLikeNavigation() {
+        val html =
+            """
+            <p>Back, 1192, 1193, Next</p>
+            <p>Chapter 3 | The Storm</p>
+            <p>Table of Contents</p>
+            """.trimIndent()
+
+        assertEquals(
+            listOf("Back, 1192, 1193, Next", "Chapter 3 | The Storm", "Table of Contents"),
+            TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 400),
+        )
+    }
+
+    @Test
     fun prepareTtsChunksSplitLongTextOnNaturalSentenceBoundaries() {
         val first = "${"Alpha ".repeat(55).trim()}."
         val second = "${"Delta ".repeat(55).trim()}."
