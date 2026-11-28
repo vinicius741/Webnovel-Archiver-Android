@@ -26,10 +26,11 @@ internal class FullBackupRestorer(
     private val gson get() = storage.gson
     private val stagingWriter = RestoreStagingWriter(storage)
     private val committer = RestoreRootCommitter(storage)
+    private val treeMove = RestoreTreeMove()
 
     fun import(uri: Uri): String {
         val temp =
-            RestoreFailureMessages.createInputFile(context.cacheDir)
+            RestoreFailureMessages.createInputFile(storage.restoreRoot)
                 ?: return RestoreFailureMessages.storage("could not create temporary file")
         return try {
             val input =
@@ -62,9 +63,13 @@ internal class FullBackupRestorer(
             val raw = freshDirectory(restoreDir, "raw_extraction")
             val staged = freshDirectory(restoreDir, "staged_root")
             val extracted = FullBackupZipExtractor.extract(zipFile, raw, restoreDir.usableSpace)
+            // The ZIP input copy is no longer read; free its space before the tree is staged.
+            zipFile.delete()
             val manifest = readAndValidateManifest(raw)
             verifyZipIndex(extracted.files, manifest.chapterFiles, manifest.metricFiles, manifest.coverFiles, manifest.rewriteFiles)
             val stories = buildStagedRoot(raw, staged, manifest)
+            // The data trees have moved out; what is left (the manifest, legacy chapter_rewrites/) is never read again.
+            cleanup(raw)
             verifyStagedTree(staged, stories)?.let { return it }
             swapCandidate = committer.stageBesideLiveRoot(staged)
             synchronized(storage) { committer.commit(checkNotNull(swapCandidate)) }
@@ -126,17 +131,11 @@ internal class FullBackupRestorer(
         val stories = payload.library.toMutableList()
         FullBackupRestorePlanning.scrubTransientState(stories)
         val config = payload.config
-        File(raw, "novels").takeIf(File::exists)?.copyRecursively(File(staged, "novels").apply { mkdirs() }, overwrite = true)
-        // Trend history files extract under raw/metrics/<encoded>.json; copy the whole tree verbatim
-        // so restore preserves per-novel score/Patreon history. The commit step moves the entire
-        // staged root into place, and initializeStorageDirectories() recreates metrics/ if absent.
-        File(raw, "metrics").takeIf(File::exists)?.copyRecursively(File(staged, "metrics").apply { mkdirs() }, overwrite = true)
-        // Generated AI covers extract under raw/covers/<name>.<ext> at the story's own relative
-        // aiCoverPath; copy the tree verbatim like metrics/. initializeStorageDirectories()
-        // recreates covers/ when the backup has none.
-        File(raw, "covers").takeIf(File::exists)?.copyRecursively(File(staged, "covers").apply { mkdirs() }, overwrite = true)
-        // Older backups may carry raw/chapter_rewrites/ from the retired Chapter polish feature.
-        // Those entries are still validated so such backups restore, but they are not staged.
+        // novels/, metrics/ and covers/ are renamed out of the raw extraction, not copied: the
+        // extraction is the restore's only write of the backup's data. The commit step moves the
+        // entire staged root into place, and initializeStorageDirectories() recreates any tree the
+        // backup lacks.
+        treeMove.adoptExtractedTrees(raw, staged)
         File(staged, "epubs").mkdirs()
         // Reconcile aiCoverPath against the manifest's cover index (not the filesystem — the
         // path comes from untrusted backup JSON; see retainRestoredCoverPaths).
@@ -194,9 +193,9 @@ internal class FullBackupRestorer(
 }
 
 private object RestoreFailureMessages {
-    fun createInputFile(cacheDirectory: File): File? =
+    fun createInputFile(workDirectory: File): File? =
         try {
-            File.createTempFile("webnovel_restore", ".zip", cacheDirectory)
+            File.createTempFile("webnovel_restore", ".zip", workDirectory)
         } catch (error: IOException) {
             Timber.e(error, "Could not create full-backup input staging file")
             null

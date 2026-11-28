@@ -88,7 +88,7 @@ internal class RestoreTransactionJournal(
  * inside recovery lands on a later row of the same table. `RestoreCrashRecoveryTest` kills the
  * swap, rollback, and recovery at every filesystem operation and checks this property.
  *
- * Once no journal remains, staging copies left beside the live root by a killed restore are swept;
+ * Once no journal remains, staging trees left beside the live root by a killed restore are swept;
  * they are never read by recovery and can be as large as the whole library.
  */
 internal object RestoreStartupRecovery {
@@ -99,7 +99,9 @@ internal object RestoreStartupRecovery {
         val journal = RestoreTransactionJournal(File(appContext.filesDir, RestoreTransactionJournal.FILE_NAME))
         recoverSafely(liveRoot, durableSnapshot, journal)
         if (!journal.exists()) {
-            sweepOrphanedStaging(appContext.filesDir, File(appContext.cacheDir, RESTORE_WORK_DIR_NAME))
+            sweepOrphanedStaging(appContext.filesDir, File(appContext.filesDir, RESTORE_WORK_DIR_NAME))
+            // Restores used to work in cacheDir; drop any leftover of theirs.
+            File(appContext.cacheDir, LEGACY_RESTORE_WORK_DIR_NAME).deleteRecursively()
         }
     }
 
@@ -230,6 +232,9 @@ internal object RestoreStartupRecovery {
     /** Must match the staging copy name chosen by [RestoreRootCommitter.stageBesideLiveRoot]. */
     internal const val SWAP_CANDIDATE_PREFIX = "webnovel_restore_swap_"
 
-    /** Must match [AppStorage.restoreRoot]. */
-    private const val RESTORE_WORK_DIR_NAME = "webnovel_restore"
+    /** [AppStorage.restoreRoot]'s name under filesDir. */
+    internal const val RESTORE_WORK_DIR_NAME = "webnovel_restore_work"
+
+    /** The cacheDir work directory restores used before they moved to filesDir. */
+    private const val LEGACY_RESTORE_WORK_DIR_NAME = "webnovel_restore"
 }

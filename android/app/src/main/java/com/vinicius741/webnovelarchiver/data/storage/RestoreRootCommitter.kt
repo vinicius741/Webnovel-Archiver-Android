@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
-import com.vinicius741.webnovelarchiver.data.backup.BackupInputLimits
 import timber.log.Timber
 import java.io.File
 
@@ -30,16 +29,15 @@ internal class RestoreRootCommitter(
     private var preparedByThisAttempt = false
 
     fun stageBesideLiveRoot(staged: File): File {
-        // When the staged tree already shares a parent directory with the live root, rename can
-        // replace it directly. Otherwise copy beside the live root first (cache vs filesDir).
+        // When the staged tree already shares a parent directory with the live root, the swap can
+        // rename it directly. Otherwise move it beside the live root first (cache vs filesDir), so
+        // the swap's rename never has to fall back to a copy after the old root has moved. The
+        // move is a rename on Android; a verified copy only when the rename is refused.
         if (sharesParentDirectory(staged, liveRoot)) return staged
         val parent = checkNotNull(liveRoot.parentFile) { "Live storage root has no parent" }
         val candidate = File(parent, "${RestoreStartupRecovery.SWAP_CANDIDATE_PREFIX}${System.currentTimeMillis()}")
-        val stagedBytes = directoryByteCount(staged)
-        check(BackupInputLimits.hasSwapSpace(parent.usableSpace, stagedBytes)) {
-            "Not enough free app-storage space to commit this restore"
-        }
-        return copyVerified(staged, candidate, stagedBytes)
+        RestoreTreeMove(rootSwap.files).move(staged, candidate)
+        return candidate
     }
 
     fun commit(source: File) {
@@ -108,24 +106,6 @@ internal class RestoreRootCommitter(
         return restored
     }
 
-    private fun copyVerified(
-        source: File,
-        candidate: File,
-        expectedBytes: Long,
-    ): File {
-        var completed = false
-        try {
-            check(source.copyRecursively(candidate, overwrite = true)) {
-                "Could not copy the verified restore tree beside live storage"
-            }
-            check(directoryByteCount(candidate) == expectedBytes) { "Restore swap candidate did not copy completely" }
-            completed = true
-            return candidate
-        } finally {
-            if (!completed) candidate.deleteRecursively()
-        }
-    }
-
     private fun sharesParentDirectory(
         first: File,
         second: File,
@@ -134,6 +114,4 @@ internal class RestoreRootCommitter(
         val secondParent = runCatching { second.canonicalFile.parentFile?.absolutePath }.getOrNull() ?: return false
         return firstParent == secondParent
     }
-
-    private fun directoryByteCount(directory: File): Long = directory.walkTopDown().filter(File::isFile).sumOf(File::length)
 }

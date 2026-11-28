@@ -22,6 +22,7 @@ import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogLibraryStats
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
+import com.vinicius741.webnovelarchiver.data.storage.StoredChapterCompaction
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
@@ -47,10 +48,12 @@ import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInEngines
 import com.vinicius741.webnovelarchiver.tts.kokoro.BuiltInModel
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelInstaller
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
@@ -300,6 +303,23 @@ class AppContainer internal constructor(
         repositoryStartup.start(applicationScope)
         narration.init(repositoryStartup::awaitReady)
         applicationScope.launch { appUpdates.restoreCachedRelease() }
+        applicationScope.launch { compactStoredChapters() }
+    }
+
+    /** Once per library, after startup settles: drops source markup noise from chapters saved before it was stripped. */
+    private suspend fun compactStoredChapters() {
+        runCatching {
+            repositoryStartup.awaitReady()
+            delay(CHAPTER_COMPACTION_DELAY_MS)
+            StoredChapterCompaction(
+                root = storage.root,
+                lock = storage,
+                compactFile = storage::compactChapterFile,
+                stories = repository::readOnlyLibrary,
+                compactorFor = { story -> SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.chapterMarkupCompactor },
+                libraryGeneration = repository::libraryGeneration,
+            ).runIfPending()
+        }.onFailure { if (it is CancellationException) throw it else Timber.w(it, "Chapter compaction did not run") }
     }
 
     suspend fun awaitRepositoryReady() = repositoryStartup.awaitReady()
@@ -307,5 +327,8 @@ class AppContainer internal constructor(
     private companion object {
         /** Build types published through GitHub Releases; each follows its own update channel. */
         val PUBLISHED_BUILD_TYPES = setOf("release", "beta")
+
+        /** Keeps the compaction's file writes out of the first screens and the startup work. */
+        const val CHAPTER_COMPACTION_DELAY_MS = 30_000L
     }
 }

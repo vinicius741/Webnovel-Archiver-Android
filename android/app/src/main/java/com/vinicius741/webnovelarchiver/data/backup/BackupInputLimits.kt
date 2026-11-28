@@ -11,31 +11,45 @@ object BackupInputLimits {
     const val MAX_MANIFEST_BYTES = MAX_JSON_BYTES
     const val MAX_ZIP_ENTRY_BYTES = 100_000_000L
     const val MAX_STORIES = 50_000
-    private const val MAX_EXTRACTED_BYTES = 2_000_000_000L
     private const val FREE_SPACE_RESERVE_BYTES = 64L * 1024L * 1024L
 
     /**
-     * Extraction budget for chapter recovery, which keeps only the raw extraction plus the chapter
-     * files it copies into the library (never a staged root or a swap candidate), so it budgets
-     * for two copies instead of the restore's three.
+     * Zip-bomb guard that replaces a fixed extracted-size cap: a full backup may expand to at most
+     * this many times its compressed size. Real backups expand about 2.3x (chapter HTML; the most
+     * compressible chapter measured 3.6x) and a JSON manifest stays far below this, while a deflate
+     * bomb expands up to ~1,000x per entry.
      */
-    fun recoveryExtractionBudget(usableBytes: Long): Long {
-        val afterReserve = usableBytes - FREE_SPACE_RESERVE_BYTES
-        check(afterReserve > 0L) { "Not enough free space to read this backup" }
-        return minOf(MAX_EXTRACTED_BYTES, afterReserve / 2L).also {
-            check(it > 0L) { "Not enough free space to read this backup" }
-        }
-    }
+    const val MAX_EXPANSION_RATIO = 100L
 
+    /** Small archives (a manifest-only backup) may always expand this far, whatever their ratio. */
+    private const val MIN_EXPANSION_ALLOWANCE_BYTES = 64L * 1024L * 1024L
+
+    /** Allocation unit assumed for each extracted file, so many small chapters cannot overrun the budget. */
+    private const val FILE_BLOCK_BYTES = 4L * 1024L
+
+    /**
+     * Disk the restore may fill while extracting. The extraction is the restore's only copy of the
+     * backup's data: it is renamed into the staged root and then beside the live root (see
+     * `RestoreTreeMove`), so every byte above the reserve is usable. The live library stays on disk
+     * until the commit, so its space is already excluded from [usableBytes].
+     */
     fun extractionBudget(usableBytes: Long): Long {
         val afterReserve = usableBytes - FREE_SPACE_RESERVE_BYTES
-        check(afterReserve > 0L) { "Not enough free cache space to restore this backup" }
-        // Raw extraction, the independently verified staged root, and the same-filesystem swap
-        // candidate can coexist until commit. Budget for all three instead of discovering the disk
-        // is full after validation, while copying the candidate beside the live root.
-        return minOf(MAX_EXTRACTED_BYTES, afterReserve / 3L).also {
-            check(it > 0L) { "Not enough free cache space to restore this backup" }
-        }
+        check(afterReserve > 0L) { "Not enough free space to restore this backup" }
+        return afterReserve
+    }
+
+    /** Uncompressed bytes a ZIP of [compressedBytes] may expand to before it is treated as a ZIP bomb. */
+    fun maxExpandedBytes(compressedBytes: Long): Long {
+        val ratioLimit =
+            if (compressedBytes > Long.MAX_VALUE / MAX_EXPANSION_RATIO) Long.MAX_VALUE else compressedBytes * MAX_EXPANSION_RATIO
+        return maxOf(ratioLimit, MIN_EXPANSION_ALLOWANCE_BYTES)
+    }
+
+    /** Disk an extracted file of [fileBytes] occupies, rounded up to whole blocks (an empty file still costs one). */
+    fun allocatedBytes(fileBytes: Long): Long {
+        val blocks = (maxOf(fileBytes, 1L) + FILE_BLOCK_BYTES - 1L) / FILE_BLOCK_BYTES
+        return blocks * FILE_BLOCK_BYTES
     }
 
     fun hasSwapSpace(

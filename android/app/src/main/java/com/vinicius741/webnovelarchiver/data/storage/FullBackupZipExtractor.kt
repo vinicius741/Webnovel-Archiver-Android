@@ -17,7 +17,7 @@ internal object FullBackupZipExtractor {
         usableBytes: Long,
         budgetBytes: Long = BackupInputLimits.extractionBudget(usableBytes),
     ): ExtractedBackupEntries {
-        val state = ExtractionState(budgetBytes)
+        val state = ExtractionState(diskBudget = budgetBytes, maxExpanded = BackupInputLimits.maxExpandedBytes(zipFile.length()))
         ZipInputStream(zipFile.inputStream()).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
@@ -65,16 +65,24 @@ internal object FullBackupZipExtractor {
                 state.checkSizes(entry.name, written)
                 sink.write(buffer, 0, read)
             }
+            state.finishFile(written)
         }
     }
 
+    /**
+     * Zip-bomb and disk guards. Entry count and per-entry size bound the archive's shape, the
+     * expansion ratio bounds what a small file may inflate to, and the disk budget (free space above
+     * the reserve, counted in whole blocks per file) stops the extraction before the device is full.
+     */
     private class ExtractionState(
-        private val maxTotalBytes: Long,
+        private val diskBudget: Long,
+        private val maxExpanded: Long,
     ) {
         private var entryCount = 0
         private val seenEntries = mutableSetOf<String>()
         val extractedFiles = mutableSetOf<String>()
         var totalUncompressed = 0L
+        private var allocatedByFinishedFiles = 0L
 
         fun register(entry: ZipEntry) {
             entryCount += 1
@@ -91,7 +99,15 @@ internal object FullBackupZipExtractor {
             val maxEntryBytes =
                 if (entryName == "manifest.json") BackupInputLimits.MAX_MANIFEST_BYTES else BackupInputLimits.MAX_ZIP_ENTRY_BYTES
             check(entryBytes <= maxEntryBytes) { "Backup entry too large: $entryName" }
-            check(totalUncompressed <= maxTotalBytes) { "Backup uncompressed size exceeds available-space limit" }
+            check(totalUncompressed <= maxExpanded) {
+                "Backup expands more than ${BackupInputLimits.MAX_EXPANSION_RATIO}x its compressed size"
+            }
+            check(allocatedByFinishedFiles + entryBytes <= diskBudget) { "Backup uncompressed size exceeds available-space limit" }
+        }
+
+        fun finishFile(bytes: Long) {
+            allocatedByFinishedFiles += BackupInputLimits.allocatedBytes(bytes)
+            check(allocatedByFinishedFiles <= diskBudget) { "Backup uncompressed size exceeds available-space limit" }
         }
     }
 
