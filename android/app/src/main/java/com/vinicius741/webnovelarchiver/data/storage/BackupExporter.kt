@@ -2,7 +2,11 @@ package com.vinicius741.webnovelarchiver.data.storage
 
 import com.vinicius741.webnovelarchiver.data.backup.BackupExportPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupContentPlanning
+import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifestContent
+import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifestWriter
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
+import com.vinicius741.webnovelarchiver.data.backup.RestoredCoverFileIndex
+import com.vinicius741.webnovelarchiver.data.backup.RestoredMetricFileIndex
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import java.io.File
 import java.time.Instant
@@ -15,8 +19,6 @@ private const val PROGRESS_REPORT_EVERY = 25
 internal class BackupExporter(
     private val storage: AppStorage,
 ) {
-    private val gson get() = storage.gson
-
     /**
      * Writes the full-backup ZIP. [onProgress] receives user-facing messages from the zip loop
      * (called on the caller's dispatcher, not the UI thread); it is invoked only at throttled
@@ -62,7 +64,7 @@ internal class BackupExporter(
                     is FullBackupContentPlanning.ChapterContent.Missing -> null
                 }
             }
-        val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles, missingContent)
+        val manifest = fullManifest(library, metricFiles, coverFiles, missingContent)
         val totalFiles = 1 + chapterFiles.size + metricFiles.size + coverFiles.size
         var filesWritten = 0
 
@@ -84,7 +86,7 @@ internal class BackupExporter(
             AtomicFileWrites.writeAtomically(output) { stream ->
                 ZipOutputStream(stream).use { zip ->
                     zip.putNextEntry(ZipEntry("manifest.json"))
-                    zip.write(gson.toJson(manifest).toByteArray())
+                    FullBackupManifestWriter.write(zip, manifest)
                     zip.closeEntry()
                     markFileWritten()
                     chapterFiles.forEach { chapter ->
@@ -116,48 +118,19 @@ internal class BackupExporter(
         }
     }
 
-    /** Manifest-ready shape for one missing item. */
-    internal fun missingEntry(it: FullBackupContentPlanning.MissingContent): Map<String, Any?> =
-        mapOf(
-            "kind" to it.kind,
-            "storyId" to it.storyId,
-            "chapterId" to it.chapterId,
-            "title" to it.title,
-        )
-
     private fun fullManifest(
         library: List<Story>,
-        chapterFiles: List<FullBackupChapterFile>,
         metricFiles: List<FullBackupMetricFile>,
         coverFiles: List<FullBackupCoverFile>,
         missingContent: List<FullBackupContentPlanning.MissingContent>,
-    ): Map<String, Any?> =
-        mapOf(
-            "format" to "webnovel-archiver-full-backup",
-            "version" to 1,
-            "exportDate" to Instant.now().toString(),
-            "library" to library.map(::storyWithoutTransientPaths),
-            "config" to fullConfig(),
-            "chapterFiles" to
-                chapterFiles.map {
-                    mapOf(
-                        "storyId" to it.storyId,
-                        "chapterId" to it.chapterId,
-                        "chapterIndex" to it.chapterIndex,
-                        "title" to it.title,
-                        "path" to it.path,
-                    )
-                },
-            // Per-story trend history (`metrics/<id>.json`). Optional on restore: older backups omit
-            // the key and restore with empty history (the storage layer's missing-file path).
-            "metricFiles" to metricFiles.map { mapOf("storyId" to it.storyId, "path" to it.path) },
-            // Generated AI covers. Also optional on restore: older backups omit the key and their
-            // stories fall back to the source cover URL. The path is the story's own relative
-            // aiCoverPath so the zip layout matches the on-disk covers/ tree exactly.
-            "coverFiles" to coverFiles.map { mapOf("storyId" to it.storyId, "path" to it.path) },
-            // R10: content the library reports as available but that could not be found at export
-            // time. Older backups omit the key; restore ignores unknown keys.
-            "missingContent" to missingContent.map(::missingEntry),
+    ): FullBackupManifestContent =
+        FullBackupManifestContent(
+            exportDate = Instant.now().toString(),
+            library = library.map(::storyWithoutTransientPaths),
+            config = fullConfig(),
+            metricFiles = metricFiles.map { RestoredMetricFileIndex(it.storyId, it.path) },
+            coverFiles = coverFiles.map { RestoredCoverFileIndex(it.storyId, it.path) },
+            missingContent = missingContent,
         )
 
     private fun fullConfig(): Map<String, Any?> {

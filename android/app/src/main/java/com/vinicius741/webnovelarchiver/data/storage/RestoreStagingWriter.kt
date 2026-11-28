@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
 import com.google.gson.Gson
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
@@ -41,7 +43,7 @@ internal class RestoreStagingWriter(
 
     fun writeConfig(
         stagedRoot: File,
-        payload: Map<String, Any>,
+        payload: JsonObject,
     ) {
         writePrimaryPreferences(stagedRoot, payload)
         writeCollections(stagedRoot, payload)
@@ -66,25 +68,25 @@ internal class RestoreStagingWriter(
 
     private fun writePrimaryPreferences(
         root: File,
-        payload: Map<String, Any>,
+        payload: JsonObject,
     ) {
-        payload["settings"]?.let {
+        payload.value("settings")?.let {
             writeEnvelope(File(root, "settings.json"), PreferenceNormalization.appSettings(normalize(it, AppSettings::class.java)))
         }
-        payload["sourceDownloadSettings"]?.let {
+        payload.value("sourceDownloadSettings")?.let {
             val type = object : TypeToken<MutableMap<String, SourceDownloadSettings>>() {}.type
             writeEnvelope(
                 File(root, "source_download_settings.json"),
                 PreferenceNormalization.sourceDownloadSettings(normalize(it, type)),
             )
         }
-        payload["chapterFilterSettings"]?.let {
+        payload.value("chapterFilterSettings")?.let {
             writeEnvelope(
                 File(root, "chapter_filter_settings.json"),
                 PreferenceNormalization.chapterFilterSettings(normalize(it, ChapterFilterSettings::class.java)),
             )
         }
-        payload["displayPreferences"]?.let {
+        payload.value("displayPreferences")?.let {
             writeEnvelope(
                 File(root, "display_preferences.json"),
                 PreferenceNormalization.displayPreferences(normalize(it, DisplayPreferences::class.java)),
@@ -94,17 +96,17 @@ internal class RestoreStagingWriter(
 
     private fun writeCollections(
         root: File,
-        payload: Map<String, Any>,
+        payload: JsonObject,
     ) {
-        payload["tabs"]?.let {
+        payload.value("tabs")?.let {
             val tabs = normalize<List<Tab>>(it, object : TypeToken<MutableList<Tab>>() {}.type)
             writeEnvelope(File(root, "tabs.json"), tabs.sortedBy { tab -> tab.order })
         }
-        payload["sentenceRemovalList"]?.let {
+        payload.value("sentenceRemovalList")?.let {
             val sentences = normalize<List<String>>(it, object : TypeToken<MutableList<String>>() {}.type)
             writeEnvelope(File(root, "sentence_removal.json"), sentences)
         }
-        payload["regexCleanupRules"]?.let {
+        payload.value("regexCleanupRules")?.let {
             val rules = normalize<List<RegexCleanupRule>>(it, object : TypeToken<MutableList<RegexCleanupRule>>() {}.type)
             writeEnvelope(File(root, "regex_cleanup_rules.json"), RegexRuleCleanup.sanitizeRegexRules(rules))
         }
@@ -112,17 +114,20 @@ internal class RestoreStagingWriter(
 
     private fun writeTts(
         root: File,
-        payload: Map<String, Any>,
+        payload: JsonObject,
     ) {
-        payload["ttsSettings"]?.let {
+        payload.value("ttsSettings")?.let {
             writeEnvelope(
                 File(root, "tts_settings.json"),
                 PreferenceNormalization.ttsSettings(normalize(it, TtsSettings::class.java)),
             )
         }
-        payload["ttsSession"]?.let { writeEnvelope(File(root, "tts_session.json"), normalize<TtsSession>(it, TtsSession::class.java)) }
+        payload
+            .value(
+                "ttsSession",
+            )?.let { writeEnvelope(File(root, "tts_session.json"), normalize<TtsSession>(it, TtsSession::class.java)) }
         // R11: per-story resume positions; older backups omit the key and restore with an empty map.
-        payload["ttsPositions"]?.let {
+        payload.value("ttsPositions")?.let {
             val positions =
                 normalize<MutableMap<String, TtsStoryPosition>>(
                     it,
@@ -139,8 +144,12 @@ internal class RestoreStagingWriter(
         file,
     ) { out -> DurableJson.writeEnvelope(out, gson, DurableJson.envelope(value, storage.appVersion)) }
 
+    /** Decodes straight from the manifest's JSON tree; no serialize-and-reparse round trip. */
     private fun <T> normalize(
-        payload: Any,
+        payload: JsonElement,
         type: Type,
-    ): T = gson.fromJson(gson.toJson(payload), type)
+    ): T = gson.fromJson(payload, type)
+
+    /** A config value, with JSON null read as absent (as the former Map parse did). */
+    private fun JsonObject.value(key: String): JsonElement? = get(key)?.takeUnless(JsonElement::isJsonNull)
 }

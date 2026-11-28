@@ -8,7 +8,7 @@ import org.junit.Test
 class FullBackupManifestValidationTest {
     @Test
     fun acceptsValidManifestShape() {
-        assertNull(FullBackupManifestValidation.validate(validManifest()))
+        assertNull(validate(validManifest()))
     }
 
     @Test
@@ -27,7 +27,7 @@ class FullBackupManifestValidationTest {
                 "coverFiles" to listOf(mapOf("storyId" to "story-1", "path" to "covers/story-1.png")),
             )
 
-        val parsed = FullBackupManifestValidation.parseValidated(Gson(), manifest)
+        val parsed = FullBackupManifestValidation.parseValidated(read(manifest))
 
         assertEquals(1, parsed.version)
         assertEquals("story-1", parsed.library.single().id)
@@ -48,11 +48,11 @@ class FullBackupManifestValidationTest {
     fun rejectsUnsupportedFormatAndMissingVersion() {
         assertEquals(
             "Invalid full backup: unsupported format",
-            FullBackupManifestValidation.validate(validManifest("format" to "other")),
+            validate(validManifest("format" to "other")),
         )
         assertEquals(
             "Invalid full backup: missing version",
-            FullBackupManifestValidation.validate(validManifest().minus("version")),
+            validate(validManifest().minus("version")),
         )
     }
 
@@ -60,15 +60,15 @@ class FullBackupManifestValidationTest {
     fun rejectsMissingIndexesAndConfiguration() {
         assertEquals(
             "Invalid full backup: missing library",
-            FullBackupManifestValidation.validate(validManifest("library" to "bad")),
+            validate(validManifest("library" to "bad")),
         )
         assertEquals(
             "Invalid full backup: missing chapter file index",
-            FullBackupManifestValidation.validate(validManifest("chapterFiles" to "bad")),
+            validate(validManifest("chapterFiles" to "bad")),
         )
         assertEquals(
             "Invalid full backup: missing configuration",
-            FullBackupManifestValidation.validate(validManifest("config" to mapOf<String, Any>())),
+            validate(validManifest("config" to mapOf<String, Any>())),
         )
     }
 
@@ -76,25 +76,25 @@ class FullBackupManifestValidationTest {
     fun rejectsMalformedStories() {
         assertEquals(
             "Invalid full backup: malformed story data",
-            FullBackupManifestValidation.validate(validManifest("library" to listOf(mapOf("title" to "Missing id")))),
+            validate(validManifest("library" to listOf(mapOf("title" to "Missing id")))),
         )
     }
 
     @Test
     fun rejectsUnsupportedVersionsAndDuplicateStoryIds() {
         assertEquals(
-            "Invalid full backup: unsupported version 2",
-            FullBackupManifestValidation.validate(validManifest("version" to 2)),
+            "Invalid full backup: unsupported version 3",
+            validate(validManifest("version" to 3)),
         )
         assertEquals(
             "Invalid full backup: duplicate story IDs",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest("library" to listOf(mapOf("id" to "same"), mapOf("id" to "same"))),
             ),
         )
         assertEquals(
             "Invalid full backup: missing version",
-            FullBackupManifestValidation.validate(validManifest("version" to 1.5)),
+            validate(validManifest("version" to 1.5)),
         )
     }
 
@@ -102,7 +102,7 @@ class FullBackupManifestValidationTest {
     fun rejectsMalformedAndDuplicateChapterFileEntries() {
         assertEquals(
             "Invalid full backup: malformed chapter file index",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest(
                     "chapterFiles" to
                         listOf(
@@ -123,34 +123,34 @@ class FullBackupManifestValidationTest {
             )
         assertEquals(
             "Invalid full backup: duplicate chapter paths",
-            FullBackupManifestValidation.validate(validManifest("chapterFiles" to listOf(entry, entry))),
+            validate(validManifest("chapterFiles" to listOf(entry, entry))),
         )
     }
 
     @Test
     fun metricFilesOptionalAndValidatedWhenPresent() {
         // Absent key (backups predating the Trends feature) is accepted — restore yields empty history.
-        assertNull(FullBackupManifestValidation.validate(validManifest().minus("metricFiles")))
+        assertNull(validate(validManifest().minus("metricFiles")))
         // A well-formed entry is accepted.
         assertNull(
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest("metricFiles" to listOf(mapOf("storyId" to "story-1", "path" to "metrics/story-1.json"))),
             ),
         )
         // storyId not in library, malformed entry, disallowed path, and duplicates are each rejected.
         assertEquals(
             "Invalid full backup: malformed metric file index",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest("metricFiles" to listOf(mapOf("storyId" to "missing-story", "path" to "metrics/missing-story.json"))),
             ),
         )
         assertEquals(
             "Invalid full backup: malformed metric file index",
-            FullBackupManifestValidation.validate(validManifest("metricFiles" to listOf(mapOf("storyId" to "story-1")))),
+            validate(validManifest("metricFiles" to listOf(mapOf("storyId" to "story-1")))),
         )
         assertEquals(
             "Invalid full backup: malformed metric file index",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest("metricFiles" to listOf(mapOf("storyId" to "story-1", "path" to "settings.json"))),
             ),
         )
@@ -160,7 +160,7 @@ class FullBackupManifestValidationTest {
         val twoStoryLibrary = listOf(mapOf("id" to "story-1"), mapOf("id" to "story-2"))
         assertEquals(
             "Invalid full backup: duplicate metric paths",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest(
                     "library" to twoStoryLibrary,
                     "metricFiles" to listOf(metricEntry, mapOf("storyId" to "story-2", "path" to "metrics/story-1.json")),
@@ -172,10 +172,10 @@ class FullBackupManifestValidationTest {
     @Test
     fun coverFilesOptionalAndValidatedWhenPresent() {
         // Absent key (backups predating AI covers) is accepted — stories fall back to the source cover.
-        assertNull(FullBackupManifestValidation.validate(validManifest().minus("coverFiles")))
+        assertNull(validate(validManifest().minus("coverFiles")))
         // A well-formed entry is accepted, including jpg/webp extensions the storage layer writes.
         assertNull(
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest(
                     "coverFiles" to listOf(mapOf("storyId" to "story-1", "path" to "covers/story-1.webp")),
                 ),
@@ -183,25 +183,25 @@ class FullBackupManifestValidationTest {
         )
         assertEquals(
             "Invalid full backup: malformed cover file index",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest("coverFiles" to listOf(mapOf("storyId" to "missing-story", "path" to "covers/missing-story.png"))),
             ),
         )
         assertEquals(
             "Invalid full backup: malformed cover file index",
-            FullBackupManifestValidation.validate(validManifest("coverFiles" to listOf(mapOf("storyId" to "story-1")))),
+            validate(validManifest("coverFiles" to listOf(mapOf("storyId" to "story-1")))),
         )
         // Chapter-tree paths are not valid cover entries.
         assertEquals(
             "Invalid full backup: malformed cover file index",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest("coverFiles" to listOf(mapOf("storyId" to "story-1", "path" to "novels/story-1/cover.html"))),
             ),
         )
         // Unknown image extensions are rejected.
         assertEquals(
             "Invalid full backup: malformed cover file index",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest("coverFiles" to listOf(mapOf("storyId" to "story-1", "path" to "covers/story-1.gif"))),
             ),
         )
@@ -212,7 +212,7 @@ class FullBackupManifestValidationTest {
         val twoStoryLibrary = listOf(mapOf("id" to "story-1"), mapOf("id" to "story-2"))
         assertEquals(
             "Invalid full backup: duplicate cover entries",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest(
                     "library" to twoStoryLibrary,
                     "coverFiles" to listOf(coverEntry, mapOf("storyId" to "story-1", "path" to "covers/story-1.webp")),
@@ -225,15 +225,14 @@ class FullBackupManifestValidationTest {
     fun rewriteFilesOptionalAndValidatedWhenPresent() {
         fun rewriteEntry(vararg fields: Pair<String, String>): Map<String, String> = mapOf(*fields)
 
-        fun rejects(entry: Map<String, String>): String? =
-            FullBackupManifestValidation.validate(validManifest("rewriteFiles" to listOf(entry)))
+        fun rejects(entry: Map<String, String>): String? = validate(validManifest("rewriteFiles" to listOf(entry)))
 
         // Absent key (backups predating Chapter polish) is accepted — stories restore with no variants.
-        assertNull(FullBackupManifestValidation.validate(validManifest().minus("rewriteFiles")))
+        assertNull(validate(validManifest().minus("rewriteFiles")))
         // Well-formed entries pass: many per story are legitimate (manifest + one applied.html
         // per polished chapter).
         assertNull(
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest(
                     "rewriteFiles" to
                         listOf(
@@ -260,7 +259,7 @@ class FullBackupManifestValidationTest {
         )
         assertEquals(
             "Invalid full backup: duplicate rewrite paths",
-            FullBackupManifestValidation.validate(
+            validate(
                 validManifest(
                     "rewriteFiles" to
                         listOf(
@@ -271,6 +270,36 @@ class FullBackupManifestValidationTest {
             ),
         )
     }
+
+    @Test
+    fun readsJsonNullAsAnAbsentKey() {
+        // The former Map parse stored JSON null, which every check treated as an absent key.
+        val json =
+            """{"format":"webnovel-archiver-full-backup","version":1,"library":[{"id":"story-1"}],""" +
+                """"config":{"tabs":[]},"chapterFiles":[],"metricFiles":null,"coverFiles":null,"rewriteFiles":null}"""
+        assertNull(FullBackupManifestValidation.validate(readJson(json)))
+    }
+
+    @Test
+    fun rejectsNonStringStoryIdsAndChapterFields() {
+        assertEquals(
+            "Invalid full backup: malformed story data",
+            validate(validManifest("library" to listOf(mapOf("id" to 7)))),
+        )
+        assertEquals(
+            "Invalid full backup: malformed chapter file index",
+            validate(
+                validManifest("chapterFiles" to listOf(mapOf("storyId" to "story-1", "chapterId" to 1, "path" to "novels/story-1/a.html"))),
+            ),
+        )
+    }
+
+    private fun validate(manifest: Map<String, Any>): String? = FullBackupManifestValidation.validate(read(manifest))
+
+    private fun read(manifest: Map<String, Any>): RawFullBackupManifest = readJson(Gson().toJson(manifest))
+
+    private fun readJson(json: String): RawFullBackupManifest =
+        FullBackupManifestReader.read(Gson(), json.byteInputStream(), BackupInputLimits.MAX_MANIFEST_BYTES)
 
     private fun validManifest(vararg replacements: Pair<String, Any>): Map<String, Any> =
         mapOf(
