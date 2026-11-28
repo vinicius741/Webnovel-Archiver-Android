@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
+import coil3.dispose
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.data.repository.coverFile
@@ -306,20 +307,39 @@ internal fun ScreenHost.coverImage(
     heightDp: Int,
     tapToOpen: Boolean,
 ): View {
-    val source: Any? = activeCoverSource(story)
-    val coverView: View =
-        if (source == null) {
-            makeCoverPlaceholder(app, widthDp, heightDp)
-        } else {
-            makeCover(app, widthDp, heightDp)
-        }
-    if (source != null) {
-        if (tapToOpen) coverView.setOnClickListener { showCoverDialog(story) }
-        loadImage(
-            source,
-            coverView as ImageView,
-            fallbackOnError = if (source is java.io.File) story.coverUrl?.takeIf { it.isNotBlank() } else null,
-        )
-    }
+    val source: Any = activeCoverSource(story) ?: return makeCoverPlaceholder(app, widthDp, heightDp)
+    val coverView = makeCover(app, widthDp, heightDp)
+    if (tapToOpen) coverView.setOnClickListener { showCoverDialog(story) }
+    loadCoverSource(story, source, coverView)
     return coverView
+}
+
+/**
+ * Loads [story]'s active cover into a reused [image]. Returns false, with the view cleared and any pending
+ * load cancelled, when the story has no cover, so the caller shows its placeholder instead.
+ */
+internal fun ScreenHost.loadStoryCover(
+    story: Story,
+    image: ImageView,
+): Boolean {
+    val source = activeCoverSource(story)
+    if (source == null) {
+        image.dispose()
+        image.setImageDrawable(null)
+        return false
+    }
+    loadCoverSource(story, source, image)
+    return true
+}
+
+private fun ScreenHost.loadCoverSource(
+    story: Story,
+    source: Any,
+    image: ImageView,
+) {
+    loadImage(
+        source,
+        image,
+        fallbackOnError = if (source is java.io.File) story.coverUrl?.takeIf { it.isNotBlank() } else null,
+    )
 }

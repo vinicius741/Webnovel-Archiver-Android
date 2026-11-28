@@ -319,7 +319,9 @@ from growing. The real exit criterion, no screen state on the host, is met.
 - `ScreenHost.rerender` and `activeStory` are still set by those screens. Remove them once the last
   user migrates.
 - Convert hand-written list diffing to `ListAdapter` where it does not fight gesture handling. The
-  Library and Chapters lists deliberately keep theirs.
+  Library and Chapters lists deliberately keep theirs. The Library's adapter now dispatches a
+  `DiffUtil` result (`LibraryCardDiff`) whose content check ignores download progress, so it stays
+  off `ListAdapter` but no longer rebinds every card on a reorder.
 - The Reader opens at the top after a fold, as it always has. Remembering its scroll position is a
   separate feature.
 - Separate later decisions, unchanged: Compose (measured on a release build), immutable models,
